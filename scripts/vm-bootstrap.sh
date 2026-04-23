@@ -63,7 +63,7 @@ fi
 for rc in "$HOME/.bashrc" "$HOME/.profile"; do
   [ -f "$rc" ] || continue
   if ! grep -q 'wrkflo/foundry.env' "$rc"; then
-    echo '[ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"' >>"$rc"
+    printf '%s\n' "[ -f \"\$HOME/.config/wrkflo/foundry.env\" ] && . \"\$HOME/.config/wrkflo/foundry.env\"" >>"$rc"
   fi
 done
 

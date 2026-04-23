@@ -29,9 +29,11 @@ for src in "${SOURCES[@]}"; do
   if grep -Fqx "$header" "$DEST"; then
     continue
   fi
-  printf '\n' >>"$DEST"
-  cat "$src" >>"$DEST"
-  printf '\n' >>"$DEST"
+  {
+    printf '\n'
+    cat "$src"
+    printf '\n'
+  } >>"$DEST"
   merged=$((merged + 1))
 done
 

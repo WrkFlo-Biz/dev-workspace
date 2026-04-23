@@ -3,6 +3,7 @@ set -u
 [ -n "${AZURE_OPENAI_API_KEY:-}" ] || { [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"; }
 : "${MAC_GUI_URL:=http://100.78.207.22:9223}"
 : "${MAC_CDP_URL:=http://100.78.207.22:9222}"
+ORCHESTRATOR_HEALTH_URL="${DWS_ORCHESTRATOR_HEALTH_URL:-http://127.0.0.1:8100/v1/workspace/health}"
 
 c(){ printf '\033[%sm%s\033[0m' "$1" "$2"; }
 g(){ c 32 "$1"; }
@@ -12,49 +13,87 @@ h(){ c '1;36' "$1"; }
 d(){ c 2 "$1"; }
 sec(){ printf '\n%s\n' "$(h "== $1 ==")"; }
 have(){ command -v "$1" >/dev/null 2>&1; }
-http(){ curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null || printf 'ERR'; }
+http(){
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null) || { printf 'ERR'; return; }
+  printf '%s' "$code"
+}
 paint(){ case "$1" in 2??) g "$1" ;; 3??) y "$1" ;; *) r "$1" ;; esac; }
 reach(){ case "$1" in 000|ERR) r "$1" ;; *) g "$1" ;; esac; }
 ver(){ case "$1" in tmux) tmux -V 2>/dev/null ;; *) "$1" --version 2>/dev/null | sed -n '1p' ;; esac; }
 usage(){ printf 'usage: %s [--json]\n' "$(basename "$0")"; }
 jesc(){ printf '%s' "$1" | sed 's/\\/\\\\/g;s/"/\\"/g'; }
+fmt_dirty(){
+  if [ -n "${1:-}" ]; then
+    y "dirty"
+  else
+    g "clean"
+  fi
+}
+fmt_foundry_key(){
+  if [ -n "${AZURE_OPENAI_API_KEY:-}" ]; then
+    g "loaded"
+  else
+    r "missing"
+  fi
+}
+fmt_tool_version(){
+  if have "$1"; then
+    ver "$1"
+  else
+    r "missing"
+  fi
+}
+fmt_tailnet_connected(){
+  if tailnet_connected; then
+    g "yes"
+  else
+    r "no"
+  fi
+}
+json_sessions(){
+  local first=1 name
+  printf '['
+  if have tmux && tmux ls >/dev/null 2>&1; then
+    while IFS= read -r name; do
+      [ "$first" -eq 1 ] || printf ','
+      first=0
+      printf '"%s"' "$(jesc "$name")"
+    done < <(tmux ls -F '#{session_name}' 2>/dev/null)
+  fi
+  printf ']'
+}
 json_projects(){
-  local first=1 d n b div dirty
+  local first=1 d n b dirty
   printf '['
   for d in "$HOME"/projects/*; do
     [ -e "$d" ] || continue
     git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || continue
     n=$(basename "$d")
     b=$(git -C "$d" symbolic-ref --quiet --short HEAD 2>/dev/null || git -C "$d" rev-parse --short HEAD 2>/dev/null)
-    if git -C "$d" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
-      div=$(git -C "$d" rev-list --left-right --count '@{upstream}...HEAD' 2>/dev/null | awk '{print "+"$2"/-"$1}')
-    else
-      div="no-upstream"
-    fi
     dirty=false; git -C "$d" status --porcelain --ignore-submodules=dirty 2>/dev/null | sed -n '1q' | grep -q . && dirty=true
     [ "$first" -eq 1 ] || printf ','
     first=0
-    printf '\n    {"name":"%s","branch":"%s","divergence":"%s","dirty":%s}' "$(jesc "$n")" "$(jesc "$b")" "$(jesc "$div")" "$dirty"
+    printf '\n    {"name":"%s","branch":"%s","dirty":%s}' "$(jesc "$n")" "$(jesc "$b")" "$dirty"
   done
   [ "$first" -eq 1 ] || printf '\n  '
   printf ']'
 }
 case "${1:-}" in
   --json)
-    tmux_sessions=0 gh_ok=false az_ok=false tailnet_ok=false
-    have tmux && tmux ls >/dev/null 2>&1 && tmux_sessions=$(tmux ls | wc -l | tr -d ' ')
-    have gh && gh auth status >/dev/null 2>&1 && gh_ok=true
-    have az && az account show >/dev/null 2>&1 && az_ok=true
-    have tailscale && tailscale status >/dev/null 2>&1 && tailnet_ok=true
+    gh_ok=false; have gh && gh auth status >/dev/null 2>&1 && gh_ok=true
+    orch_code=$(http "$ORCHESTRATOR_HEALTH_URL")
+    orch_ok=false; case "$orch_code" in 2??) orch_ok=true ;; esac
     printf '{\n'
-    printf '  "timestamp":"%s",\n' "$(date '+%Y-%m-%d %H:%M:%S %Z')"
-    printf '  "foundry_key_loaded":%s,\n' "$([ -n "${AZURE_OPENAI_API_KEY:-}" ] && echo true || echo false)"
-    printf '  "tmux_sessions":%s,\n' "$tmux_sessions"
-    printf '  "projects":'; json_projects; printf ',\n'
-    printf '  "auth":{"gh":%s,"az":%s},\n' "$gh_ok" "$az_ok"
-    printf '  "services":{"orchestrator":"%s","mac_gui":"%s","mac_cdp":"%s"},\n' "$(http http://localhost:8787/healthz)" "$(http "$MAC_GUI_URL")" "$(http "$MAC_CDP_URL")"
-    printf '  "system":{"disk_used_pct":%s,"memory_used_pct":%s},\n' "$(df / | awk 'NR==2{gsub(/%/,"",$5); print $5}')" "$(free | awk 'NR==2{printf "%.0f", $3/$2*100}')"
-    printf '  "tailnet_connected":%s\n' "$tailnet_ok"
+    printf '  "system":{"hostname":"%s","uptime":"%s","disk":"%s","memory":"%s"},\n' \
+      "$(jesc "$(hostname -s 2>/dev/null || hostname)")" "$(jesc "$(uptime -p 2>/dev/null || uptime)")" \
+      "$(jesc "$(df -h / | awk 'NR == 2 { print $3 "/" $2 " (" $5 " used)" }')")" "$(jesc "$(free -h | awk 'NR == 2 { print $3 "/" $2 " used" }')")"
+    printf '  "tools":{"codex_version":"%s","claude_version":"%s","gh_auth":%s,"foundry_key_loaded":%s},\n' \
+      "$(jesc "$(have codex && ver codex || echo missing)")" "$(jesc "$(have claude && ver claude || echo missing)")" "$gh_ok" "$([ -n "${AZURE_OPENAI_API_KEY:-}" ] && echo true || echo false)"
+    printf '  "services":{"orchestrator_api":{"url":"%s","http_code":"%s","reachable":%s}},\n' \
+      "$(jesc "$ORCHESTRATOR_HEALTH_URL")" "$(jesc "$orch_code")" "$orch_ok"
+    printf '  "sessions":'; json_sessions; printf ',\n'
+    printf '  "projects":'; json_projects; printf '\n'
     printf '}\n'
     exit 0
     ;;
@@ -81,7 +120,9 @@ tailnet_ping(){
   [ -n "$lat" ] && printf '  %-12s %s\n' "$label" "$(g "$lat")" || printf '  %-12s %s\n' "$label" "$(r unreachable)"
 }
 
-[ -t 1 ] && clear 2>/dev/null || true
+if [ -t 1 ]; then
+  clear 2>/dev/null || true
+fi
 printf '%s %s\n' "$(h 'Dev Workspace Health')" "$(d "$(date '+%Y-%m-%d %H:%M:%S %Z')")"
 
 sec "tmux Sessions"
@@ -98,19 +139,19 @@ for d in "$HOME"/projects/*; do
   n=$(basename "$d")
   b=$(git -C "$d" symbolic-ref --quiet --short HEAD 2>/dev/null || git -C "$d" rev-parse --short HEAD 2>/dev/null)
   if git -C "$d" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
-    set -- $(git -C "$d" rev-list --left-right --count '@{upstream}...HEAD' 2>/dev/null)
-    div="+$2/-$1"
+    IFS=$'\t ' read -r behind ahead <<<"$(git -C "$d" rev-list --left-right --count '@{upstream}...HEAD' 2>/dev/null)"
+    div="+${ahead:-0}/-${behind:-0}"
   else
     div="no-upstream"
   fi
   dirty=$(git -C "$d" status --porcelain --ignore-submodules=dirty 2>/dev/null | sed -n '1p')
-  printf '  %-30s %-14s %-12s %s\n' "$n" "$b" "$div" "$([ -n "$dirty" ] && y dirty || g clean)"
+  printf '  %-30s %-14s %-12s %s\n' "$n" "$b" "$div" "$(fmt_dirty "$dirty")"
 done
 
 sec "Tooling"
-printf '  foundry key  %s\n' "$([ -n "${AZURE_OPENAI_API_KEY:-}" ] && g loaded || r missing)"
-printf '  codex        %s\n' "$(have codex && ver codex || r missing)"
-printf '  claude       %s\n' "$(have claude && ver claude || r missing)"
+printf '  foundry key  %s\n' "$(fmt_foundry_key)"
+printf '  codex        %s\n' "$(fmt_tool_version codex)"
+printf '  claude       %s\n' "$(fmt_tool_version claude)"
 
 sec "Auth"
 if have gh && gh auth status >/dev/null 2>&1; then
@@ -132,13 +173,13 @@ printf '  memory       %s\n' "$(free -h | awk 'NR == 2 { print $3 "/" $2 " used"
 printf '  uptime       %s\n' "$(uptime -p 2>/dev/null || uptime)"
 
 sec "Services"
-printf '  orchestrator %s\n' "$(paint "$(http http://localhost:8787/healthz)")"
+printf '  orchestrator %s  %s\n' "$(paint "$(http "$ORCHESTRATOR_HEALTH_URL")")" "$ORCHESTRATOR_HEALTH_URL"
 printf '  mac gui      %s  %s\n' "$(reach "$(http "$MAC_GUI_URL")")" "$MAC_GUI_URL"
 printf '  mac cdp      %s  %s\n' "$(reach "$(http "$MAC_CDP_URL")")" "$MAC_CDP_URL"
 
 sec "Tailnet"
 if have tailscale; then
-  printf '  connected    %s\n' "$(tailnet_connected && g yes || r no)"
+  printf '  connected    %s\n' "$(fmt_tailnet_connected)"
   echo '  peers'
   tailnet_peers
   echo '  latency'
