@@ -1,78 +1,130 @@
-# Phone control (best-effort, given iOS limits)
+# Phone control (VM ⇄ iPhone)
 
-iOS doesn't allow an SSH server, shell, or remote-desktop listener to run in
-the background, so "type commands that execute on the phone" the way you can
-on the Mac isn't possible. What **is** possible is a **push + action** loop:
+The closest thing iOS permits to "control my phone from the terminal":
 
-- VM pushes a message / action request to the phone.
-- Phone shows a banner; you tap it.
-- The tap can open a URL, run a Shortcut, or kick off an automation locally.
-- The Shortcut can call back to the VM over HTTPS with the result.
-
-That covers most "the agent wants me to do X on the phone" cases without
-breaking iOS's sandbox model.
-
-## What's installed
-
-On the VM: `~/bin/push-phone`. Uses ntfy.sh as the relay with a private
-random topic name (kept inside the script — change `$TOPIC` to rotate).
-
-```bash
-push-phone "Build finished"                       # body
-push-phone --title "PR review" "https://..."      # custom title
-push-phone --url "https://…/pr/42" "Approve?"     # tap-through URL
-push-phone --priority 5 "ALERT: prod 500s"        # loud/urgent
+```
+ VM                                             iPhone
+ ───                                            ──────
+ push-phone --action open_url …       ─ntfy─►   banner notification
+                                                (user taps)
+                                                     │
+                                                 shortcuts://run-shortcut?name=dws-action
+                                                     │
+                                                     ▼
+                                                Shortcut "dws-action"
+                                                     │
+     GET /pending  ◄───────────────────────────── HTTP over Tailscale
+     → {"action":"open_url","url":"…"}             │
+                                                     │
+                                                 perform locally (Open URL,
+                                                 Speak Text, iMessage, …)
+                                                     │
+     POST /result  ◄───────────────────────────── optional callback
 ```
 
-## Phone setup
+## Pieces
 
-1. Install **ntfy** from the App Store (free,
-   <https://apps.apple.com/us/app/ntfy/id1625396347>).
-2. Open ntfy → Add subscription → Topic name = the one saved in
-   `~/bin/push-phone` on the VM (`grep TOPIC= ~/bin/push-phone`).
-3. Leave "Server" as the default (`ntfy.sh`).
-4. Test from the VM: `push-phone "hello from VM"`.
-   You should see a banner within a second or two.
+### VM
 
-## Shortcuts template (optional but powerful)
+- `~/bin/dws-phone-server.py` — tiny stdlib HTTP server on port `8081` with
+  a command queue and a results log. Runs as systemd user unit
+  `dws-phone-server.service`.
+- `~/bin/push-phone` — shell helper. Sends an ntfy.sh notification and, if
+  `--action` is passed, queues the action on the phone server and sets the
+  notification's tap URL to `shortcuts://run-shortcut?name=dws-action`.
 
-To get the "tap a push → run a local Shortcut → call back to VM" loop:
+### iPhone
 
-1. iPhone → Shortcuts app → **+** → create a shortcut called "dws-action".
-2. First action: **URL** → set to `http://100.117.16.63:8081/pending`
-   (the VM's Tailscale IP + a port you run a small HTTP server on; see
-   `scripts/dws-phone-server.py` for a starter).
-3. Add **Get Contents of URL** (method GET).
-4. Add **Get Dictionary Value** → key `action`.
-5. Add **If** branches for the actions you care about (Open URL, Play Sound,
-   Send iMessage, Run Shell Script on Mac via SSH, etc.).
-6. Back in ntfy, long-press the topic → **Notification action** → add an
-   action that runs shortcut `dws-action` on tap.
+- **ntfy** app from the App Store (free). Subscribed to topic
+  **`wrkflo-36953b08d28a`** on server `ntfy.sh`.
+- **Shortcuts** app — build one named `dws-action` (see below).
+- **Tailscale** app — already installed. The Shortcut hits the VM over
+  the mesh.
 
-Example actions the Shortcut can perform locally on the phone:
+## Using it from the VM
 
-- Open any URL (Termius, Working Copy, Safari to a PR)
-- Start a timer / reminder
-- Speak text (Text-to-Speech)
-- Run JavaScript in Safari (DOM inspection)
-- Send a pre-populated Message / Mail
-- Play a specific alarm sound
+```bash
+# Plain banner
+push-phone "deploy finished"
 
-## What you still cannot do
+# Tappable action: open a URL on the phone
+push-phone --action open_url --data "https://github.com/Wrk-Flo/dev-workspace" \
+  --title "PR" "tap to open the repo"
 
-- Remotely type into a phone app as if it were a desktop
-- Observe the phone screen from the VM
-- Read arbitrary files off the phone (only things the Shortcut explicitly
-  uploads or the user saves to iCloud Drive)
-- Run arbitrary shell on iOS
+# Speak a message through the phone's TTS
+push-phone --action speak --data "Moses, coffee is ready" "tap to speak"
 
-For those, the practical alternative is to keep the workflow **on the Mac or
-the VM** and use the phone purely as a trigger / display.
+# Copy text into the phone's clipboard
+push-phone --action copy --data "API_KEY_abcdef123" "tap to copy"
+
+# Send an iMessage (phone asks to confirm first time)
+push-phone --action message --data "+15555551234|running late" "tap to send"
+
+# Loud / alert priority
+push-phone --priority 5 --title "ALERT" "prod 500s"
+```
+
+Each `--action …` enqueues one JSON blob on the VM. The Shortcut pops the
+next blob off the queue when you tap.
+
+## Building the `dws-action` Shortcut (one-time, on the phone)
+
+Open **Shortcuts** on the iPhone → bottom right **+** → name it **`dws-action`**.
+Add these actions in order:
+
+1. **Get Contents of URL**
+   - URL: `http://100.117.16.63:8081/pending`
+   - Method: `GET`
+2. **Get Dictionary Value**
+   - Get: `Value`
+   - Key: `action`
+   - Dictionary: the output of step 1
+3. **If** `Dictionary Value` `is` `open_url`
+   - **Get Dictionary Value** key `url` from the original dictionary
+   - **Open URLs** → the value above
+4. **Otherwise If** `action` `is` `speak`
+   - **Get Dictionary Value** key `text`
+   - **Speak Text** → that value
+5. **Otherwise If** `action` `is` `copy`
+   - **Get Dictionary Value** key `text`
+   - **Copy to Clipboard** → that value
+6. **Otherwise If** `action` `is` `message`
+   - **Get Dictionary Value** key `to` → store as variable `To`
+   - **Get Dictionary Value** key `body` → store as variable `Body`
+   - **Send Message** → Recipients = `To`, Message = `Body`
+7. **End If**
+
+Save. First run prompts for:
+- Network permission (Allow)
+- Permission per action (Send Messages, etc. — Allow each)
+
+**Test:** on the VM run `push-phone --action speak --data "hi" "tap"`, tap
+the banner; the phone should speak "hi".
+
+## Handy snippets to paste in Termius
+
+| Snippet           | Command                                                            |
+|-------------------|--------------------------------------------------------------------|
+| Push me           | `push-phone "$(date)"`                                             |
+| Alert             | `push-phone --priority 5 --title ALERT "$*"`                       |
+| Open URL on phone | `push-phone --action open_url --data "$1" "tap to open"`           |
+| Copy to phone     | `push-phone --action copy     --data "$1" "tap to copy"`           |
 
 ## Security
 
-- ntfy.sh is a public relay. Topic names are secret-equivalent — anyone who
-  guesses the topic can both send and read. Treat `$TOPIC` as sensitive.
-  Rotate by editing `~/bin/push-phone` and re-subscribing on the phone.
-- If you want stronger isolation, self-host ntfy on the VM (just the binary
-  plus a systemd unit) and point the iOS app at it via the Tailscale IP.
+- The ntfy topic name is secret-equivalent. Anyone who knows
+  `wrkflo-36953b08d28a` can both send banners to the phone and read the
+  messages. Treat it like a password. Rotate by editing the `TOPIC=` line in
+  `~/bin/push-phone` and re-subscribing on the phone.
+- The callback server binds to `0.0.0.0:8081` on the VM, but Azure's NSG
+  only exposes port 22 publicly, so only tailnet peers can actually reach it.
+- Every queued item is popped once and then gone; there is no per-request
+  auth. Add a shared-secret header if you ever share your tailnet.
+
+## Limits that still exist
+
+- No way to run arbitrary shell on iOS — Apple blocks it.
+- No background poll. The Shortcut only runs when you tap the banner (or
+  manually run it, or bind it to a Back Tap / Siri / HomePod trigger).
+- The Shortcut can only do things iOS Shortcuts natively supports. Anything
+  that needs a third-party app needs that app to expose a Shortcut action.
