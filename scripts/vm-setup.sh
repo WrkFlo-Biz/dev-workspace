@@ -19,7 +19,9 @@ SYSTEM_PACKAGES=(
   tmux
   git
   curl
+  cron
   jq
+  iputils-ping
   python3
   python3-venv
   nodejs
@@ -280,6 +282,21 @@ ensure_codex_profiles() {
   fi
 }
 
+ensure_cron_service() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    warn "systemctl not available; skipping cron enablement"
+    return 0
+  fi
+
+  if systemctl is-enabled cron >/dev/null 2>&1 && systemctl is-active cron >/dev/null 2>&1; then
+    skip_item "cron service already enabled"
+    return 0
+  fi
+
+  run_root systemctl enable --now cron
+  done_item "enabled cron service"
+}
+
 ensure_bash_profile_launcher() {
   local file="$HOME/.bash_profile"
   local clean_file final_file
@@ -315,6 +332,46 @@ EOF
   fi
 
   rm -f "$clean_file" "$final_file" 2>/dev/null || true
+}
+
+ensure_health_check_cron() {
+  local current clean final
+
+  if ! command -v crontab >/dev/null 2>&1; then
+    warn "crontab not available; skipping health-check cron"
+    return 0
+  fi
+
+  current="$(mktemp)"
+  clean="$(mktemp)"
+  final="$(mktemp)"
+  crontab -l 2>/dev/null >"$current" || :
+
+  awk '
+    BEGIN { skip = 0 }
+    $0 == "# >>> dev-workspace health check >>>" { skip = 1; next }
+    $0 == "# <<< dev-workspace health check <<<" { skip = 0; next }
+    !skip && index($0, "dws-health-check.sh") == 0 { print }
+  ' "$current" >"$clean"
+
+  cat "$clean" >"$final"
+  if [ -s "$clean" ]; then
+    printf '\n' >>"$final"
+  fi
+  {
+    echo "# >>> dev-workspace health check >>>"
+    printf '*/15 * * * * "%s" >/dev/null 2>&1\n' "$BIN_DIR/dws-health-check.sh"
+    echo "# <<< dev-workspace health check <<<"
+  } >>"$final"
+
+  if cmp -s "$current" "$final"; then
+    skip_item "health-check cron already present"
+  else
+    crontab "$final"
+    done_item "installed health-check cron entry"
+  fi
+
+  rm -f "$current" "$clean" "$final"
 }
 
 clone_repo() {
@@ -465,6 +522,7 @@ main() {
   ensure_azure_cli
   ensure_npm_cli codex "@openai/codex" "Codex CLI"
   ensure_npm_cli claude "@anthropic-ai/claude-code" "Claude Code"
+  ensure_cron_service
 
   local repo
   for repo in "${WRKFLO_REPOS[@]}"; do
@@ -478,6 +536,7 @@ main() {
   copy_if_changed "$REPO_ROOT/scripts/dws-notify.sh" "$BIN_DIR/dws-notify.sh" 0755 "~/bin/dws-notify.sh"
   ensure_codex_profiles
   ensure_bash_profile_launcher
+  ensure_health_check_cron
   ensure_orchestrator_systemd
   print_summary
 }
