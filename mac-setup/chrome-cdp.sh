@@ -10,13 +10,21 @@
 # Re-run anytime: it kills prior instances/socat forwards before starting.
 
 set -euo pipefail
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 PROFILE="$HOME/chrome-remote-profile"
 CDP_PORT=9222
-TS_IP=$(tailscale ip -4 2>/dev/null | head -1 || true)
 CHROME_APP='/Applications/Google Chrome.app'
+TAILSCALE_BIN=$(command -v tailscale || true)
+SOCAT=$(command -v socat || true)
+TS_IP=$([ -n "$TAILSCALE_BIN" ] && "$TAILSCALE_BIN" ip -4 2>/dev/null | head -1 || true)
 
 log() { printf '\033[1;34m[chrome-cdp]\033[0m %s\n' "$*"; }
+
+if [ ! -d "$CHROME_APP" ]; then
+  log "Google Chrome.app not found; cannot start CDP bridge"
+  exit 1
+fi
 
 # Stop any prior socat forward and any chrome started against this profile.
 pkill -f "socat .*:$CDP_PORT" 2>/dev/null || true
@@ -46,8 +54,12 @@ curl -fsS "http://127.0.0.1:$CDP_PORT/json/version" >/dev/null || {
 }
 
 if [ -n "$TS_IP" ]; then
+  if [ -z "$SOCAT" ]; then
+    log "socat missing; CDP is reachable only via localhost:$CDP_PORT"
+    exit 0
+  fi
   log "bridging $TS_IP:$CDP_PORT → 127.0.0.1:$CDP_PORT (socat)"
-  nohup /opt/homebrew/bin/socat \
+  nohup "$SOCAT" \
     "TCP-LISTEN:$CDP_PORT,bind=$TS_IP,fork,reuseaddr" \
     "TCP:127.0.0.1:$CDP_PORT" \
     </dev/null >/tmp/socat-cdp.log 2>&1 &

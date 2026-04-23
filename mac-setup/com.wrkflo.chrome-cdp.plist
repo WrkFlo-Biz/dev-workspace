@@ -22,7 +22,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>/Users/mosestut/dev-workspace/mac-setup/chrome-cdp.sh</string>
+    <string>exec "$HOME/dev-workspace/mac-setup/chrome-cdp.sh"</string>
   </array>
 
   <key>RunAtLoad</key>

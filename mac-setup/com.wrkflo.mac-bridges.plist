@@ -15,7 +15,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>/Users/mosestut/dev-workspace/mac-setup/mac-bridges.sh</string>
+    <string>exec "$HOME/dev-workspace/mac-setup/mac-bridges.sh"</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
