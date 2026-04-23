@@ -632,7 +632,7 @@ ensure_health_check_cron() {
   fi
   {
     echo "# >>> dev-workspace health check >>>"
-    printf '*/15 * * * * "%s" >>"%s/dws-health-check.cron.log" 2>&1\n' "$BIN_DIR/dws-health-check.sh" "$CRON_LOG_DIR"
+    printf '*/15 * * * * "%s" >>"%s/health-check.log" 2>&1\n' "$BIN_DIR/dws-health-check.sh" "$CRON_LOG_DIR"
     echo "# <<< dev-workspace health check <<<"
   } >>"$final"
 

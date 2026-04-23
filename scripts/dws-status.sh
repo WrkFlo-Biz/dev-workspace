@@ -11,6 +11,7 @@ PLANNER_STATE_PATH="${DWS_PLANNER_STATE_PATH:-/tmp/planner-state.json}"
 PLANNER_LOG_PATH="${DWS_PLANNER_LOG_PATH:-/tmp/planner-log.txt}"
 PLANNER_STALE_SECONDS="${DWS_PLANNER_STALE_SECONDS:-1200}"
 PLANNER_LOG_STALE_SECONDS="${DWS_PLANNER_LOG_STALE_SECONDS:-3600}"
+MONITOR_SERVICE_NAME="${DWS_MONITOR_SERVICE_NAME:-dws-task-monitor}"
 
 # shellcheck source=/dev/null
 . "${REPO_ROOT}/scripts/dws-env.sh"
@@ -95,6 +96,83 @@ active_session_summary() {
   else
     printf '%s' "$(dim "$label")"
   fi
+}
+
+header_tailscale_ip() {
+  local body="${1:-}" ip=''
+
+  if [ -n "$body" ]; then
+    ip=$(jq -r '.tailscale.ip // ""' <<<"$body" 2>/dev/null || true)
+  fi
+
+  if [ -z "$ip" ] && need_cmd tailscale; then
+    ip=$(tailscale ip -4 2>/dev/null | sed -n '1p' || true)
+  fi
+
+  printf '%s\n' "$ip"
+}
+
+tailscale_ip_badge() {
+  local ip="${1:-}"
+
+  if [ -n "$ip" ]; then
+    printf '%s' "$(green "$ip")"
+  else
+    printf '%s' "$(yellow 'unavailable')"
+  fi
+}
+
+unit_name() {
+  case "$1" in
+    *.service) printf '%s' "$1" ;;
+    *) printf '%s.service' "$1" ;;
+  esac
+}
+
+user_unit_state() {
+  local unit state sub
+
+  unit=$(unit_name "$1")
+  need_cmd systemctl || {
+    printf 'unavailable'
+    return 0
+  }
+
+  state=$(systemctl --user is-active "$unit" 2>/dev/null || true)
+  state=$(printf '%s\n' "$state" | sed -n '1p')
+
+  case "$state" in
+    active)
+      sub=$(systemctl --user show "$unit" --property=SubState --value 2>/dev/null | sed -n '1p')
+      if [ -n "$sub" ] && [ "$sub" != "$state" ]; then
+        printf '%s (%s)' "$state" "$sub"
+      else
+        printf '%s' "$state"
+      fi
+      ;;
+    '')
+      printf 'unknown'
+      ;;
+    *)
+      printf '%s' "$state"
+      ;;
+  esac
+}
+
+monitor_service_badge() {
+  local state="${1:-}"
+
+  case "$state" in
+    active*)
+      printf '%s' "$(green "$state")"
+      ;;
+    activating*|reloading*|unknown|unavailable)
+      printf '%s' "$(yellow "$state")"
+      ;;
+    *)
+      printf '%s' "$(red "$state")"
+      ;;
+  esac
 }
 
 latest_health_result() {
@@ -194,8 +272,11 @@ planner_queue_header_summary() {
 
   if counts=$(planner_queue_counts "$TASK_QUEUE_PATH"); then
     IFS=$'\t' read -r pending in_progress completed total last_reconciled <<<"$counts"
-    printf 'pending=%s  in_progress=%s  completed=%s  total=%s' \
-      "$pending" "$in_progress" "$completed" "$total"
+    if [ "$pending" -eq 0 ]; then
+      printf '%s' "$(green 'pending=0')"
+    else
+      printf '%s' "$(cyan "pending=${pending}")"
+    fi
     return 0
   fi
 
@@ -203,7 +284,7 @@ planner_queue_header_summary() {
     2) printf '%s' "$(dim 'missing')" ;;
     3) printf '%s' "$(yellow 'empty')" ;;
     4) printf '%s' "$(yellow 'invalid')" ;;
-    5) printf '%s' "$(yellow 'jq missing')" ;;
+    5) printf '%s' "$(yellow 'parser missing')" ;;
     *) printf '%s' "$(yellow 'unavailable')" ;;
   esac
 }
@@ -240,7 +321,7 @@ key_status() {
 
 render_header() {
   local body="${1:-}"
-  local count disk_percent
+  local count disk_percent tailscale_ip monitor_state
 
   count=$(header_session_count "$body")
   if [ -n "$body" ]; then
@@ -248,9 +329,13 @@ render_header() {
   else
     disk_percent=''
   fi
+  tailscale_ip=$(header_tailscale_ip "$body")
+  monitor_state=$(user_unit_state "$MONITOR_SERVICE_NAME")
 
   printf '  %s | %s\n' "$(bold 'dev-workspace')" "$(host_info)"
   printf '  sessions: %s\n' "$(active_session_summary "$count")"
+  printf '  tailnet:  %s\n' "$(tailscale_ip_badge "$tailscale_ip")"
+  printf '  monitor:  %s\n' "$(monitor_service_badge "$monitor_state")"
   printf '  health:   check=%s  result=%s  key=%s\n' \
     "$(latest_health_timestamp)" \
     "$(latest_health_result)" \

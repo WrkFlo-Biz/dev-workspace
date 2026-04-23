@@ -5,6 +5,9 @@ SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(CDPATH='' cd -- "${SCRIPT_DIR}/.." && pwd)
 
 LOG_DIR="${DWS_CRON_LOG_DIR:-/var/log/dws}"
+HEALTH_LOG_NAME="${DWS_HEALTH_CRON_LOG_NAME:-health-check.log}"
+LOG_ROTATE_LOG_NAME="${DWS_LOG_ROTATE_CRON_LOG_NAME:-log-rotate.log}"
+SESSION_CLEANUP_LOG_NAME="${DWS_SESSION_CLEANUP_CRON_LOG_NAME:-session-cleanup.log}"
 HEALTH_SCHEDULE="${DWS_HEALTH_CRON_SCHEDULE:-*/15 * * * *}"
 LOG_ROTATE_SCHEDULE="${DWS_LOG_ROTATE_CRON_SCHEDULE:-30 2 * * 0}"
 SESSION_CLEANUP_SCHEDULE="${DWS_SESSION_CLEANUP_CRON_SCHEDULE:-0 4 * * *}"
@@ -148,9 +151,9 @@ build_jobs() {
     dws-session-cleanup
   )
   JOBS=(
-    "${HEALTH_SCHEDULE} \"${HEALTH_SCRIPT}\" >>\"${LOG_DIR}/dws-health-check.cron.log\" 2>&1 # dws-health-check"
-    "${LOG_ROTATE_SCHEDULE} ${ROTATE_JOB} >>\"${LOG_DIR}/dws-log-rotate.cron.log\" 2>&1 # dws-log-rotate"
-    "${SESSION_CLEANUP_SCHEDULE} \"${CLEANUP_SCRIPT}\" --session-hours ${SESSION_RETENTION_HOURS} --log-days ${LOG_RETENTION_DAYS} --temp-days ${DISABLED_RETENTION_DAYS} >>\"${LOG_DIR}/dws-session-cleanup.cron.log\" 2>&1 # dws-session-cleanup"
+    "${HEALTH_SCHEDULE} \"${HEALTH_SCRIPT}\" >>\"${LOG_DIR}/${HEALTH_LOG_NAME}\" 2>&1 # dws-health-check"
+    "${LOG_ROTATE_SCHEDULE} ${ROTATE_JOB} >>\"${LOG_DIR}/${LOG_ROTATE_LOG_NAME}\" 2>&1 # dws-log-rotate"
+    "${SESSION_CLEANUP_SCHEDULE} \"${CLEANUP_SCRIPT}\" --session-hours ${SESSION_RETENTION_HOURS} --log-days ${LOG_RETENTION_DAYS} --temp-days ${DISABLED_RETENTION_DAYS} >>\"${LOG_DIR}/${SESSION_CLEANUP_LOG_NAME}\" 2>&1 # dws-session-cleanup"
   )
 }
 

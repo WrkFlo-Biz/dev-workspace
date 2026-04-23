@@ -249,7 +249,7 @@ discover_git_repos() {
 repo_rel_path() {
   local repo="$1"
   case "$repo" in
-    "${PROJECTS_ROOT}/"*) printf '%s\n' "${repo#${PROJECTS_ROOT}/}" ;;
+    "${PROJECTS_ROOT}/"*) printf '%s\n' "${repo#"$PROJECTS_ROOT"/}" ;;
     *) basename -- "$repo" ;;
   esac
 }

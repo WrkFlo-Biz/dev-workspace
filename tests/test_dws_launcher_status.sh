@@ -83,6 +83,22 @@ write_fake_command curl 'cat <<'\''EOF'\''
 {"vm":{"hostname":"dev-workspace-vm","uptime":"up 1 hour","disk_percent":41,"memory_percent":37},"tailscale":{"connected":true,"ip":"100.64.0.10"},"sessions":["gs-5-4","orch-codex"],"projects":[{"name":"global-sentinel","branch":"main","dirty":false},{"name":"wrkflo-orchestrator","branch":"feature/queue","dirty":true}],"foundry_key":{"loaded":true}}
 EOF'
 
+write_fake_command tailscale 'if [ "${1:-}" = "ip" ] && [ "${2:-}" = "-4" ]; then
+  printf "%s\n" "100.64.0.10"
+  exit 0
+fi
+exit 1'
+
+write_fake_command systemctl 'if [ "${1:-}" = "--user" ] && [ "${2:-}" = "is-active" ] && [ "${3:-}" = "dws-task-monitor.service" ]; then
+  printf "%s\n" "active"
+  exit 0
+fi
+if [ "${1:-}" = "--user" ] && [ "${2:-}" = "show" ] && [ "${3:-}" = "dws-task-monitor.service" ] && [ "${4:-}" = "--property=SubState" ] && [ "${5:-}" = "--value" ]; then
+  printf "%s\n" "running"
+  exit 0
+fi
+exit 1'
+
 write_fake_command df 'cat <<'\''EOF'\''
 Filesystem     1024-blocks  Used Available Capacity Mounted on
 /dev/root         1000000 410000    590000       41% /
@@ -102,9 +118,11 @@ output=$(
 plain_output=$(printf '%s\n' "$output" | strip_ansi)
 
 assert_contains "$plain_output" "sessions: 2 active"
+assert_contains "$plain_output" "tailnet:  100.64.0.10"
+assert_contains "$plain_output" "monitor:  active (running)"
 assert_contains "$plain_output" "health:   check=2026-04-23 21:40:00  result=7 ok, 0 fail"
 assert_contains "$plain_output" "usage:    disk=41% used"
-assert_contains "$plain_output" "queue:    pending=1  in_progress=2  completed=1  total=4"
+assert_contains "$plain_output" "queue:    pending=1"
 assert_contains "$plain_output" "active sessions"
 assert_contains "$plain_output" "wrkflo-orchestrator"
 

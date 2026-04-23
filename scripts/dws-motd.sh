@@ -320,16 +320,16 @@ PY
 }
 
 task_queue_summary() {
-  local counts pending active done total
+  local counts pending active done_count total
 
   counts=$(task_queue_counts) || {
     printf '%s\n' "$counts"
     return
   }
 
-  IFS=$'\t' read -r pending active done total <<<"$counts"
+  IFS=$'\t' read -r pending active done_count total <<<"$counts"
   printf 'pending=%s  active=%s  done=%s  total=%s\n' \
-    "$pending" "$active" "$done" "$total"
+    "$pending" "$active" "$done_count" "$total"
 }
 
 latest_snapshot() {

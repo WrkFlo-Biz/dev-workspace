@@ -16,7 +16,7 @@ The drill validates that after a clean reboot (`sudo reboot`), the following com
 | dws-sessions-init.service | `~/bin/dws-sessions-init.sh` (oneshot) | 9 tmux sessions recreated |
 | dws-task-monitor.service | `~/bin/task-monitor.sh` (simple, Restart=on-failure) | active, writing `/var/log/dws/monitor.log` |
 | dws-phone-server.service | `~/bin/dws-phone-server.py` | active, Restart=always |
-| wrkflo-orchestrator-api.service | FastAPI on `127.0.0.1:8100` | active, `/health` returns 200 |
+| wrkflo-orchestrator-api.service | FastAPI on `127.0.0.1:8100` | active, `/v1/workspace/health` returns 200 |
 | tmux sessions | spawned by `dws-sessions-init` | managed set present: `dws-a dws-b worker-c worker-d worker-e worker-f worker-g worker-h orchestrator` |
 | Cron | system `cron.service` | daemon active, 3 dev-workspace entries present |
 | Launcher | `~/bin/dws-launcher.sh` | runnable on a fresh SSH login |
@@ -92,7 +92,7 @@ ssh moses@dev-workspace-vm '~/projects/dev-workspace/bin/dws-boot-verify.sh'
 ```
 
 Pass: `STATUS: READY` in the final line, `0 failed`.
-Fail: any `✗` line → note which component and continue to the targeted section below.
+Fail: any `FAIL` line → note which component and continue to the targeted section below.
 
 ### 3.1 Tailscale
 

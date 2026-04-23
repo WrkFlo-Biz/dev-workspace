@@ -177,7 +177,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8081/health || true
 | Check | Value | Pass |
 |---|---|---|
 | Unit active | `<active/inactive>` | `[ ]` |
-| HTTP response (any 2xx/4xx) | `<code>` | `[ ]` |
+| `/health` response | `<200/other>` | `[ ]` |
 
 Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 
@@ -191,7 +191,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8100/v1/workspace/heal
 | Check | Value | Pass |
 |---|---|---|
 | Unit active | `<active/inactive>` | `[ ]` |
-| `/health` response | `<code>` (expect `200`) | `[ ]` |
+| `/v1/workspace/health` response | `<code>` (expect `200`) | `[ ]` |
 
 Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 

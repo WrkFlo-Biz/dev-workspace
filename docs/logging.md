@@ -1,10 +1,11 @@
 # Centralized Logging
 
-This document records the logging layout implied by the tracked repo as audited
-on 2026-04-23. The repo does not yet prove a fully centralized setup:
-`/var/log/dws` is prepared and checked by repo-managed tooling, but several
-runtime logs and status files still default to `/tmp`, and some service output
-still lives in `journald`.
+This document records the logging and runtime-artifact layout implied by the
+tracked repo as audited on 2026-04-23. The live monitor now writes
+`/var/log/dws/monitor.log`, and the live task queue lives in
+`~/projects/dev-workspace/.state/task-queue.json`, but centralization is still
+partial because several repo tools continue to default to `/tmp` and some
+service output still lives in `journald`.
 
 One important constraint: the task monitor entrypoint is `~/bin/task-monitor.sh`,
 which is VM-local and not tracked in this repo. The repo wires that script into
@@ -18,7 +19,7 @@ The repo-managed pieces that currently reference `/var/log/dws` are:
 | Path | Producer / source | Where it is wired | Rotation / cleanup in repo | Notes |
 | --- | --- | --- | --- | --- |
 | `/var/log/dws/` | `bin/dws-systemd-user-setup.sh install` | Creates the directory, sets owner to `$USER:$(id -gn)`, mode `0775`, then installs the user units | None found | `bin/dws-boot-verify.sh` treats this directory as required boot-time state and reports how many entries it contains. |
-| `/var/log/dws/monitor.log` | `~/bin/task-monitor.sh` when launched by `dws-task-monitor.service` | `config/systemd-user/dws-task-monitor.service` runs `%h/bin/task-monitor.sh`; `docs/runbook.md` and `docs/reboot-recovery-test.md` tail this file | None found | This is the only concrete file log under `/var/log/dws` referenced as a live runtime log in the tracked tree. The monitor script is not in this repo, and older docs still mention `/tmp/monitor-log.txt`, so verify on-host before assuming one path is authoritative. |
+| `/var/log/dws/monitor.log` | `~/bin/task-monitor.sh` when launched by `dws-task-monitor.service` | `config/systemd-user/dws-task-monitor.service` runs `%h/bin/task-monitor.sh`; `docs/runbook.md`, `docs/troubleshooting.md`, and `docs/reboot-recovery-test.md` tail this file | None found | Verified on-host from the live monitor script. Treat this as the authoritative monitor cycle log path. |
 
 ## Sources That Can Target `/var/log/dws`, But Do Not By Default
 
@@ -49,21 +50,22 @@ Without that override, these files land in `/tmp`.
 | `/tmp/dws-health-check.cron.log` | Managed cron block from `scripts/dws-cron-setup.sh` | Operator troubleshooting | Same as above | Stdout/stderr capture for the health-check cron run. |
 | `/tmp/dws-log-rotate.cron.log` | Managed cron block from `scripts/dws-cron-setup.sh` | `scripts/dws-doctor.sh`, operator troubleshooting | Same as above | Captures the `dws-log-rotate` cron entry. The referenced `dws-rotate-logs.sh` script is not tracked here. |
 | `/tmp/dws-session-cleanup.cron.log` | Managed cron block from `scripts/dws-cron-setup.sh` | `scripts/dws-doctor.sh`, operator troubleshooting | Same as above | Captures the `dws-session-cleanup` cron entry. |
-| `/tmp/monitor-log.txt` | VM-local `~/bin/task-monitor.sh` according to `docs/runtime-boot-truth.md` and `docs/architecture.md` | `scripts/dws-sessions.sh`, `scripts/dws-doctor.sh`, `docs/troubleshooting.md` | None found | This is the main conflict with `/var/log/dws/monitor.log`: repo docs disagree, and the real script is outside the repo. |
+| `/tmp/monitor-log.txt` | No live producer confirmed on this VM | `scripts/dws-sessions.sh`, `scripts/dws-doctor.sh`, older troubleshooting notes | None found | Treat this as a legacy path that still appears in repo tooling. The verified live monitor log is `/var/log/dws/monitor.log`. |
 | `/tmp/planner-log.txt` | External planner runtime, not tracked here | `scripts/dws-doctor.sh`, `scripts/dws-status.sh`, `docs/troubleshooting.md` | None found | The repo monitors freshness, but does not define the writer. |
 | `/tmp/orchestrator-monitor.log` | External orchestrator monitor/runtime, not tracked here | `scripts/dws-doctor.sh`, `docs/troubleshooting.md` | None found | Freshness is checked by `scripts/dws-doctor.sh`; no writer is tracked here. |
 | `/tmp/dws-sync-all.out.log` | No tracked producer found in this repo snapshot | `scripts/dws-log.sh` | None found | `dws-log.sh` still tails this file, so treat it as a legacy or operator-created log path unless a host-local wrapper is writing it. |
 
-### Runtime state and status files under `/tmp`
+### Runtime state and status files outside `/var/log/dws`
 
 These are not logs, but they are part of the same operator workflow and are
 easy to confuse with the centralized log tree.
 
 | Path | Producer | Main readers / dependents | Cleanup / retention in repo | Notes |
 | --- | --- | --- | --- | --- |
+| `~/projects/dev-workspace/.state/task-queue.json` | live `~/bin/task-monitor.sh` | operator runbooks, troubleshooting, direct queue inspection | None found | This is the verified live queue path on the VM. |
 | `/tmp/dws-cleanup.last-success` | `scripts/dws-cleanup.sh` after a non-dry-run success | `scripts/dws-doctor.sh` | Overwritten on each successful cleanup run | This is the preferred cleanup success signal. |
-| `/tmp/monitor-status.json` | VM-local `~/bin/task-monitor.sh` according to runtime docs | `scripts/dws-doctor.sh`, `docs/troubleshooting.md` | None found | Current runtime docs still treat this as the monitor status snapshot. |
-| `/tmp/task-queue.json` | VM-local `~/bin/task-monitor.sh` according to runtime docs | `scripts/dws-launcher.sh`, `scripts/dws-status.sh`, `scripts/dws-motd.sh`, `docs/troubleshooting.md` | None found | This is the queue path still used by status and MOTD scripts. |
+| `/tmp/monitor-status.json` | No live producer confirmed on this VM | `scripts/dws-doctor.sh`, older troubleshooting notes | None found | Legacy artifact path still referenced by some repo tooling, but not confirmed as a current task-monitor output. |
+| `/tmp/task-queue.json` | Legacy default still assumed by some repo scripts | `scripts/dws-launcher.sh`, `scripts/dws-status.sh`, `scripts/dws-motd.sh` | None found | Not the verified live queue path. The current service-managed monitor uses `~/projects/dev-workspace/.state/task-queue.json`. |
 | `/tmp/planner-status.md` | External planner runtime, not tracked here | `scripts/dws-doctor.sh`, `scripts/dws-status.sh` | None found | Freshness is checked, writer is not tracked. |
 | `/tmp/planner-state.json` | External planner runtime, not tracked here | `scripts/dws-doctor.sh`, `scripts/dws-status.sh` | None found | Freshness is checked, writer is not tracked. |
 | `/tmp/dws-alerts.txt` | `scripts/dws-notify.sh` | `scripts/dws-notify.sh check` | None found | Alert spool, not a structured log. |
@@ -128,24 +130,30 @@ tail -n 40 /tmp/dws-health-check.cron.log /tmp/dws-log-rotate.cron.log /tmp/dws-
 sed -n '1,120p' /tmp/dws-cleanup.last-success
 ```
 
-Check the older `/tmp` monitor and queue artifacts that other repo scripts still
+Check the live monitor and queue first:
+
+```bash
+tail -n 40 /var/log/dws/monitor.log
+sed -n '1,120p' ~/projects/dev-workspace/.state/task-queue.json
+journalctl --user -u dws-task-monitor.service -n 50 --no-pager
+```
+
+If you need to inspect the legacy `/tmp` artifacts that some repo tools still
 read:
 
 ```bash
-tail -n 40 /tmp/monitor-log.txt
-sed -n '1,120p' /tmp/monitor-status.json
-jq . /tmp/task-queue.json | sed -n '1,80p'
+sed -n '1,120p' /tmp/monitor-status.json 2>/dev/null || true
 tail -n 40 /tmp/planner-log.txt /tmp/orchestrator-monitor.log
 ```
 
 ## Practical Takeaway
 
-`/var/log/dws` exists as the repo's intended central log directory, but the
-tracked code is still split across three logging surfaces:
+The current operational surfaces are:
 
-1. `/var/log/dws` for the expected task-monitor file log.
-2. `/tmp` for health, cron, planner, monitor, queue, and alert artifacts.
-3. `journald` for user-service stdout/stderr when the script does not manage its
+1. `/var/log/dws/monitor.log` for the live task-monitor cycle log.
+2. `~/projects/dev-workspace/.state/task-queue.json` for the live queue state.
+3. `/tmp` for health, cron, planner, alert, and legacy status artifacts.
+4. `journald` for user-service stdout/stderr when the script does not manage its
    own file log.
 
 Treat the current state as a partial migration, not a completed centralization.

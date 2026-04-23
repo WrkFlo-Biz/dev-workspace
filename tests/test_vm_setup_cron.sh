@@ -114,7 +114,7 @@ EOF
   [ -d "${DWS_CRON_LOG_DIR}" ] || fail "expected cron log directory to be created"
   [ -w "${DWS_CRON_LOG_DIR}" ] || fail "expected cron log directory to be writable"
   assert_contains "${crontab_after}" "# >>> dev-workspace health check >>>"
-  assert_contains "${crontab_after}" "*/15 * * * * \"${HOME}/bin/dws-health-check.sh\" >>\"${DWS_CRON_LOG_DIR}/dws-health-check.cron.log\" 2>&1"
+  assert_contains "${crontab_after}" "*/15 * * * * \"${HOME}/bin/dws-health-check.sh\" >>\"${DWS_CRON_LOG_DIR}/health-check.log\" 2>&1"
   assert_not_contains "${crontab_after}" "/tmp/dws-health-check.cron.log"
   assert_not_contains "${crontab_after}" ">/dev/null 2>&1"
 

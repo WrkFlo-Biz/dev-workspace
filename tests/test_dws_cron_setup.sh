@@ -99,9 +99,10 @@ test_show_defaults_to_var_log_dws() {
   unset DWS_CRON_LOG_DIR
   output=$(bash "${SCRIPT}" --show 2>&1)
   assert_contains "${output}" "# >>> dev-workspace managed cron >>>"
-  assert_contains "${output}" "*/15 * * * * \"${REPO_ROOT}/scripts/dws-health-check.sh\" >>\"/var/log/dws/dws-health-check.cron.log\" 2>&1 # dws-health-check"
-  assert_contains "${output}" "30 2 * * 0 \"${DWS_LOG_ROTATE_SCRIPT}\" >>\"/var/log/dws/dws-log-rotate.cron.log\" 2>&1 # dws-log-rotate"
+  assert_contains "${output}" "*/15 * * * * \"${REPO_ROOT}/scripts/dws-health-check.sh\" >>\"/var/log/dws/health-check.log\" 2>&1 # dws-health-check"
+  assert_contains "${output}" "30 2 * * 0 \"${DWS_LOG_ROTATE_SCRIPT}\" >>\"/var/log/dws/log-rotate.log\" 2>&1 # dws-log-rotate"
   assert_not_contains "${output}" "/tmp/dws-health-check.cron.log"
+  assert_not_contains "${output}" "dws-health-check.cron.log"
   assert_contains "${output}" "Summary: 0 pass, 0 fail"
 
   cleanup_fixture
@@ -116,7 +117,7 @@ test_show_uses_repo_rotate_helper_when_env_is_unset() {
 
   unset DWS_CRON_LOG_DIR DWS_LOG_ROTATE_SCRIPT
   output=$(bash "${SCRIPT}" --show 2>&1)
-  assert_contains "${output}" "30 2 * * 0 \"${REPO_ROOT}/scripts/dws-rotate-logs.sh\" >>\"/var/log/dws/dws-log-rotate.cron.log\" 2>&1 # dws-log-rotate"
+  assert_contains "${output}" "30 2 * * 0 \"${REPO_ROOT}/scripts/dws-rotate-logs.sh\" >>\"/var/log/dws/log-rotate.log\" 2>&1 # dws-log-rotate"
 
   cleanup_fixture
   trap - EXIT
@@ -144,9 +145,10 @@ EOF
   assert_contains "${output}" "PASS cron service is active"
   assert_contains "${crontab_after}" "5 * * * * echo keep-me"
   assert_contains "${crontab_after}" "# >>> dev-workspace managed cron >>>"
-  assert_contains "${crontab_after}" "*/15 * * * * \"${REPO_ROOT}/scripts/dws-health-check.sh\" >>\"${DWS_CRON_LOG_DIR}/dws-health-check.cron.log\" 2>&1 # dws-health-check"
-  assert_contains "${crontab_after}" "30 2 * * 0 \"${DWS_LOG_ROTATE_SCRIPT}\" >>\"${DWS_CRON_LOG_DIR}/dws-log-rotate.cron.log\" 2>&1 # dws-log-rotate"
+  assert_contains "${crontab_after}" "*/15 * * * * \"${REPO_ROOT}/scripts/dws-health-check.sh\" >>\"${DWS_CRON_LOG_DIR}/health-check.log\" 2>&1 # dws-health-check"
+  assert_contains "${crontab_after}" "30 2 * * 0 \"${DWS_LOG_ROTATE_SCRIPT}\" >>\"${DWS_CRON_LOG_DIR}/log-rotate.log\" 2>&1 # dws-log-rotate"
   assert_not_contains "${crontab_after}" "/tmp/dws-health-check.cron.log"
+  assert_not_contains "${crontab_after}" "dws-log-rotate.cron.log"
   assert_not_contains "${crontab_after}" "# >>> dev-workspace health check >>>"
 
   cleanup_fixture

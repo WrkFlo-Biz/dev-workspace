@@ -57,6 +57,7 @@ systemctl is-active ssh ssh.socket sshd sshd.socket
 2. If a hardening drop-in caused the lockout, disable it and reload SSH:
 
 ```bash
+sudo mv /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf.disabled 2>/dev/null || true
 sudo mv /etc/ssh/sshd_config.d/zz-dws-hardening.conf /etc/ssh/sshd_config.d/zz-dws-hardening.conf.disabled 2>/dev/null || true
 sudo mv /etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf /etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf.disabled 2>/dev/null || true
 sudo sshd -t
@@ -67,7 +68,7 @@ sudo systemctl reload ssh || sudo systemctl restart ssh
 
 ```bash
 sudo install -d -m 0755 /etc/ssh/sshd_config.d
-sudo install -m 0644 ~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf /etc/ssh/sshd_config.d/zz-dws-hardening.conf
+sudo install -m 0644 ~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
 sudo sshd -t
 sudo systemctl reload ssh || sudo systemctl restart ssh
 ```
@@ -81,7 +82,7 @@ journalctl -u ssh --since '24 hours ago' --no-pager | rg 'Accepted publickey|Fai
 
 Notes:
 - Keep one working shell open until a second login succeeds.
-- `~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf` is the repo-managed SSH baseline.
+- `~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf` is the repo-managed SSH baseline; on this VM it is currently installed as `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf`.
 
 ## Tailscale Reconnection
 
