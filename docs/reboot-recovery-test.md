@@ -2,7 +2,7 @@
 
 Operator drill for validating the `dev-workspace-vm` stack after a VM restart. Use this plan before any maintenance reboot, after unplanned outages, or on a cadence (quarterly) to confirm recovery posture.
 
-This doc does not change runtime code — it tells you what to observe and in what order. The canonical post-reboot smoke test is `~/bin/dws-boot-verify.sh`; the sections below expand its coverage (phone server, orchestrator API, launcher, cron entries) and define explicit pass/fail criteria.
+This doc does not change runtime code — it tells you what to observe and in what order. The canonical post-reboot smoke test is `~/projects/dev-workspace/bin/dws-boot-verify.sh`; the sections below expand its coverage (phone server, orchestrator API, launcher, cron entries) and define explicit pass/fail criteria.
 
 ## Scope
 
@@ -17,7 +17,7 @@ The drill validates that after a clean reboot (`sudo reboot`), the following com
 | dws-task-monitor.service | `~/bin/task-monitor.sh` (simple, Restart=on-failure) | active, writing `/var/log/dws/monitor.log` |
 | dws-phone-server.service | `~/bin/dws-phone-server.py` | active, Restart=always |
 | wrkflo-orchestrator-api.service | FastAPI on `127.0.0.1:8100` | active, `/health` returns 200 |
-| tmux sessions | spawned by `dws-sessions-init` | `dws-a dws-b worker-c worker-d worker-e worker-f worker-g worker-h orchestrator` |
+| tmux sessions | spawned by `dws-sessions-init` | managed set present: `dws-a dws-b worker-c worker-d worker-e worker-f worker-g worker-h orchestrator` |
 | Cron | system `cron.service` | daemon active, 3 dev-workspace entries present |
 | Launcher | `~/bin/dws-launcher.sh` | runnable on a fresh SSH login |
 | Health / status | `dws-status.sh`, `dws-doctor.sh`, `dws-health.sh` | all three exit 0 |
@@ -43,8 +43,8 @@ ssh moses@dev-workspace-vm '
   systemctl is-active tailscaled ssh ssh.socket cron > system-services.before.txt &&
   crontab -l > cron.before.txt &&
   tailscale status > tailscale.before.txt &&
-  cp /tmp/dws-health.json health.before.json 2>/dev/null || true &&
-  cp /tmp/monitor-status.json monitor.before.json 2>/dev/null || true
+  ~/projects/dev-workspace/scripts/dws-health.sh --json > health.before.json 2>/dev/null || true &&
+  cp ~/projects/dev-workspace/.state/task-queue.json task-queue.before.json 2>/dev/null || true
 '
 ```
 
@@ -88,7 +88,7 @@ Run the canonical check first, then work through the supplementary checks below.
 ### 3.0 Automated smoke test
 
 ```bash
-ssh moses@dev-workspace-vm '~/bin/dws-boot-verify.sh'
+ssh moses@dev-workspace-vm '~/projects/dev-workspace/bin/dws-boot-verify.sh'
 ```
 
 Pass: `STATUS: READY` in the final line, `0 failed`.
@@ -144,19 +144,19 @@ Fail: inactive or log frozen > 2 min → `systemctl --user restart dws-task-moni
 ### 3.6 dws-phone-server.service
 
 ```bash
-ssh moses@dev-workspace-vm 'systemctl --user is-active dws-phone-server.service; curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8787/ || true'
+ssh moses@dev-workspace-vm 'systemctl --user is-active dws-phone-server.service; curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8081/health || true'
 ```
 
-Pass: `active`; HTTP response from the phone server (any 2xx/4xx — the fact it responds proves the port is listening).
+Pass: `active`; `/health` returns `200`.
 Fail: inactive → `journalctl --user -u dws-phone-server.service -n 50 --no-pager`; restart with `systemctl --user restart dws-phone-server.service`.
 
 ### 3.7 wrkflo-orchestrator-api.service
 
 ```bash
-ssh moses@dev-workspace-vm 'systemctl --user is-active wrkflo-orchestrator-api.service; curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8100/health'
+ssh moses@dev-workspace-vm 'systemctl --user is-active wrkflo-orchestrator-api.service; curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8100/v1/workspace/health'
 ```
 
-Pass: `active`; `/health` returns `200`.
+Pass: `active`; `/v1/workspace/health` returns `200`.
 Fail: inactive or non-200 → `journalctl --user -u wrkflo-orchestrator-api.service -n 80 --no-pager`; common cause is missing `state.db` dir → `mkdir -p ~/.local/state/wrkflo-orchestrator` and restart.
 
 ### 3.8 tmux sessions
@@ -165,8 +165,8 @@ Fail: inactive or non-200 → `journalctl --user -u wrkflo-orchestrator-api.serv
 ssh moses@dev-workspace-vm 'tmux list-sessions'
 ```
 
-Pass: 9 sessions, exactly: `dws-a`, `dws-b`, `worker-c`, `worker-d`, `worker-e`, `worker-f`, `worker-g`, `worker-h`, `orchestrator`. Each session has 1 window running codex (verify with `tmux list-windows -a`).
-Fail: fewer than 9 → `~/bin/dws-sessions-init.sh` (safe to rerun, skips existing). If any session exists but codex is missing inside, `tmux send-keys -t <name> 'codex --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox' Enter`.
+Pass: the 9 managed sessions are present: `dws-a`, `dws-b`, `worker-c`, `worker-d`, `worker-e`, `worker-f`, `worker-g`, `worker-h`, `orchestrator`. Extra ad hoc sessions are acceptable but should be noted separately.
+Fail: any managed session is missing → `systemctl --user restart dws-sessions-init.service`. If any session exists but codex is missing inside, inspect the session with `~/projects/dev-workspace/bin/dws-sessions.sh show <session>` before forcing a relaunch.
 
 ### 3.9 Cron
 
@@ -180,18 +180,18 @@ Full entry check:
 ssh moses@dev-workspace-vm 'crontab -l | grep -E "dws-(health-check|log-rotate|session-cleanup)" | wc -l'
 ```
 Pass: 3.
-Fail: missing entries → reinstall with `~/projects/dev-workspace/bin/dws-cron-setup.sh install`.
+Fail: missing entries → reinstall with `~/projects/dev-workspace/bin/dws-cron-setup.sh`.
 
 ### 3.10 Launcher access
 
 From a fresh shell (not a reattach):
 
 ```bash
-ssh moses@dev-workspace-vm '~/bin/dws-launcher.sh --status'
+ssh moses@dev-workspace-vm '~/projects/dev-workspace/scripts/dws-launcher.sh status'
 ```
 
-Pass: launcher prints its status header (active session count, health summary) and exits 0.
-Fail: launcher errors out → `bash -x ~/bin/dws-launcher.sh --status` to surface the failing line; confirm `~/projects/dev-workspace/scripts/dws-launcher.sh` is present and executable.
+Pass: the launcher status view prints its header and exits `0`.
+Fail: launcher status errors out → `bash -x ~/projects/dev-workspace/scripts/dws-launcher.sh status` to surface the failing line; confirm `~/projects/dev-workspace/scripts/dws-launcher.sh` is present and executable.
 
 ### 3.11 Health / status commands
 
@@ -199,21 +199,22 @@ Fail: launcher errors out → `bash -x ~/bin/dws-launcher.sh --status` to surfac
 ssh moses@dev-workspace-vm '
   ~/projects/dev-workspace/bin/dws-status.sh &&
   ~/projects/dev-workspace/bin/dws-doctor.sh &&
-  ~/projects/dev-workspace/scripts/dws-health.sh
+  ~/projects/dev-workspace/scripts/dws-health.sh --json > /tmp/dws-health.current.json &&
+  jq -e ".tailnet.connected == true and .tools.foundry_key_loaded == true and .services.dws_task_monitor.healthy == true and .services.dws_sessions_init.healthy == true" /tmp/dws-health.current.json >/dev/null
 '
 ```
 
-Pass: all three exit 0; `dws-status.sh` shows 9 tmux sessions; `dws-doctor.sh` has no `FAIL` lines; `dws-health.sh` writes a fresh `/tmp/dws-health.json` with `tailnet_connected: true` and `auth.gh / auth.az` both `true`.
+Pass: all commands exit `0`; `dws-status.sh` shows the managed session set; `dws-doctor.sh` has no `FAIL` lines; the `dws-health.sh --json` payload reports `tailnet.connected=true`, `tools.foundry_key_loaded=true`, and both managed user services healthy.
 Fail: any script exits non-zero → section-specific recovery above, then rerun the failing script.
 
 ## Phase 4 — Sign-off
 
 The drill is green when **all** of the following hold:
 
-- `~/bin/dws-boot-verify.sh` reports `STATUS: READY`, `0 failed`.
+- `~/projects/dev-workspace/bin/dws-boot-verify.sh` reports `STATUS: READY`, `0 failed`.
 - Sections 3.1 – 3.11 each show their pass criterion.
-- `tmux list-sessions` shows the full set of 9 sessions.
-- `/tmp/dws-health.json` timestamp is newer than the reboot.
+- `tmux list-sessions` shows the managed 9-session pool.
+- `~/projects/dev-workspace/scripts/dws-health.sh --json` returns healthy service state after the reboot.
 - Monitor log advanced at least 2 cycles (1 min) since boot.
 
 Append a sign-off line to the baseline directory created in Phase 1:
@@ -229,7 +230,7 @@ ssh moses@dev-workspace-vm 'echo "SIGNOFF $(date -u +%Y-%m-%dT%H:%M:%SZ) green" 
 | VM unreachable > 5 min after reboot | Azure portal → VM status; try Serial Console | Open an Azure support ticket; if prolonged, cut traffic back to `openclaw-gateway-vm` for any user-facing work |
 | `ssh.socket` inactive on boot | `sudo systemctl start ssh.socket`; check journal | If recurring, re-enable: `sudo systemctl enable --now ssh.socket` and add to `dws-boot-verify.sh` hard fail list |
 | User services not starting (linger off) | `sudo loginctl enable-linger moses` then reboot | If linger is already on but services still not starting, inspect `systemctl --user --failed` and `journalctl --user -b` |
-| tmux sessions missing after `dws-sessions-init` | Rerun `~/bin/dws-sessions-init.sh` manually | If repeated failures, check `~/.config/wrkflo/foundry.env` exists; codex needs the API key loaded |
+| tmux sessions missing after `dws-sessions-init` | `systemctl --user restart dws-sessions-init.service` | If repeated failures, check `~/.config/wrkflo/foundry.env` exists; codex needs the API key loaded |
 | `wrkflo-orchestrator-api` failing | `journalctl --user -u wrkflo-orchestrator-api.service -b`; ensure `~/.local/state/wrkflo-orchestrator/` exists | Fall back to direct file edits via ssh + git; the API is a convenience layer |
 | Tailscale down, SSH via public IP only | `sudo systemctl restart tailscaled`; if key expired, re-auth via the URL printed by `sudo tailscale up --ssh --operator=moses` | If tailnet unreachable org-wide, verify account billing status |
 | `/var/log/dws/` missing or not writable | `sudo mkdir -p /var/log/dws && sudo chown moses:moses /var/log/dws` | Fold this into `vm-bootstrap.sh` so fresh provisions have it |
@@ -238,7 +239,7 @@ ssh moses@dev-workspace-vm 'echo "SIGNOFF $(date -u +%Y-%m-%dT%H:%M:%SZ) green" 
 
 ## References
 
-- `~/bin/dws-boot-verify.sh` — automated smoke test (source of truth for mechanical checks)
+- `~/projects/dev-workspace/bin/dws-boot-verify.sh` — automated smoke test (source of truth for mechanical checks)
 - `~/projects/dev-workspace/docs/runbook.md` — standard operator procedures
 - `~/projects/dev-workspace/docs/architecture.md` — component diagram
 - `~/projects/dev-workspace/docs/risk-register-dev-workspace.md` — known failure modes

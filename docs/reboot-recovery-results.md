@@ -32,8 +32,8 @@ Baseline directory: `~/reboot-drills/<drill-id>/`
 | `system-services.before.txt` | `[ ]` | tailscaled/ssh/ssh.socket/cron all `active`? `[ ]` |
 | `cron.before.txt` | `[ ]` | `dev-workspace managed cron` entries: `<n>` (expect 3) |
 | `tailscale.before.txt` | `[ ]` | peers visible: `<n>` |
-| `health.before.json` | `[ ]` | `tailnet_connected`: `<bool>`, `auth.gh/auth.az`: `<bool/bool>` |
-| `monitor.before.json` | `[ ]` | summary `<completed>/<in_progress>/<pending>/<total>` |
+| `health.before.json` | `[ ]` | `tailnet.connected`: `<bool>`, `tools.foundry_key_loaded`: `<bool>`, `services.dws_task_monitor.healthy/services.dws_sessions_init.healthy`: `<bool/bool>` |
+| `task-queue.before.json` | `[ ]` | queue readable, tasks: `<n>` |
 
 Pre-reboot readiness: `[ PASS / FAIL ]`
 
@@ -56,7 +56,7 @@ Execution result: `[ PASS / FAIL ]`  (fail = > 300 s unreachable or portal inter
 ### 3.0 Automated smoke test
 
 ```bash
-~/bin/dws-boot-verify.sh
+~/projects/dev-workspace/bin/dws-boot-verify.sh
 ```
 
 - Total: `<pass>/<total>` passed, `<fail>` failed, `<warn>` warnings
@@ -136,7 +136,7 @@ Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 tmux list-sessions
 ```
 
-Expected exactly: `dws-a, dws-b, worker-c, worker-d, worker-e, worker-f, worker-g, worker-h, orchestrator` (9 sessions).
+Expected managed set: `dws-a, dws-b, worker-c, worker-d, worker-e, worker-f, worker-g, worker-h, orchestrator` (9 sessions). Extra ad hoc sessions may exist and should be noted separately.
 
 | Session | Present | Codex running inside |
 |---|---|---|
@@ -155,7 +155,7 @@ Session count: `<n>/9`. Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 ### 3.6 Launcher access
 
 ```bash
-~/bin/dws-launcher.sh --status
+~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```
 
 | Check | Value | Pass |
@@ -171,7 +171,7 @@ Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 
 ```bash
 systemctl --user is-active dws-phone-server.service
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8787/ || true
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8081/health || true
 ```
 
 | Check | Value | Pass |
@@ -185,7 +185,7 @@ Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 
 ```bash
 systemctl --user is-active wrkflo-orchestrator-api.service
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8100/health
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8100/v1/workspace/health
 ```
 
 | Check | Value | Pass |
@@ -211,26 +211,41 @@ crontab -l | grep -E "dws-(health-check|log-rotate|session-cleanup)" | wc -l
 
 Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 
-### 3.10 Monitor-status / task-queue truth
+### 3.10 Managed queue truth
 
 ```bash
-cat /tmp/monitor-status.json | jq '.summary, .timestamp'
-jq -r '.tasks | length' /tmp/task-queue.json
-jq -r '.tasks[]? | select(.status=="in_progress") | [.id,.assigned,.repo] | @tsv' /tmp/task-queue.json
+jq -r '.tasks | length' ~/projects/dev-workspace/.state/task-queue.json
+jq -r '.tasks[]? | select(.status=="in_progress") | [.id,.assigned,.repo] | @tsv' \
+  ~/projects/dev-workspace/.state/task-queue.json
 ```
 
 | Check | Value | Pass |
 |---|---|---|
-| `monitor-status.json` timestamp newer than reboot | `<yes/no>` | `[ ]` |
-| Monitor summary | `<completed>/<in_progress>/<pending>/<total>` | n/a |
-| `task-queue.json` readable, task count | `<n>` | `[ ]` |
+| Queue file readable, task count | `<n>` | `[ ]` |
 | No orphaned `in_progress` tasks (worker missing from §3.5) | `<yes/no>` | `[ ]` |
+
+Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
+
+### 3.11 Health / status commands
+
+```bash
+~/projects/dev-workspace/bin/dws-status.sh
+~/projects/dev-workspace/bin/dws-doctor.sh
+~/projects/dev-workspace/scripts/dws-health.sh --json
+```
+
+| Check | Value | Pass |
+|---|---|---|
+| `dws-status.sh` exits `0` | `<yes/no>` | `[ ]` |
+| `dws-doctor.sh` exits `0` with no `FAIL` lines | `<yes/no>` | `[ ]` |
+| `dws-health.sh --json` shows `tailnet.connected=true` | `<yes/no>` | `[ ]` |
+| `dws-health.sh --json` shows both managed user services healthy | `<yes/no>` | `[ ]` |
 
 Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 
 ## Phase 4 — Overall Verdict
 
-- Sections passed: `<n>/10`
+- Sections passed: `<n>/11`
 - Sections failed: `<n>`
 - Warnings: `<n>`
 - **Overall: `[ GREEN / AMBER / RED ]`**
@@ -278,5 +293,5 @@ One row per item that must be done before the next drill. Link to tickets/commit
 
 - Plan: `docs/reboot-recovery-test.md`
 - Runbook: `docs/runbook.md`
-- Automated smoke test: `~/bin/dws-boot-verify.sh`
+- Automated smoke test: `~/projects/dev-workspace/bin/dws-boot-verify.sh`
 - Risk register: `docs/risk-register-dev-workspace.md`

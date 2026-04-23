@@ -830,7 +830,7 @@
       "repo": "wrkflo-orchestrator",
       "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
       "assigned": "dws-a",
-      "status": "completed"
+      "status": "in_progress"
     },
     {
       "id": "auto-5-iwtb",
