@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent: run all mac-side bridges on login.
+  Install:  cp com.wrkflo.mac-bridges.plist ~/Library/LaunchAgents/
+            launchctl load -w ~/Library/LaunchAgents/com.wrkflo.mac-bridges.plist
+  Uninstall: launchctl unload -w ...; rm ...
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.wrkflo.mac-bridges</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/Users/mosestut/dev-workspace/mac-setup/mac-bridges.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/mac-bridges.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mac-bridges.err.log</string>
+</dict>
+</plist>
