@@ -16,6 +16,10 @@ printf '%s %s\n' "$(bold 'Dev Workspace')" "$(dim "$(date '+%Y-%m-%d %H:%M:%S %Z
 printf '  host: %s  vm: %s  mac: %s\n' "$(green "$(hostname -s 2>/dev/null || hostname)")" "100.117.16.63" "${MAC_GUI_URL#http://}"
 
 echo
+printf '%s\n' "$(bold 'Orchestrator')"
+"$BASE_DIR/dws-launcher.sh" status --motd 2>/dev/null || true
+
+echo
 printf '%s\n' "$(bold 'Active tmux sessions')"
 if tmux ls >/dev/null 2>&1; then
   tmux ls -F '  #{session_name}  #{?session_attached,attached,detached}  #{session_windows}w'
