@@ -12,10 +12,12 @@ Operator runbook for the `dev-workspace-vm` multi-agent environment.
 | Repo scripts | `~/projects/dev-workspace/scripts/` |
 | Managed queue | `~/projects/dev-workspace/.state/task-queue.json` |
 | User units | `dws-sessions-init.service`, `dws-task-monitor.service`, `dws-phone-server.service` |
-| User-unit installer | `~/projects/dev-workspace/bin/dws-systemd-user-setup.sh` |
+| User-unit installer | `~/projects/dev-workspace/bin/dws-systemd-user-setup.sh` (installs `dws-sessions-init.service` and `dws-task-monitor.service`) |
 | Monitor log | `/var/log/dws/monitor.log` |
+| Log viewer | `~/projects/dev-workspace/bin/dws-log-viewer.sh` |
 | Boot verifier | `~/projects/dev-workspace/bin/dws-boot-verify.sh` |
 | Status commands | `~/projects/dev-workspace/bin/dws-status.sh`, `~/projects/dev-workspace/bin/dws-doctor.sh` |
+| Update script | `~/projects/dev-workspace/scripts/dws-update.sh` |
 | Firewall tool | `~/projects/dev-workspace/bin/dws-firewall.sh` |
 | Firewall snapshots | `/var/lib/dws/firewall` |
 | SSH baseline (repo) | `~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf` |
@@ -49,11 +51,14 @@ systemctl --user status dws-task-monitor.service --no-pager
 ### Install or repair the repo-managed user units
 
 ```bash
-~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
+~/projects/dev-workspace/bin/dws-systemd-user-setup.sh check || \
+  ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
 systemctl --user daemon-reload
 systemctl --user enable dws-sessions-init.service dws-task-monitor.service
-systemctl --user start dws-sessions-init.service
-systemctl --user start dws-task-monitor.service
+systemctl --user restart dws-sessions-init.service
+systemctl --user restart dws-task-monitor.service
+systemctl --user status dws-sessions-init.service --no-pager
+systemctl --user status dws-task-monitor.service --no-pager
 ```
 
 ### Reattach after a disconnect
@@ -105,7 +110,7 @@ systemctl --user start dws-task-monitor.service
 ```bash
 ~/projects/dev-workspace/bin/dws-backup.sh backup
 readlink -f ~/backups/dev-workspace/latest
-ls -lt ~/backups/dev-workspace | head
+find ~/backups/dev-workspace -maxdepth 1 -type f -name 'dws-backup-*.tar.gz' | sort | tail -3
 ```
 
 ### Verify that the latest backup restores cleanly
@@ -128,7 +133,9 @@ ls -lt ~/backups/dev-workspace | head
 ```bash
 mkdir -p ~/restore
 ~/projects/dev-workspace/bin/dws-backup.sh restore latest --target ~/restore
-find ~/restore -maxdepth 2 -name RESTORE.txt -print | sort | tail -1
+RESTORE_NOTE=$(find ~/restore -maxdepth 2 -name RESTORE.txt -print | sort | tail -1)
+printf '%s\n' "$RESTORE_NOTE"
+sed -n '1,160p' "$RESTORE_NOTE"
 ```
 
 ### Restore the backed-up home data after extraction
@@ -146,6 +153,12 @@ crontab ~/restore/<archive-root>/system/crontab.txt
 ### Post-restore validation
 
 ```bash
+~/projects/dev-workspace/bin/dws-systemd-user-setup.sh check || \
+  ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
+~/projects/dev-workspace/bin/dws-cron-setup.sh --check || \
+  ~/projects/dev-workspace/bin/dws-cron-setup.sh
+systemctl --user restart dws-sessions-init.service
+systemctl --user restart dws-task-monitor.service
 ~/projects/dev-workspace/bin/dws-status.sh
 ~/projects/dev-workspace/bin/dws-doctor.sh
 ~/projects/dev-workspace/bin/dws-sessions.sh list
@@ -159,13 +172,15 @@ crontab ~/restore/<archive-root>/system/crontab.txt
 cd ~/projects/dev-workspace
 git status --short
 git pull --ff-only
-~/projects/dev-workspace/bin/dws-update.sh --dry-run
-~/projects/dev-workspace/bin/dws-update.sh --force
+~/projects/dev-workspace/scripts/dws-update.sh --dry-run
+~/projects/dev-workspace/scripts/dws-update.sh --force
 ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh check || \
   ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
 systemctl --user daemon-reload
 systemctl --user restart dws-sessions-init.service
 systemctl --user restart dws-task-monitor.service
+systemctl --user status dws-sessions-init.service --no-pager
+systemctl --user status dws-task-monitor.service --no-pager
 ~/projects/dev-workspace/bin/dws-status.sh
 ~/projects/dev-workspace/bin/dws-doctor.sh
 ```
@@ -176,7 +191,9 @@ systemctl --user restart dws-task-monitor.service
 cd ~/projects/dev-workspace
 git status --short
 git fetch --all --prune
-git log --oneline --decorate --max-count=5 HEAD..@{upstream}
+git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || echo "no upstream configured"
+git log --oneline --decorate --max-count=5 HEAD..@{upstream} 2>/dev/null || true
+~/projects/dev-workspace/scripts/dws-update.sh --dry-run
 ```
 
 ## Reboot Recovery
@@ -193,7 +210,9 @@ done
 ssh moses@dev-workspace-vm '~/projects/dev-workspace/bin/dws-boot-verify.sh'
 ssh moses@dev-workspace-vm 'systemctl --user status dws-sessions-init.service --no-pager'
 ssh moses@dev-workspace-vm 'systemctl --user status dws-task-monitor.service --no-pager'
+ssh moses@dev-workspace-vm 'systemctl --user status dws-phone-server.service --no-pager || true'
 ssh moses@dev-workspace-vm 'tail -n 20 /var/log/dws/monitor.log'
+ssh moses@dev-workspace-vm 'curl -s http://127.0.0.1:8081/health || true'
 ```
 
 ### Quick recovery path when already on the VM
@@ -220,9 +239,10 @@ crontab -l | sed -n '/# >>> dev-workspace managed cron >>>/,/# <<< dev-workspace
 ### SSH health and safe reload
 
 ```bash
-systemctl is-active ssh ssh.socket sshd
-ss -tlnp | grep ':22'
+systemctl is-active ssh ssh.socket sshd sshd.socket 2>/dev/null || true
+ss -tlnp | grep -E '[:.]22[[:space:]]'
 sudo sh -c 'for f in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*; do [ -e "$f" ] || continue; echo "--- $f ---"; sed -n "1,160p" "$f"; done'
+journalctl -u ssh --since '24 hours ago' --no-pager | tail -n 40
 sudo sshd -t
 sudo systemctl reload ssh || sudo systemctl restart ssh
 ```
@@ -233,6 +253,8 @@ Keep one working shell open while doing this.
 
 ```bash
 sudo mv /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf.disabled 2>/dev/null || true
+sudo mv /etc/ssh/sshd_config.d/zz-dws-hardening.conf /etc/ssh/sshd_config.d/zz-dws-hardening.conf.disabled 2>/dev/null || true
+sudo mv /etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf /etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf.disabled 2>/dev/null || true
 sudo sshd -t
 sudo systemctl reload ssh || sudo systemctl restart ssh
 ```
@@ -273,11 +295,12 @@ sudo ~/projects/dev-workspace/bin/dws-firewall.sh --rollback --backend iptables
 
 ```bash
 ls -l /var/lib/dws/firewall/latest /var/lib/dws/firewall/latest-ufw /var/lib/dws/firewall/latest-iptables 2>/dev/null || true
+sudo ufw status verbose 2>/dev/null || true
+sudo iptables -S 2>/dev/null | sed -n '1,120p'
 ~/projects/dev-workspace/bin/dws-connect-test.sh
 tailscale status
-ssh moses@dev-workspace-vm
-ssh moses@100.117.16.63
-ssh moses@20.230.203.79
+ssh -o ConnectTimeout=5 moses@dev-workspace-vm 'printf ssh-ok\n'
+ssh -o ConnectTimeout=5 moses@100.117.16.63 'printf ssh-ok\n'
 ```
 
 ## Phone Access
@@ -302,19 +325,31 @@ ls -l ~/.ssh/termius_20260415 ~/.ssh/id_ed25519 ~/.ssh/id_rsa 2>/dev/null
 ```bash
 systemctl --user status dws-phone-server.service --no-pager
 journalctl --user -u dws-phone-server.service -n 40 --no-pager
-curl -s http://127.0.0.1:8081/health
-curl -s http://127.0.0.1:8081/results
+curl -sS http://127.0.0.1:8081/health
+curl -sS http://127.0.0.1:8081/results
 systemctl --user restart dws-phone-server.service
 ```
 
-### Push a notification or phone action from the VM
+### Queue a phone action from the VM with exact HTTP calls
 
 ```bash
-push-phone "deploy finished"
-push-phone --priority 5 --title "ALERT" "prod 500s"
-push-phone --action open_url --data "https://github.com/Wrk-Flo/dev-workspace" --title "PR" "tap to open the repo"
-push-phone --action speak --data "Moses, coffee is ready" "tap to speak"
-push-phone --action copy --data "API_KEY_abcdef123" "tap to copy"
+curl -sS -X POST http://127.0.0.1:8081/queue \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"notify","title":"ALERT","body":"prod 500s"}'
+
+curl -sS -X POST http://127.0.0.1:8081/queue \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"open_url","url":"https://github.com/Wrk-Flo/dev-workspace"}'
+
+curl -sS -X POST http://127.0.0.1:8081/queue \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"speak","text":"Moses, coffee is ready"}'
+
+curl -sS -X POST http://127.0.0.1:8081/queue \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"copy","text":"API_KEY_abcdef123"}'
+
+curl -sS http://127.0.0.1:8081/results
 ```
 
 ### Tailnet reachability checks for Mac and iPhone
@@ -333,6 +368,7 @@ tailscale ping 100.88.249.22
 systemctl --user status dws-task-monitor.service --no-pager
 journalctl --user -u dws-task-monitor.service -n 40 --no-pager
 tail -n 40 /var/log/dws/monitor.log
+~/projects/dev-workspace/bin/dws-log-viewer.sh --since '30 minutes ago' --grep 'FAIL|ERROR|ALERT'
 sed -n '1,220p' ~/projects/dev-workspace/.state/task-queue.json
 ~/projects/dev-workspace/bin/dws-status.sh
 ~/projects/dev-workspace/bin/dws-doctor.sh
@@ -359,14 +395,14 @@ systemctl --user restart dws-task-monitor.service
 ### Follow the monitor log live
 
 ```bash
-tail -f /var/log/dws/monitor.log
+~/projects/dev-workspace/bin/dws-log-viewer.sh --follow
 ```
 
 ### Queue counts and active assignments
 
 ```bash
 jq -r '
-  .tasks as $tasks
+  (.tasks // []) as $tasks
   | "pending=\($tasks | map(select(.status == \"pending\")) | length)"
   , "in_progress=\($tasks | map(select(.status == \"in_progress\")) | length)"
   , "completed=\($tasks | map(select(.status == \"completed\")) | length)"

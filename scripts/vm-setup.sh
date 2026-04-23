@@ -394,7 +394,7 @@ ensure_cron_service() {
 ensure_sshd_hardening() {
   local sshd_bin=""
   local ssh_service=""
-  local hardening_file="/etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf"
+  local hardening_file="/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf"
   local hardening_content
   local hardening_tmp=""
   local backup=""
@@ -417,10 +417,13 @@ ensure_sshd_hardening() {
 # Managed by dev-workspace/scripts/vm-setup.sh
 PasswordAuthentication no
 KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
 PermitRootLogin no
 PubkeyAuthentication yes
-ClientAliveInterval 300
-ClientAliveCountMax 2
+X11Forwarding no
+MaxAuthTries 3
+ClientAliveInterval 30
+ClientAliveCountMax 3
 EOF
 )"
 
@@ -812,6 +815,7 @@ main() {
   copy_if_changed "$REPO_ROOT/scripts/dws-launcher.sh" "$BIN_DIR/dws-launcher.sh" 0755 "$HOME/bin/dws-launcher.sh"
   copy_if_changed "$REPO_ROOT/scripts/dws-health.sh" "$BIN_DIR/dws-health.sh" 0755 "$HOME/bin/dws-health.sh"
   copy_if_changed "$REPO_ROOT/scripts/dws-health-check.sh" "$BIN_DIR/dws-health-check.sh" 0755 "$HOME/bin/dws-health-check.sh"
+  copy_if_changed "$REPO_ROOT/scripts/dws-rotate-logs.sh" "$BIN_DIR/dws-rotate-logs.sh" 0755 "$HOME/bin/dws-rotate-logs.sh"
   copy_if_changed "$REPO_ROOT/scripts/dws-notify.sh" "$BIN_DIR/dws-notify.sh" 0755 "$HOME/bin/dws-notify.sh"
   ensure_codex_profiles
   ensure_bash_profile_launcher

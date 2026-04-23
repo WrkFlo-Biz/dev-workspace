@@ -7,6 +7,7 @@ FILES=(
   "$REPO/config/tmux.conf:$HOME/.tmux.conf:0644:~/.tmux.conf"
   "$REPO/scripts/dws-health.sh:$HOME/bin/dws-health.sh:0755:~/bin/dws-health.sh"
   "$REPO/scripts/dws-health-check.sh:$HOME/bin/dws-health-check.sh:0755:~/bin/dws-health-check.sh"
+  "$REPO/scripts/dws-rotate-logs.sh:$HOME/bin/dws-rotate-logs.sh:0755:~/bin/dws-rotate-logs.sh"
   "$REPO/scripts/dws-notify.sh:$HOME/bin/dws-notify.sh:0755:~/bin/dws-notify.sh"
 )
 

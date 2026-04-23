@@ -110,7 +110,7 @@ ssh moses@dev-workspace-vm 'systemctl is-active ssh ssh.socket sshd; ss -tlnp | 
 ```
 
 Pass: `ssh` = `active`, `ssh.socket` = `active`, `sshd` = `inactive` (that's normal — this distro names the unit `ssh`, not `sshd`, and socket activation hands off to `ssh.service` per connection). Port 22 is listening.
-Fail: `ssh.socket` inactive → `sudo systemctl start ssh.socket`. Verify hardening config still in place: `grep -E 'PasswordAuth|PermitRootLogin|ClientAliveInterval' /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` shows `no`, `no`, `30`.
+Fail: `ssh.socket` inactive → `sudo systemctl start ssh.socket`. Verify hardening config still in place: `grep -E 'PasswordAuth|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax' /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` shows `no`, `no`, `no`, `3`, `30`, `3`.
 
 ### 3.3 User linger + systemd --user
 

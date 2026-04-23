@@ -926,7 +926,7 @@
       "repo": "dev-workspace",
       "description": "Update scripts/dws-health.sh to include: systemd service checks for dws-task-monitor and dws-sessions-init, SSH hardening verification, firewall status, Tailscale peer connectivity. Stage, commit, push.",
       "assigned": "dws-b",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "refill-2takxn",
@@ -982,7 +982,7 @@
       "repo": "dev-workspace",
       "description": "Create scripts/dws-rotate-logs.sh: rotate /var/log/dws/ logs weekly, compress old logs, keep 4 weeks of history. Add to cron via dws-cron-setup.sh. Stage, commit, push.",
       "assigned": "worker-e",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "refill-6mptqk",
@@ -1022,7 +1022,7 @@
       "repo": "dev-workspace",
       "description": "Update scripts/dws-health.sh to include: systemd service checks for dws-task-monitor and dws-sessions-init, SSH hardening verification, firewall status, Tailscale peer connectivity. Stage, commit, push.",
       "assigned": "worker-h",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "refill-mrwpq7",
@@ -1061,24 +1061,24 @@
       "phase": 7,
       "repo": "dev-workspace",
       "description": "Create scripts/dws-log-viewer.sh: unified log viewer that can tail, search, and filter across all /var/log/dws/ logs. Support --follow, --grep, --since flags. Make executable. Stage, commit, push.",
-      "assigned": null,
-      "status": "pending"
+      "assigned": "dws-b",
+      "status": "in_progress"
     },
     {
       "id": "refill-t1w2bh",
       "phase": 7,
       "repo": "dev-workspace",
       "description": "Update scripts/dws-health.sh to include: systemd service checks for dws-task-monitor and dws-sessions-init, SSH hardening verification, firewall status, Tailscale peer connectivity. Stage, commit, push.",
-      "assigned": null,
-      "status": "pending"
+      "assigned": "worker-e",
+      "status": "in_progress"
     },
     {
       "id": "refill-g7w6kf",
       "phase": 7,
       "repo": "dev-workspace",
       "description": "Create scripts/dws-rotate-logs.sh: rotate /var/log/dws/ logs weekly, compress old logs, keep 4 weeks of history. Add to cron via dws-cron-setup.sh. Stage, commit, push.",
-      "assigned": null,
-      "status": "pending"
+      "assigned": "worker-h",
+      "status": "in_progress"
     },
     {
       "id": "refill-gpw94j",

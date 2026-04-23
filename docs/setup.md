@@ -84,7 +84,7 @@ What `vm-setup.sh` does today:
 - installs Tailscale, Codex CLI, and Claude Code
 - generates an SSH key if the VM does not already have one
 - writes SSH hardening to
-  `/etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf`
+  `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf`
 - clones the sibling Wrk-Flo repos into `~/projects`
 - copies `config/tmux.conf` to `~/.tmux.conf`
 - deploys `dws-launcher.sh`, `dws-health.sh`, `dws-health-check.sh`, and
@@ -170,17 +170,20 @@ as the primary access path. Keep the public IP only as a fallback.
 `vm-setup.sh` writes the current hardening drop-in to:
 
 ```text
-/etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf
+/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
 ```
 
 The managed settings are:
 
 - `PasswordAuthentication no`
 - `KbdInteractiveAuthentication no`
+- `ChallengeResponseAuthentication no`
 - `PermitRootLogin no`
 - `PubkeyAuthentication yes`
-- `ClientAliveInterval 300`
-- `ClientAliveCountMax 2`
+- `X11Forwarding no`
+- `MaxAuthTries 3`
+- `ClientAliveInterval 30`
+- `ClientAliveCountMax 3`
 
 Before you close the original public-IP session:
 

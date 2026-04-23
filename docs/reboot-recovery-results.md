@@ -85,7 +85,7 @@ Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 ```bash
 systemctl is-active ssh ssh.socket sshd
 ss -tlnp | grep :22
-grep -E 'PasswordAuth|PermitRootLogin|ClientAliveInterval' /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
+grep -E 'PasswordAuth|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax' /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
 ```
 
 | Check | Value | Pass |
@@ -96,7 +96,10 @@ grep -E 'PasswordAuth|PermitRootLogin|ClientAliveInterval' /etc/ssh/sshd_config.
 | Port 22 listening | `<yes/no>` | `[ ]` |
 | PasswordAuthentication | `<no/other>` | `[ ]` |
 | PermitRootLogin | `<no/other>` | `[ ]` |
+| X11Forwarding | `<no/other>` | `[ ]` |
+| MaxAuthTries | `<3/other>` | `[ ]` |
 | ClientAliveInterval | `<30/other>` | `[ ]` |
+| ClientAliveCountMax | `<3/other>` | `[ ]` |
 
 Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 
