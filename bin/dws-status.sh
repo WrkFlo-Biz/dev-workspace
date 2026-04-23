@@ -5,6 +5,7 @@ BASE_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(CDPATH='' cd -- "${BASE_DIR}/.." && pwd)
 STATUS_URL="${DWS_ORCHESTRATOR_HEALTH_URL:-http://127.0.0.1:8100/v1/workspace/health}"
 TASK_QUEUE_PATH="${DWS_TASK_QUEUE_PATH:-/tmp/task-queue.json}"
+HEALTH_LOG="${DWS_HEALTH_LOG_PATH:-/tmp/dws-health.log}"
 PLANNER_STATUS_PATH="${DWS_PLANNER_STATUS_PATH:-/tmp/planner-status.md}"
 PLANNER_STATE_PATH="${DWS_PLANNER_STATE_PATH:-/tmp/planner-state.json}"
 PLANNER_LOG_PATH="${DWS_PLANNER_LOG_PATH:-/tmp/planner-log.txt}"
@@ -13,6 +14,10 @@ PLANNER_LOG_STALE_SECONDS="${DWS_PLANNER_LOG_STALE_SECONDS:-3600}"
 
 # shellcheck source=/dev/null
 . "${REPO_ROOT}/scripts/dws-env.sh"
+
+[ -n "${AZURE_OPENAI_API_KEY:-}" ] || {
+  [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"
+}
 
 usage() {
   cat <<'EOF'
@@ -66,6 +71,193 @@ file_age_summary() {
   [ "$now" -ge "$epoch" ] || return 1
   delta=$((now - epoch))
   age_summary "$delta"
+}
+
+host_info() {
+  local host user
+
+  host=$(hostname -s 2>/dev/null || hostname 2>/dev/null || printf '?')
+  user=$(whoami 2>/dev/null || printf '?')
+  printf '%s@%s\n' "$user" "$host"
+}
+
+active_session_summary() {
+  local count="${1:-0}" label
+
+  if [ "$count" -eq 1 ]; then
+    label='1 active'
+  else
+    label="${count} active"
+  fi
+
+  if [ "$count" -gt 0 ]; then
+    printf '%s' "$(cyan "$label")"
+  else
+    printf '%s' "$(dim "$label")"
+  fi
+}
+
+latest_health_result() {
+  local line ok fail text
+
+  [ -f "$HEALTH_LOG" ] || {
+    printf '%s' "$(dim 'none')"
+    return 0
+  }
+
+  line=$(tail -1 "$HEALTH_LOG" 2>/dev/null || true)
+  [ -n "$line" ] || {
+    printf '%s' "$(dim 'none')"
+    return 0
+  }
+
+  text=$(printf '%s\n' "$line" | sed -n 's/^[0-9-]\{10\} [0-9:]\{8\} //p')
+  ok=$(printf '%s\n' "$line" | sed -n 's/.*health: \([0-9][0-9]*\) ok, \([0-9][0-9]*\) fail.*/\1/p')
+  fail=$(printf '%s\n' "$line" | sed -n 's/.*health: \([0-9][0-9]*\) ok, \([0-9][0-9]*\) fail.*/\2/p')
+
+  if [ -n "$ok" ] && [ -n "$fail" ]; then
+    text="${ok} ok, ${fail} fail"
+    if [ "$fail" -eq 0 ]; then
+      printf '%s' "$(green "$text")"
+    else
+      printf '%s' "$(red "$text")"
+    fi
+  else
+    printf '%s' "$(dim "${text:-none}")"
+  fi
+}
+
+latest_health_timestamp() {
+  local line ts
+
+  [ -s "$HEALTH_LOG" ] || {
+    printf '%s' "$(yellow 'unavailable')"
+    return 0
+  }
+
+  line=$(tail -1 "$HEALTH_LOG" 2>/dev/null || true)
+  [ -n "$line" ] || {
+    printf '%s' "$(yellow 'unavailable')"
+    return 0
+  }
+
+  ts=$(printf '%s\n' "$line" | sed -n 's/^\([0-9-]\{10\} [0-9:]\{8\}\).*/\1/p')
+  if [ -n "$ts" ]; then
+    printf '%s\n' "$ts"
+  else
+    printf '%s' "$(yellow 'unknown')"
+  fi
+}
+
+local_disk_usage_percent() {
+  df -P / 2>/dev/null | awk '
+    NR == 2 {
+      gsub("%", "", $5)
+      print $5 + 0
+      found = 1
+    }
+    END {
+      if (!found) {
+        exit 1
+      }
+    }
+  '
+}
+
+disk_usage_badge() {
+  local pct="${1:-}"
+
+  case "$pct" in
+    ''|*[!0-9]*)
+      pct=$(local_disk_usage_percent 2>/dev/null || true)
+      ;;
+  esac
+
+  case "$pct" in
+    ''|*[!0-9]*)
+      printf '%s' "$(yellow 'unavailable')"
+      ;;
+    *)
+      if [ "$pct" -ge 90 ]; then
+        printf '%s' "$(red "${pct}%")"
+      elif [ "$pct" -ge 80 ]; then
+        printf '%s' "$(yellow "${pct}%")"
+      else
+        printf '%s' "$(green "${pct}%")"
+      fi
+      ;;
+  esac
+}
+
+planner_queue_header_summary() {
+  local counts pending in_progress completed total last_reconciled
+
+  if counts=$(planner_queue_counts "$TASK_QUEUE_PATH"); then
+    IFS=$'\t' read -r pending in_progress completed total last_reconciled <<<"$counts"
+    printf 'pending=%s  in_progress=%s  completed=%s  total=%s' \
+      "$pending" "$in_progress" "$completed" "$total"
+    return 0
+  fi
+
+  case $? in
+    2) printf '%s' "$(dim 'missing')" ;;
+    3) printf '%s' "$(yellow 'empty')" ;;
+    4) printf '%s' "$(yellow 'invalid')" ;;
+    5) printf '%s' "$(yellow 'jq missing')" ;;
+    *) printf '%s' "$(yellow 'unavailable')" ;;
+  esac
+}
+
+header_session_count() {
+  local body="${1:-}" count
+
+  if [ -n "$body" ]; then
+    count=$(jq -r '(.sessions // []) | length' <<<"$body" 2>/dev/null || true)
+  else
+    count='0'
+  fi
+
+  case "$count" in
+    ''|*[!0-9]*) count='0' ;;
+  esac
+
+  printf '%s\n' "$count"
+}
+
+key_status() {
+  local body="${1:-}" loaded=''
+
+  if [ -n "$body" ]; then
+    loaded=$(jq -r '.foundry_key.loaded // ""' <<<"$body" 2>/dev/null || true)
+  fi
+
+  if [ "$loaded" = "true" ] || [ -n "${AZURE_OPENAI_API_KEY:-}" ]; then
+    printf '%s' "$(green 'ok')"
+  else
+    printf '%s' "$(red 'missing')"
+  fi
+}
+
+render_header() {
+  local body="${1:-}"
+  local count disk_percent
+
+  count=$(header_session_count "$body")
+  if [ -n "$body" ]; then
+    disk_percent=$(jq -r '.vm.disk_percent // ""' <<<"$body" 2>/dev/null || true)
+  else
+    disk_percent=''
+  fi
+
+  printf '  %s | %s\n' "$(bold 'dev-workspace')" "$(host_info)"
+  printf '  status: active_sessions=%s  health_check=%s  health=%s  key=%s\n' \
+    "$(active_session_summary "$count")" \
+    "$(latest_health_timestamp)" \
+    "$(latest_health_result)" \
+    "$(key_status "$body")"
+  printf '  usage:  disk=%s used  queue=%s\n' \
+    "$(disk_usage_badge "$disk_percent")" \
+    "$(planner_queue_header_summary)"
 }
 
 planner_artifact_state() {
@@ -235,6 +427,9 @@ render_full() {
   local body="${1:-}"
   local count uptime disk_percent memory_percent hostname tailscale_ip
   local tailscale_connected foundry_loaded project_count
+
+  render_header "$body"
+  echo
 
   if [ -n "$body" ]; then
     echo "  $(green "orchestrator health API")"
