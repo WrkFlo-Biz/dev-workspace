@@ -19,18 +19,10 @@ touch "$DEST"
 # Back up before mutating
 cp "$DEST" "$DEST.bak.$(date -u +%Y%m%dT%H%M%SZ)"
 
-# Append only the profile blocks that are not already defined.
-# Simple heuristic: match the `[profiles.<name>]` header line.
-while IFS= read -r line; do
-  case "$line" in
-    \[profiles.*\]|\[model_providers.azure-foundry\])
-      header="$line"
-      ;;
-  esac
-done <"$SRC"
-
-# Easier path: append whole file then dedupe by hand if the user re-runs.
-# We use `awk` to skip any section whose header already exists in DEST.
+# Append only the sections whose header isn't already defined in DEST.
+# IMPORTANT: mawk (Ubuntu default) does NOT set RSTART/RLENGTH from implicit
+# /regex/ pattern matches — only match() does. Earlier version used RLENGTH
+# from the pattern match and silently appended duplicates. Use match() here.
 awk -v dest="$DEST" '
   BEGIN {
     while ((getline ln < dest) > 0) {
@@ -39,12 +31,14 @@ awk -v dest="$DEST" '
     close(dest)
     skip = 0
   }
-  /^\[[^]]+\]/ {
-    hdr = substr($0, 1, RLENGTH)
-    skip = (hdr in existing) ? 1 : 0
+  {
+    if (match($0, /^\[[^]]+\]/)) {
+      hdr = substr($0, RSTART, RLENGTH)
+      skip = (hdr in existing) ? 1 : 0
+    }
+    if (!skip) print
   }
-  skip == 0 { print }
 ' "$SRC" >>"$DEST"
 
 log "merged codex profiles into $DEST"
-log "verify: codex profiles"
+log "verify: codex --help"
