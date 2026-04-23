@@ -122,7 +122,7 @@ assert_contains "$plain_output" "tailnet:  100.64.0.10"
 assert_contains "$plain_output" "monitor:  active (running)"
 assert_contains "$plain_output" "health:   check=2026-04-23 21:40:00  result=7 ok, 0 fail"
 assert_contains "$plain_output" "usage:    disk=41% used"
-assert_contains "$plain_output" "queue:    pending=1"
+assert_contains "$plain_output" "queue:    pending=1  in_progress=2  completed=1  total=4"
 assert_contains "$plain_output" "active sessions"
 assert_contains "$plain_output" "wrkflo-orchestrator"
 

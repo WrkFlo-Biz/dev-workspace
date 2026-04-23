@@ -111,7 +111,7 @@ journalctl --user -u dws-sessions-init.service -n 30 --no-pager
 |---|---|---|
 | Unit state | `<active (exited) / other>` | `[ ]` |
 | Exit status | `<0/SUCCESS | other>` | `[ ]` |
-| Log contains `sessions init complete: 9 sessions` | `<yes/no>` | `[ ]` |
+| Log contains `sessions init complete: 10 sessions` | `<yes/no>` | `[ ]` |
 
 Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 
@@ -136,7 +136,7 @@ Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 tmux list-sessions
 ```
 
-Expected managed set: `dws-a, dws-b, worker-c, worker-d, worker-e, worker-f, worker-g, worker-h, orchestrator` (9 sessions). Extra ad hoc sessions may exist and should be noted separately.
+Expected managed set: `dws-a, dws-b, worker-c, worker-d, worker-e, worker-f, worker-g, worker-h, worker-i, orchestrator` (10 sessions). Extra ad hoc sessions may exist and should be noted separately.
 
 | Session | Present | Codex running inside |
 |---|---|---|
@@ -148,9 +148,10 @@ Expected managed set: `dws-a, dws-b, worker-c, worker-d, worker-e, worker-f, wor
 | `worker-f` | `[ ]` | `[ ]` |
 | `worker-g` | `[ ]` | `[ ]` |
 | `worker-h` | `[ ]` | `[ ]` |
+| `worker-i` | `[ ]` | `[ ]` |
 | `orchestrator` | `[ ]` | `[ ]` |
 
-Session count: `<n>/9`. Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
+Session count: `<n>/10`. Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 
 ### 3.6 Launcher access
 

@@ -27,13 +27,14 @@ fi
 }
 
 LAUNCHER_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+REPO_ROOT=$(CDPATH='' cd -- "$LAUNCHER_DIR/.." && pwd)
 # shellcheck source=/dev/null
 . "$LAUNCHER_DIR/dws-env.sh"
 SESSIONS_TOOL="$SCRIPT_DIR/dws-sessions.sh"
 QUICK_TOOL="$SCRIPT_DIR/dws-quick.sh"
 HEALTH_LOG="/tmp/dws-health.log"
 HEALTH_ALERT_LOG="/tmp/dws-health-alerts.log"
-TASK_QUEUE_PATH="${DWS_TASK_QUEUE_PATH:-/tmp/task-queue.json}"
+TASK_QUEUE_PATH="${DWS_TASK_QUEUE_PATH:-}"
 ORCHESTRATOR_HEALTH_URL="${DWS_ORCHESTRATOR_HEALTH_URL:-http://127.0.0.1:8100/v1/workspace/health}"
 STATUS_TOOL_REPO="${DWS_STATUS_TOOL_REPO:-$HOME/projects/dev-workspace/bin/dws-status.sh}"
 MONITOR_SERVICE_NAME="${DWS_MONITOR_SERVICE_NAME:-dws-task-monitor}"
@@ -209,17 +210,47 @@ disk_usage_badge() {
   esac
 }
 
-task_queue_pending_count() {
-  local path="${1:-$TASK_QUEUE_PATH}"
+resolved_task_queue_path() {
+  local candidate
+
+  if [ -n "$TASK_QUEUE_PATH" ]; then
+    printf '%s\n' "$TASK_QUEUE_PATH"
+    return 0
+  fi
+
+  for candidate in \
+    "$REPO_ROOT/.state/task-queue.json" \
+    "$HOME/projects/dev-workspace/.state/task-queue.json" \
+    "/tmp/task-queue.json"
+  do
+    if [ -e "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "$REPO_ROOT/.state/task-queue.json"
+}
+
+task_queue_status_counts() {
+  local path="${1:-}"
 
   [ -e "$path" ] || return 2
   [ -s "$path" ] || return 3
 
   if command -v jq >/dev/null 2>&1; then
     jq -r '
-      (.tasks // [])
-      | map(select(((.status // "") | ascii_downcase) == "pending"))
-      | length
+      reduce (.tasks // [])[]? as $task (
+        {"pending": 0, "in_progress": 0, "completed": 0, "other": 0};
+        (($task.status // "") | ascii_downcase) as $status
+        | if $status == "pending" then .pending += 1
+          elif $status == "in_progress" then .in_progress += 1
+          elif $status == "completed" then .completed += 1
+          else .other += 1
+          end
+      )
+      | [.pending, .in_progress, .completed, .other, (.pending + .in_progress + .completed + .other)]
+      | @tsv
     ' "$path" 2>/dev/null || return 4
     return 0
   fi
@@ -237,8 +268,25 @@ except Exception:
     raise SystemExit(4)
 
 tasks = data.get("tasks") or []
-pending = sum(1 for task in tasks if str(task.get("status") or "").lower() == "pending")
-print(pending)
+counts = {
+    "pending": 0,
+    "in_progress": 0,
+    "completed": 0,
+    "other": 0,
+}
+
+for task in tasks:
+    status = str(task.get("status") or "").lower()
+    if status in ("pending", "in_progress", "completed"):
+        counts[status] += 1
+    else:
+        counts["other"] += 1
+
+total = counts["pending"] + counts["in_progress"] + counts["completed"] + counts["other"]
+print(
+    f"{counts['pending']}\t{counts['in_progress']}\t"
+    f"{counts['completed']}\t{counts['other']}\t{total}"
+)
 PY
     return $?
   fi
@@ -246,17 +294,59 @@ PY
   return 5
 }
 
-task_queue_header_summary() {
-  local pending status
+queue_count_badge() {
+  local label="${1:-}" count="${2:-0}"
 
-  pending=$(task_queue_pending_count "$TASK_QUEUE_PATH")
+  case "$label" in
+    pending)
+      if [ "$count" -eq 0 ]; then
+        printf '%s' "$(green "pending=0")"
+      else
+        printf '%s' "$(cyan "pending=${count}")"
+      fi
+      ;;
+    in_progress)
+      if [ "$count" -eq 0 ]; then
+        printf '%s' "$(dim "in_progress=0")"
+      else
+        printf '%s' "$(yellow "in_progress=${count}")"
+      fi
+      ;;
+    completed)
+      printf '%s' "$(dim "completed=${count}")"
+      ;;
+    other)
+      if [ "$count" -eq 0 ]; then
+        printf '%s' ""
+      else
+        printf '%s' "$(yellow "other=${count}")"
+      fi
+      ;;
+    total)
+      printf '%s' "$(dim "total=${count}")"
+      ;;
+  esac
+}
+
+task_queue_header_summary() {
+  local path counts pending in_progress completed other total status
+
+  path=$(resolved_task_queue_path)
+
+  counts=$(task_queue_status_counts "$path")
   status=$?
 
   if [ "$status" -eq 0 ]; then
-    if [ "$pending" -eq 0 ]; then
-      printf '%s' "$(green "pending=0")"
-    else
-      printf '%s' "$(cyan "pending=${pending}")"
+    IFS=$'\t' read -r pending in_progress completed other total <<EOF
+$counts
+EOF
+    printf '%s  %s  %s  %s' \
+      "$(queue_count_badge pending "$pending")" \
+      "$(queue_count_badge in_progress "$in_progress")" \
+      "$(queue_count_badge completed "$completed")" \
+      "$(queue_count_badge total "$total")"
+    if [ "$other" -gt 0 ]; then
+      printf '  %s' "$(queue_count_badge other "$other")"
     fi
     return 0
   fi

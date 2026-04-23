@@ -26,7 +26,7 @@ Captured on 2026-04-23 UTC from the live VM state.
 | Phone path lacks a formal verification artifact | iPhone SSH success exists in journal, but there is no structured operator test record | docs can drift from real operator behavior | run and document a real phone validation checklist |
 | `dws-phone-server` binds `0.0.0.0:8081` | service is reachable on-host and via tailnet; Azure NSG currently blocks public ingress | future ingress mistakes could expose phone callback path | document intended exposure and include in firewall policy review |
 | Repo is busy and dirty | many modified/untracked files; active worker sessions still editing repo-owned files | commit conflicts and accidental reverts | avoid worker-owned files, stage changes in coherent batches only after workers settle |
-| Ad hoc `tmux` sessions can blur the managed baseline | managed boot set is 9 sessions, but extra sessions such as `worker-i` can appear during live work | operators may misread a healthy runtime as drift, or miss real boot regressions | treat the 9-session pool as the managed contract and anything extra as opt-in/operator-owned |
+| Ad hoc `tmux` sessions can blur the managed baseline | managed boot set is 10 sessions, but extra project-specific or debugging sessions can appear during live work | operators may misread a healthy runtime as drift, or miss real boot regressions | treat the 10-session pool as the managed contract and anything extra as opt-in/operator-owned |
 
 ## Low
 

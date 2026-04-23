@@ -67,7 +67,9 @@ is_uint() {
 validate_config() {
   is_uint "$SSH_PORT" || die "DWS_BOOT_VERIFY_SSH_PORT must be an integer"
   is_uint "$SSH_TIMEOUT_SECONDS" || die "DWS_BOOT_VERIFY_SSH_TIMEOUT_SECONDS must be an integer"
-  [ "$SSH_PORT" -ge 1 ] && [ "$SSH_PORT" -le 65535 ] || die "DWS_BOOT_VERIFY_SSH_PORT must be between 1 and 65535"
+  if [ "$SSH_PORT" -lt 1 ] || [ "$SSH_PORT" -gt 65535 ]; then
+    die "DWS_BOOT_VERIFY_SSH_PORT must be between 1 and 65535"
+  fi
   [ "$SSH_TIMEOUT_SECONDS" -ge 1 ] || die "DWS_BOOT_VERIFY_SSH_TIMEOUT_SECONDS must be at least 1"
 }
 

@@ -13,11 +13,11 @@ The drill validates that after a clean reboot (`sudo reboot`), the following com
 | Tailscale mesh | `tailscaled.service` (system) | active, VM IP `100.117.16.63`, Mac + iPhone visible |
 | SSH | `ssh.socket` (socket-activated) | `ssh.socket` active, `ssh.service` starts on first connection |
 | systemd user services | linger + `default.target.wants/` | 4 user services active |
-| dws-sessions-init.service | `~/bin/dws-sessions-init.sh` (oneshot) | 9 tmux sessions recreated |
+| dws-sessions-init.service | `~/bin/dws-sessions-init.sh` (oneshot) | 10 tmux sessions recreated |
 | dws-task-monitor.service | `~/bin/task-monitor.sh` (simple, Restart=on-failure) | active, writing `/var/log/dws/monitor.log` |
 | dws-phone-server.service | `~/bin/dws-phone-server.py` | active, Restart=always |
 | wrkflo-orchestrator-api.service | FastAPI on `127.0.0.1:8100` | active, `/v1/workspace/health` returns 200 |
-| tmux sessions | spawned by `dws-sessions-init` | managed set present: `dws-a dws-b worker-c worker-d worker-e worker-f worker-g worker-h orchestrator` |
+| tmux sessions | spawned by `dws-sessions-init` | managed set present: `dws-a dws-b worker-c worker-d worker-e worker-f worker-g worker-h worker-i orchestrator` |
 | Cron | system `cron.service` | daemon active, 3 dev-workspace entries present |
 | Launcher | `~/bin/dws-launcher.sh` | runnable on a fresh SSH login |
 | Health / status | `dws-status.sh`, `dws-doctor.sh`, `dws-health.sh` | all three exit 0 |
@@ -129,7 +129,7 @@ Runs once at boot before `dws-task-monitor.service` and spawns all expected tmux
 ssh moses@dev-workspace-vm 'systemctl --user status dws-sessions-init.service --no-pager | head -15; journalctl --user -u dws-sessions-init.service -n 30 --no-pager'
 ```
 
-Pass: `Active: active (exited)`, `Main PID: ... (code=exited, status=0/SUCCESS)`; log contains `sessions init complete: 9 sessions`.
+Pass: `Active: active (exited)`, `Main PID: ... (code=exited, status=0/SUCCESS)`; log contains `sessions init complete: 10 sessions`.
 Fail: non-zero exit → `journalctl --user -u dws-sessions-init.service -b` for root cause; rerun manually with `systemctl --user start dws-sessions-init.service`.
 
 ### 3.5 dws-task-monitor.service
@@ -165,7 +165,7 @@ Fail: inactive or non-200 → `journalctl --user -u wrkflo-orchestrator-api.serv
 ssh moses@dev-workspace-vm 'tmux list-sessions'
 ```
 
-Pass: the 9 managed sessions are present: `dws-a`, `dws-b`, `worker-c`, `worker-d`, `worker-e`, `worker-f`, `worker-g`, `worker-h`, `orchestrator`. Extra ad hoc sessions are acceptable but should be noted separately.
+Pass: the 10 managed sessions are present: `dws-a`, `dws-b`, `worker-c`, `worker-d`, `worker-e`, `worker-f`, `worker-g`, `worker-h`, `worker-i`, `orchestrator`. Extra ad hoc sessions are acceptable but should be noted separately.
 Fail: any managed session is missing → `systemctl --user restart dws-sessions-init.service`. If any session exists but codex is missing inside, inspect the session with `~/projects/dev-workspace/bin/dws-sessions.sh show <session>` before forcing a relaunch.
 
 ### 3.9 Cron
@@ -213,7 +213,7 @@ The drill is green when **all** of the following hold:
 
 - `~/projects/dev-workspace/bin/dws-boot-verify.sh` reports `STATUS: READY`, `0 failed`.
 - Sections 3.1 – 3.11 each show their pass criterion.
-- `tmux list-sessions` shows the managed 9-session pool.
+- `tmux list-sessions` shows the managed 10-session pool.
 - `~/projects/dev-workspace/scripts/dws-health.sh --json` returns healthy service state after the reboot.
 - Monitor log advanced at least 2 cycles (1 min) since boot.
 

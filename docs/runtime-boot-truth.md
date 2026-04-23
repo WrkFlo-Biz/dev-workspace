@@ -24,9 +24,8 @@ worker-i
 
 Interpretation:
 
-- The managed boot set is `dws-a`, `dws-b`, `worker-c` through `worker-h`, and
-  `orchestrator` (9 sessions total).
-- `worker-i` is an ad hoc extra session, not part of the managed boot contract.
+- The managed boot set is `dws-a`, `dws-b`, `worker-c` through `worker-i`, and
+  `orchestrator` (10 sessions total).
 - There is no dedicated `monitor` `tmux` session in the managed service model.
 
 ## Task monitor truth
@@ -43,7 +42,7 @@ Current runtime behavior:
 
 - runs as a systemd user service, not inside `tmux`
 - loops every `30` seconds
-- manages eight worker sessions
+- manages nine worker sessions
 - writes cycle logs to `/var/log/dws/monitor.log`
 - reads and updates `~/projects/dev-workspace/.state/task-queue.json`
 - recreates worker sessions that are dead, crashed, compacted, or stuck
@@ -84,7 +83,7 @@ Service definitions:
 
 - `dws-sessions-init.service`
   - runs `%h/bin/dws-sessions-init.sh`
-  - oneshot bootstrap that recreates the 9 managed `tmux` sessions
+  - oneshot bootstrap that recreates the 10 managed `tmux` sessions
   - remains `active (exited)` after success
 - `dws-task-monitor.service`
   - runs `%h/bin/task-monitor.sh`
@@ -116,7 +115,7 @@ The VM-local `~/bin` entrypoints can drift from the checked-in repo copies.
 
 Observed examples on 2026-04-23:
 
-- installed `~/bin/dws-sessions-init.sh` recreates the 9 managed sessions only
+- installed `~/bin/dws-sessions-init.sh` recreates the 10 managed sessions only
 - checked-in `scripts/dws-sessions-init.sh` still includes a `monitor` session
 - installed `~/bin/dws-boot-verify.sh` still checks older paths and assumptions
 

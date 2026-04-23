@@ -185,12 +185,13 @@ worker-e
 worker-f
 worker-g
 worker-h
+worker-i
 ```
 
 Operational meaning:
 
 - `orchestrator` is a dedicated `wrkflo-orchestrator` Codex session.
-- `dws-a`, `dws-b`, and `worker-c` through `worker-h` are autonomous worker panes.
+- `dws-a`, `dws-b`, and `worker-c` through `worker-i` are autonomous worker panes.
 - The monitor is not part of the managed `tmux` pool anymore; it runs as the
   user service `dws-task-monitor.service`.
 - Additional ad hoc sessions can exist during live operation. Those sessions are
@@ -213,7 +214,7 @@ Managed units:
 
 | Unit | ExecStart | Role |
 | --- | --- | --- |
-| `dws-sessions-init.service` | `/usr/bin/bash %h/bin/dws-sessions-init.sh` | oneshot bootstrap that recreates the 9 managed `tmux` sessions |
+| `dws-sessions-init.service` | `/usr/bin/bash %h/bin/dws-sessions-init.sh` | oneshot bootstrap that recreates the 10 managed `tmux` sessions |
 | `dws-task-monitor.service` | `/usr/bin/bash %h/bin/task-monitor.sh` | long-running monitor loop that starts after `dws-sessions-init.service` |
 
 The installed `~/bin` copies are the live service entrypoints. The repo files
@@ -232,7 +233,7 @@ Current runtime characteristics:
 | Loop interval | `30` seconds |
 | Queue file | `~/projects/dev-workspace/.state/task-queue.json` |
 | Monitor log | `/var/log/dws/monitor.log` |
-| Managed workers | `dws-a`, `dws-b`, `worker-c`..`worker-h` |
+| Managed workers | `dws-a`, `dws-b`, `worker-c`..`worker-i` |
 | Special session | `orchestrator` is health-checked and recreated immediately if missing |
 
 Behavior:
