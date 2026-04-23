@@ -1,127 +1,102 @@
 # Ingress Hardening
 
-`bin/dws-firewall.sh` is the repo-managed ingress policy for the dev workspace VM.
-The default action now does three things in order:
+This document records the live ingress posture of the dev-workspace VM as
+audited on 2026-04-23.
 
-1. Snapshot the current firewall state for rollback.
-2. Apply the repo policy.
-3. Verify the live rules and roll back automatically if verification fails.
+The intended primary ingress control is the tailnet policy: Tailscale ACLs gate
+who can reach the VM over its Tailscale addresses. On the VM itself, host-level
+firewall enforcement is currently minimal:
 
-## Managed Ingress Policy
+- `ufw` is installed but inactive.
+- The only active kernel filter rules are the Tailscale-managed `ts-input` and
+  `ts-forward` chains.
+- `sshd` is hardened through
+  `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf`.
 
-The repo policy is intentionally small:
+## Current Control Layers
 
-| Port / proto | Source | Purpose |
+| Layer | Current state | Practical effect |
 | --- | --- | --- |
-| `41641/udp` | anywhere | Tailscale peer traffic and NAT traversal |
-| `22/tcp` | `100.64.0.0/10` | SSH over Tailscale |
-| `8080/tcp` | `100.64.0.0/10` | repo-managed dev service |
-| `9222/tcp` | `100.64.0.0/10` | Chrome remote debugging |
-| `3000/tcp` | `100.64.0.0/10` | repo-managed dev service |
+| Tailscale ACLs | Primary intended ingress control | Access to the Tailscale IPs is governed by tailnet policy, not by this repo. |
+| Tailscale host rules | Active `ts-input` / `ts-forward` chains | Accepts traffic arriving on `tailscale0`, accepts `udp/41641`, and drops spoofed `100.64.0.0/10` traffic that does not arrive via `tailscale0`. |
+| UFW | Installed, but `sudo ufw status verbose` returns `Status: inactive` | No UFW policy is currently filtering inbound traffic. The `ufw.service` unit being enabled only means the unit ran at boot; it does not mean UFW is enforcing rules right now. |
+| nftables / iptables base policy | `INPUT` policy is `ACCEPT` and the only explicit `INPUT` rule is a jump to `ts-input` | Services bound to `0.0.0.0` or `[::]` are not restricted by a host firewall deny policy. Any restriction beyond Tailscale must come from the application itself or an upstream network perimeter. |
+| SSH daemon hardening | `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` | Disables password and keyboard-interactive auth, disables root login, requires pubkeys, and sets client keepalives. |
 
-Everything else inbound is denied.
+## SSH Hardening
 
-For `iptables`, the repo-managed chain also keeps loopback and
-`RELATED,ESTABLISHED` traffic open before the final drop rule.
+The live SSH drop-in currently sets:
 
-## Dry Run
+| Setting | Value |
+| --- | --- |
+| `PasswordAuthentication` | `no` |
+| `KbdInteractiveAuthentication` | `no` |
+| `ChallengeResponseAuthentication` | `no` |
+| `PubkeyAuthentication` | `yes` |
+| `PermitRootLogin` | `no` |
+| `ClientAliveInterval` | `30` |
+| `ClientAliveCountMax` | `3` |
 
-Preview the exact commands without changing the host:
+This means SSH is hardened at the authentication layer even though it is not
+currently narrowed by UFW.
+
+## Open Ports
+
+### Ingress-relevant listeners
+
+| Bind | Proto | Process | Why it is open | Exposure notes |
+| --- | --- | --- | --- | --- |
+| `0.0.0.0:22`, `[::]:22` | TCP | `sshd` | Remote shell access for operators | Bound on all interfaces. Host firewall does not currently narrow this to Tailscale-only traffic, so access control relies on SSH hardening plus any upstream network perimeter. |
+| `0.0.0.0:8081` | TCP | `dws-phone-server.service` (`~/bin/dws-phone-server.py`) | Phone-control callback server used by the iPhone shortcut flow (`/health`, `/pending`, `/queue`, `/result`) | Bound on all interfaces. The application comment says Tailscale ACLs are the intended gate, but the host firewall does not currently enforce that posture. |
+| `0.0.0.0:41641`, `[::]:41641` | UDP | `tailscaled` | Tailscale WireGuard / magicsock listener for peer traffic and NAT traversal | Expected and required for Tailscale connectivity. This is the one globally accepted UDP port in the Tailscale-managed host rules. |
+| `100.117.16.63:52421` | TCP | `tailscaled` | Tailscale PeerAPI on the node's Tailscale IPv4 address | Bound only to the Tailscale IPv4 address, not to a wildcard interface. |
+| `[fd7a:115c:a1e0::cf37:103f]:38251` | TCP | `tailscaled` | Tailscale PeerAPI on the node's Tailscale IPv6 address | Bound only to the Tailscale IPv6 address, not to a wildcard interface. |
+
+### Local-only or support listeners
+
+These sockets exist on the host, but they are not intended as external ingress
+surfaces.
+
+| Bind | Proto | Process | Why it is open |
+| --- | --- | --- | --- |
+| `127.0.0.1:8100` | TCP | `wrkflo_orchestrator.cli api` | Local-only orchestrator API for VM-side tooling |
+| `127.0.0.53:53`, `127.0.0.54:53` | TCP/UDP | `systemd-resolved` | Local DNS stub listeners |
+| `127.0.0.1:323`, `[::1]:323` | UDP | `chronyd` | Loopback NTP control / monitoring socket |
+| `10.0.0.4:68` | UDP | `systemd-networkd` | DHCP client socket on `eth0` |
+
+## Effective Host Firewall Rules
+
+The live packet filter is Tailscale-managed and intentionally narrow:
+
+- `INPUT` policy is `ACCEPT`.
+- `FORWARD` policy is `ACCEPT`.
+- `INPUT` jumps to `ts-input`.
+- `ts-input` accepts traffic on `tailscale0`.
+- `ts-input` accepts `udp/41641`.
+- `ts-input` drops spoofed `100.64.0.0/10` packets that arrive outside
+  `tailscale0`.
+
+What it does **not** currently do:
+
+- It does not deny public ingress by default.
+- It does not restrict `22/tcp` to the Tailscale interface.
+- It does not restrict `8081/tcp` to the Tailscale interface.
+
+Operationally, that means Tailscale ACLs are the primary intended ingress
+control, but the VM is not currently enforcing a Tailscale-only posture with a
+host firewall.
+
+## Audit Commands
+
+These commands were used to verify the current posture:
 
 ```bash
-~/projects/dev-workspace/bin/dws-firewall.sh --dry-run
-~/projects/dev-workspace/bin/dws-firewall.sh --dry-run --backend ufw
-~/projects/dev-workspace/bin/dws-firewall.sh --dry-run --backend iptables
+sudo ufw status verbose
+sudo iptables -S
+sudo nft list chain ip filter INPUT
+sudo nft list chain ip filter ts-input
+sudo ss -tulpn
+sed -n '1,160p' /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
+systemctl --user status dws-phone-server.service --no-pager -l
+sudo tailscale status --json
 ```
-
-Dry-run output includes:
-
-- the backend that would be used
-- the Tailscale note explaining why `udp/41641` stays public
-- the rollback snapshot path that would be created
-- every firewall command that would run
-
-Use dry-run first if you are changing hosts, testing a new backend, or working
-over a remote session you cannot afford to lock out.
-
-## Apply
-
-Apply the policy with root privileges:
-
-```bash
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend iptables
-```
-
-Apply behavior:
-
-- prefers `ufw` when it is installed unless `--backend` is set
-- saves a rollback snapshot before changing anything
-- verifies the live rules immediately after apply
-- rolls back automatically if the apply or verification step fails
-
-## Verification
-
-Run the read-only verifier at any time:
-
-```bash
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --verify
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --verify --backend ufw
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --verify --backend iptables
-```
-
-Verification checks:
-
-- `ufw` is active and defaults to `deny (incoming), allow (outgoing)`
-- `udp/41641` is still open globally
-- `tcp/22`, `tcp/8080`, `tcp/9222`, and `tcp/3000` are restricted to `100.64.0.0/10`
-- no public allow rule exists for the managed TCP ports
-- for `iptables`, `DWS_FIREWALL_INPUT` is the first `INPUT` rule and ends with `DROP`
-
-`--verify` exits non-zero on drift or overly broad access.
-
-## Rollback
-
-Rollback restores the most recent saved snapshot:
-
-```bash
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --rollback
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --rollback --backend ufw
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --rollback --backend iptables
-```
-
-Rollback behavior:
-
-- `ufw`: restores the saved config files and re-enables or disables `ufw` to
-  match the captured state
-- `iptables`: restores the full `iptables-save` snapshot with `iptables-restore`
-
-After rollback, rerun `--verify` only if you intend to be back on the repo
-policy. A rollback may intentionally restore a broader pre-repo firewall state.
-
-## Snapshot Layout
-
-Rollback snapshots are stored under `/var/lib/dws/firewall` by default. Override
-that location with `DWS_FIREWALL_STATE_DIR=/path/to/state-dir`.
-
-The script writes:
-
-- `latest` -> newest snapshot for any backend
-- `latest-ufw` -> newest UFW snapshot
-- `latest-iptables` -> newest iptables snapshot
-- `snapshots/<timestamp>-<backend>/...` -> snapshot payload
-
-Snapshot contents:
-
-- UFW snapshots include backend metadata plus the managed UFW config files:
-  `/etc/default/ufw`, `/etc/ufw/ufw.conf`, `/etc/ufw/user.rules`,
-  `/etc/ufw/user6.rules`
-- iptables snapshots include a full `iptables-save` dump for restore
-
-## Recommended Workflow
-
-1. `~/projects/dev-workspace/bin/dws-firewall.sh --dry-run`
-2. `sudo ~/projects/dev-workspace/bin/dws-firewall.sh`
-3. `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --verify`
-4. If access is wrong, `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --rollback`
