@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # dws-launcher.sh — runs on SSH login to the dev-workspace VM.
-# Two-step picker: project -> model/tool, so every Azure deployment is reachable.
+# Two-step picker: project -> model/tool, wrapped in tmux for session persistence.
+# If you disconnect (phone sleep, network drop), reconnect and your session is alive.
 #
 # Escape hatches:
 #   - press q or ^C at the prompt to drop to a plain shell
@@ -8,141 +9,72 @@
 
 set -u
 
-# Only launch in interactive TTY shells, and only once per session.
 [ -t 0 ] || return 0 2>/dev/null || exit 0
 [ -z "${SKIP_LAUNCHER:-}" ] || return 0 2>/dev/null || exit 0
 [ -z "${DWS_LAUNCHER_RAN:-}" ] || return 0 2>/dev/null || exit 0
 export DWS_LAUNCHER_RAN=1
 
-# Ensure Foundry key is loaded no matter how the shell was spawned.
 [ -n "${AZURE_OPENAI_API_KEY:-}" ] || {
   [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"
 }
 
-# Expose the Mac control paths to any agent launched from the VM.
 export MAC_GUI_URL="${MAC_GUI_URL:-http://100.78.207.22:9223}"
 export MAC_CDP_URL="${MAC_CDP_URL:-http://100.78.207.22:9222}"
 export MAC_SSH_HOST="${MAC_SSH_HOST:-mosestut@100.78.207.22}"
 
-workspace_prompt() {
-  cat <<'EOF'
-Workspace root: $HOME/projects.
-Projects available here include:
-- global-sentinel
-- wrkflo-voice-agents-ops
-- openclaw-prod
-- global-sentinel-azure-quantum
-- wrkflo-orchestrator
-- dev-workspace
+# ── Helpers ──
 
-Primary focus for this session: $DWS_PRIMARY_PROJECT.
-Start there, but you may inspect and edit sibling projects under $HOME/projects when asked.
-The Mac control paths are:
-- GUI / AppleScript bridge: $MAC_GUI_URL
-- Chrome DevTools bridge: $MAC_CDP_URL
-- SSH back to the Mac: $MAC_SSH_HOST
-EOF
-}
-
-codex_cmd() {
-  local profile="$1"
-  printf '%s' "codex --profile $profile --search --dangerously-bypass-approvals-and-sandbox --add-dir \"\$HOME\" \"\$(workspace_prompt)\""
-}
-
-claude_cmd() {
-  printf '%s' "claude --dangerously-skip-permissions --add-dir \"\$HOME\" \"\$(workspace_prompt)\""
-}
-
-# Small helpers
 color() { printf '\033[%sm%s\033[0m' "$1" "$2"; }
 bold()  { color '1'  "$1"; }
 dim()   { color '2'  "$1"; }
 green() { color '32' "$1"; }
 cyan()  { color '36' "$1"; }
 yellow(){ color '33' "$1"; }
+red()   { color '31' "$1"; }
 
-hr() { printf '%s\n' "────────────────────────────────────────────────────────────"; }
+hr() { printf '%s\n' "──────────────────────────────────────────"; }
 
 host_info() {
-  local h ts who
+  local h who
   h=$(hostname -s 2>/dev/null || echo "?")
   who=$(whoami)
-  if command -v tailscale >/dev/null 2>&1; then
-    ts=$(sudo tailscale ip -4 2>/dev/null | head -1 || echo "")
-    [ -n "$ts" ] && ts="  ts=$ts"
-  fi
-  echo "$(bold "$who@$h")$ts"
+  echo "$(bold "$who@$h")"
 }
 
-azure_line() {
-  local key_state
+key_status() {
   if [ -n "${AZURE_OPENAI_API_KEY:-}" ]; then
-    key_state="$(green ok)"
+    green "ok"
   else
-    key_state="$(color 31 missing)"
+    red "missing"
   fi
-  echo "Azure Foundry: moses-8586-resource (eastus2)  key=$key_state"
 }
 
-# ── Project menu ──
+# ── Project mapping ──
 
-project_menu() {
-  clear 2>/dev/null || true
-  echo
-  bold "   ⎈ dev-workspace  ·  $(host_info)"; echo
-  dim   "   $(azure_line)"; echo
-  hr
-  cat <<MENU
-
-  $(bold "Select project:")
-
-  $(cyan 1)  Global Sentinel
-  $(cyan 2)  Voice Agents Ops
-  $(cyan 3)  OpenClaw Prod
-  $(cyan 4)  GS Azure Quantum
-  $(cyan 5)  Orchestrator
-  $(cyan 6)  Plain shell in ~/projects
-  $(cyan 7)  Tailscale / system status
-
-  $(dim "q  quit / drop to bash")
-
-MENU
-  hr
+proj_name() {
+  case "$1" in
+    1) echo "global-sentinel" ;;
+    2) echo "wrkflo-voice-agents-ops" ;;
+    3) echo "openclaw-prod" ;;
+    4) echo "global-sentinel-azure-quantum" ;;
+    5) echo "wrkflo-orchestrator" ;;
+    6) echo "dev-workspace" ;;
+    *) echo "" ;;
+  esac
 }
 
-# ── Model menu ──
-
-model_menu() {
-  local proj="$1"
-  clear 2>/dev/null || true
-  echo
-  bold "   ⎈ $proj  ·  select model"; echo
-  hr
-  cat <<MENU
-
-  $(bold "── OpenAI ──")
-  $(cyan 1)  gpt-5.4          $(dim "xhigh  — architecture, hard bugs, planning")
-  $(cyan 2)  gpt-5.2          $(dim "high   — general coding, medium tasks")
-  $(cyan 3)  gpt-5.2-codex    $(dim "high   — code completions, diffs, tests")
-  $(cyan 4)  gpt-5.1-codex-mini $(dim "med  — quick edits, small refactors")
-  $(cyan 5)  gpt-5-mini       $(dim "med    — cheapest/fastest, trivial lookups")
-  $(cyan 6)  gpt-4o           $(dim "med    — multimodal, images, long context")
-
-  $(bold "── Claude (via Azure Foundry) ──")
-  $(cyan 7)  claude-opus-4-6  $(dim "high   — complex reasoning, second opinion")
-  $(cyan 8)  claude-sonnet-4-6 $(dim "med   — balanced, code review")
-  $(cyan 9)  claude-haiku-4-5 $(dim "med    — fast, simple Q&A")
-
-  $(bold "── Other ──")
-  $(cyan c)  Claude Code CLI   $(dim "       — native claude, not codex")
-
-  $(dim "b  back to project menu")
-
-MENU
-  hr
+proj_short() {
+  case "$1" in
+    global-sentinel) echo "gs" ;;
+    wrkflo-voice-agents-ops) echo "voice" ;;
+    openclaw-prod) echo "oclaw" ;;
+    global-sentinel-azure-quantum) echo "gsaq" ;;
+    wrkflo-orchestrator) echo "orch" ;;
+    dev-workspace) echo "dws" ;;
+    *) echo "proj" ;;
+  esac
 }
 
-# Profile name for each model choice
 profile_for() {
   case "$1" in
     1) echo "foundry-5_4" ;;
@@ -158,81 +90,248 @@ profile_for() {
   esac
 }
 
-launch() {
-  local proj="$1" cmd="$2"
+model_label() {
+  case "$1" in
+    1) echo "5.4" ;;
+    2) echo "5.2" ;;
+    3) echo "codex" ;;
+    4) echo "mini" ;;
+    5) echo "5mini" ;;
+    6) echo "4o" ;;
+    7) echo "opus" ;;
+    8) echo "sonnet" ;;
+    9) echo "haiku" ;;
+    c|C) echo "claude" ;;
+    *) echo "?" ;;
+  esac
+}
+
+# ── tmux session management ──
+
+list_sessions() {
+  tmux ls -F '#{session_name} (#{session_windows} windows, created #{session_created_string})' 2>/dev/null
+}
+
+session_count() {
+  tmux ls 2>/dev/null | wc -l | tr -d ' '
+}
+
+# ── Workspace prompt injected into Codex/Claude ──
+
+workspace_prompt() {
+  local proj="$1"
+  cat <<WEOF
+Workspace root: \$HOME/projects.
+Projects: global-sentinel, wrkflo-voice-agents-ops, openclaw-prod, global-sentinel-azure-quantum, wrkflo-orchestrator, dev-workspace.
+Focus: $proj. Start there, inspect siblings under \$HOME/projects when asked.
+Mac bridges: GUI=\$MAC_GUI_URL  CDP=\$MAC_CDP_URL  SSH=\$MAC_SSH_HOST
+WEOF
+}
+
+# ── Launch into tmux ──
+
+launch_tmux() {
+  local proj="$1" tool="$2" session_name="$3"
+
   if [ ! -d "$HOME/projects/$proj" ]; then
-    echo "$(color 31 "missing: ~/projects/$proj")"
-    read -rp "press enter to return to menu "
+    red "missing: ~/projects/$proj"; echo
+    read -rp "press enter "
     return 1
   fi
-  cd "$HOME/projects" || return 1
-  exec env DWS_PRIMARY_PROJECT="$proj" bash -lc "$cmd"
+
+  local cmd
+  if [ "$tool" = "claude" ]; then
+    cmd="cd $HOME/projects/$proj && claude --dangerously-skip-permissions"
+  else
+    cmd="cd $HOME/projects/$proj && codex --profile $tool --search --dangerously-bypass-approvals-and-sandbox"
+  fi
+
+  if tmux has-session -t "$session_name" 2>/dev/null; then
+    echo "  $(green "reconnecting") to $session_name..."
+    sleep 0.3
+    exec tmux attach -t "$session_name"
+  else
+    echo "  $(green "launching") $session_name..."
+    sleep 0.3
+    exec tmux new-session -s "$session_name" -c "$HOME/projects/$proj" \
+      "export AZURE_OPENAI_API_KEY='${AZURE_OPENAI_API_KEY:-}'; \
+       export MAC_GUI_URL='${MAC_GUI_URL:-}'; \
+       export MAC_CDP_URL='${MAC_CDP_URL:-}'; \
+       export MAC_SSH_HOST='${MAC_SSH_HOST:-}'; \
+       export DWS_PRIMARY_PROJECT='$proj'; \
+       $cmd; exec bash -l"
+  fi
 }
+
+# ── Status page ──
 
 status_page() {
   clear 2>/dev/null || true
-  bold "  tailnet"; echo
-  sudo tailscale status 2>&1 | sed 's/^/    /'
+  echo
+  bold "  active sessions"; echo
+  if [ "$(session_count)" -gt 0 ]; then
+    list_sessions | sed 's/^/    /'
+  else
+    dim "    (none)"; echo
+  fi
   echo
   bold "  projects"; echo
   for d in "$HOME"/projects/*/; do
-    local name; name=$(basename "$d")
-    local branch; branch=$(git -C "$d" symbolic-ref --short HEAD 2>/dev/null || echo "-")
-    local ahead;  ahead=$(git -C "$d" rev-list --count @{u}..HEAD 2>/dev/null || echo 0)
-    printf "    %-32s branch=%s  ahead=%s\n" "$name" "$branch" "$ahead"
+    local name branch dirty
+    name=$(basename "$d")
+    branch=$(git -C "$d" symbolic-ref --short HEAD 2>/dev/null || echo "-")
+    dirty=$(git -C "$d" status --porcelain 2>/dev/null | head -1)
+    if [ -n "$dirty" ]; then
+      printf "    %-28s %s %s\n" "$name" "$branch" "$(yellow "*dirty")"
+    else
+      printf "    %-28s %s\n" "$name" "$branch"
+    fi
   done
-  echo
-  bold "  azure deployments"; echo
-  az cognitiveservices account deployment list \
-    --name moses-8586-resource --resource-group rg-moses-8586 \
-    --query "[].name" -o tsv 2>/dev/null | sed 's/^/    /' || echo "    (az cli not authenticated)"
   echo
   bold "  system"; echo
   printf "    uptime: %s\n" "$(uptime -p 2>/dev/null || uptime)"
   printf "    disk:   %s\n" "$(df -h / | awk 'NR==2{print $3"/"$2" ("$5" used)"}')"
   printf "    mem:    %s\n" "$(free -h | awk 'NR==2{print $3"/"$2" ("int($3/$2*100)"% used)"}')"
+  printf "    key:    %s\n" "$(key_status)"
   echo
-  read -rp "press enter to return to menu "
+  bold "  tailnet"; echo
+  sudo tailscale status 2>&1 | head -6 | sed 's/^/    /'
+  echo
+  read -rp "  press enter to return "
 }
 
 # ── Main loop ──
 
 while :; do
-  project_menu
-  read -rp "  project: " proj_choice
+  clear 2>/dev/null || true
+  echo
+  bold "  ⎈ dev-workspace · $(host_info)"; echo
+  dim  "  Foundry key=$(key_status)"; echo
+  hr
+
+  # Show active sessions if any exist
+  sc=$(session_count)
+  if [ "$sc" -gt 0 ]; then
+    echo
+    bold "  Active sessions ($sc):"; echo
+    tmux ls -F '    #{session_name}' 2>/dev/null
+    echo
+    cyan "  r"; echo -n "  reconnect to session"
+    echo
+    hr
+  fi
+
+  cat <<MENU
+
+  $(bold "New session:")
+  $(cyan 1)  Global Sentinel
+  $(cyan 2)  Voice Agents Ops
+  $(cyan 3)  OpenClaw Prod
+  $(cyan 4)  GS Azure Quantum
+  $(cyan 5)  Orchestrator
+  $(cyan 6)  Dev Workspace
+  $(cyan 7)  Plain shell
+  $(cyan s)  Status / system info
+
+  $(dim "q  quit / drop to bash")
+
+MENU
+  hr
+  read -rp "  > " proj_choice
 
   case "$proj_choice" in
-    1) proj="global-sentinel" ;;
-    2) proj="wrkflo-voice-agents-ops" ;;
-    3) proj="openclaw-prod" ;;
-    4) proj="global-sentinel-azure-quantum" ;;
-    5) proj="wrkflo-orchestrator" ;;
-    6) cd "$HOME/projects" && exec bash -l ;;
-    7) status_page; continue ;;
-    q|Q|'') echo; exec bash -l ;;
-    *) echo "  $(yellow "unknown choice")"; sleep 0.6; continue ;;
+    r|R)
+      if [ "$sc" -eq 0 ]; then
+        yellow "  no active sessions"; echo; sleep 0.6
+      elif [ "$sc" -eq 1 ]; then
+        exec tmux attach
+      else
+        echo
+        bold "  Pick session:"; echo
+        tmux ls -F '#{session_name}' 2>/dev/null | nl -w2 -s') '
+        echo
+        read -rp "  session name or #: " pick
+        if [ -n "$pick" ]; then
+          if tmux has-session -t "$pick" 2>/dev/null; then
+            exec tmux attach -t "$pick"
+          else
+            idx_name=$(tmux ls -F '#{session_name}' 2>/dev/null | sed -n "${pick}p")
+            if [ -n "$idx_name" ]; then
+              exec tmux attach -t "$idx_name"
+            fi
+          fi
+          red "  session not found"; echo; sleep 0.6
+        fi
+      fi
+      continue
+      ;;
+    [1-6])
+      proj=$(proj_name "$proj_choice")
+      ;;
+    7)
+      cd "$HOME/projects" && exec bash -l
+      ;;
+    s|S)
+      status_page; continue
+      ;;
+    q|Q|'')
+      echo; exec bash -l
+      ;;
+    *)
+      yellow "  unknown"; echo; sleep 0.4; continue
+      ;;
   esac
 
   # Model sub-menu
   while :; do
-    model_menu "$proj"
-    read -rp "  model: " model_choice
+    clear 2>/dev/null || true
+    echo
+    bold "  ⎈ $proj · select model"; echo
+    hr
+    cat <<MENU
+
+  $(bold "── OpenAI ──")
+  $(cyan 1)  gpt-5.4            $(dim "xhigh — hard bugs, planning")
+  $(cyan 2)  gpt-5.2            $(dim "high  — general coding")
+  $(cyan 3)  gpt-5.2-codex      $(dim "high  — code completions")
+  $(cyan 4)  gpt-5.1-codex-mini $(dim "med   — quick edits")
+  $(cyan 5)  gpt-5-mini         $(dim "med   — fast, cheap")
+  $(cyan 6)  gpt-4o             $(dim "med   — multimodal")
+
+  $(bold "── Claude ──")
+  $(cyan 7)  claude-opus-4-6    $(dim "high  — complex reasoning")
+  $(cyan 8)  claude-sonnet-4-6  $(dim "med   — balanced")
+  $(cyan 9)  claude-haiku-4-5   $(dim "med   — fast Q&A")
+
+  $(bold "── Other ──")
+  $(cyan c)  Claude Code CLI    $(dim "      — native claude")
+
+  $(dim "b  back")
+
+MENU
+    hr
+    read -rp "  > " model_choice
 
     case "$model_choice" in
       [1-9])
         local_profile=$(profile_for "$model_choice")
+        label=$(model_label "$model_choice")
+        short=$(proj_short "$proj")
+        session_name="${short}-${label}"
         if [ -n "$local_profile" ]; then
-          launch "$proj" "$(codex_cmd "$local_profile")"
+          launch_tmux "$proj" "$local_profile" "$session_name"
         fi
         ;;
       c|C)
-        launch "$proj" "$(claude_cmd)"
+        short=$(proj_short "$proj")
+        session_name="${short}-claude"
+        launch_tmux "$proj" "claude" "$session_name"
         ;;
       b|B|'')
         break
         ;;
       *)
-        echo "  $(yellow "unknown choice")"; sleep 0.6
+        yellow "  unknown"; echo; sleep 0.4
         ;;
     esac
   done
