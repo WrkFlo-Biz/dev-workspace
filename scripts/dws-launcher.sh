@@ -20,6 +20,40 @@ export DWS_LAUNCHER_RAN=1
   [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"
 }
 
+# Expose the Mac control paths to any agent launched from the VM.
+export MAC_GUI_URL="${MAC_GUI_URL:-http://100.78.207.22:9223}"
+export MAC_CDP_URL="${MAC_CDP_URL:-http://100.78.207.22:9222}"
+export MAC_SSH_HOST="${MAC_SSH_HOST:-mosestut@100.78.207.22}"
+
+workspace_prompt() {
+  cat <<'EOF'
+Workspace root: $HOME/projects.
+Projects available here include:
+- global-sentinel
+- wrkflo-voice-agents-ops
+- openclaw-prod
+- global-sentinel-azure-quantum
+- wrkflo-orchestrator
+- dev-workspace
+
+Primary focus for this session: $DWS_PRIMARY_PROJECT.
+Start there, but you may inspect and edit sibling projects under $HOME/projects when asked.
+The Mac control paths are:
+- GUI / AppleScript bridge: $MAC_GUI_URL
+- Chrome DevTools bridge: $MAC_CDP_URL
+- SSH back to the Mac: $MAC_SSH_HOST
+EOF
+}
+
+codex_cmd() {
+  local profile="$1"
+  printf '%s' "codex --profile $profile --search --dangerously-bypass-approvals-and-sandbox --add-dir \"\$HOME\" \"\$(workspace_prompt)\""
+}
+
+claude_cmd() {
+  printf '%s' "claude --dangerously-skip-permissions --add-dir \"\$HOME\" \"\$(workspace_prompt)\""
+}
+
 # Small helpers
 color() { printf '\033[%sm%s\033[0m' "$1" "$2"; }
 bold()  { color '1'  "$1"; }
@@ -58,14 +92,15 @@ menu() {
   hr
   cat <<MENU
 
-  $(cyan 1)  Global Sentinel    — codex (gpt-5.2-codex)
-  $(cyan 2)  Global Sentinel    — codex (gpt-5.4 xhigh)
-  $(cyan 3)  Global Sentinel    — Claude Code
-  $(cyan 4)  Voice Agents       — codex (gpt-5.2-codex)
-  $(cyan 5)  OpenClaw           — codex (gpt-5.2-codex)
-  $(cyan 6)  GS Azure Quantum   — codex (gpt-5.2-codex)
-  $(cyan 7)  Plain shell in ~/projects
-  $(cyan 8)  Tailscale / system status
+  $(cyan 1)  Global Sentinel    — codex full-access (gpt-5.4)
+  $(cyan 2)  Global Sentinel    — codex full-access (gpt-5.4 xhigh)
+  $(cyan 3)  Global Sentinel    — Claude Code full-access
+  $(cyan 4)  Voice Agents       — codex full-access (gpt-5.4)
+  $(cyan 5)  OpenClaw           — codex full-access (gpt-5.4)
+  $(cyan 6)  GS Azure Quantum   — codex full-access (gpt-5.4)
+  $(cyan 7)  Orchestrator       — codex full-access (gpt-5.4)
+  $(cyan 8)  Plain shell in ~/projects
+  $(cyan 9)  Tailscale / system status
 
   $(dim "q  quit / drop to bash")
 
@@ -80,8 +115,8 @@ launch() {
     read -rp "press enter to return to menu "
     return 1
   fi
-  cd "$HOME/projects/$proj" || return 1
-  exec bash -lc "$cmd"
+  cd "$HOME/projects" || return 1
+  exec env DWS_PRIMARY_PROJECT="$proj" bash -lc "$cmd"
 }
 
 status_page() {
@@ -107,14 +142,15 @@ while :; do
   menu
   read -rp "  choice: " choice
   case "$choice" in
-    1) launch global-sentinel                'codex --profile foundry' ;;
-    2) launch global-sentinel                'codex --profile foundry-5_4' ;;
-    3) launch global-sentinel                'claude' ;;
-    4) launch wrkflo-voice-agents-ops        'codex --profile foundry' ;;
-    5) launch openclaw-prod                  'codex --profile foundry' ;;
-    6) launch global-sentinel-azure-quantum  'codex --profile foundry' ;;
-    7) cd "$HOME/projects" && exec bash -l ;;
-    8) status_page ;;
+    1) launch global-sentinel                "$(codex_cmd foundry)" ;;
+    2) launch global-sentinel                "$(codex_cmd foundry-5_4)" ;;
+    3) launch global-sentinel                "$(claude_cmd)" ;;
+    4) launch wrkflo-voice-agents-ops        "$(codex_cmd foundry)" ;;
+    5) launch openclaw-prod                  "$(codex_cmd foundry)" ;;
+    6) launch global-sentinel-azure-quantum  "$(codex_cmd foundry)" ;;
+    7) launch wrkflo-orchestrator            "$(codex_cmd foundry-5_4)" ;;
+    8) cd "$HOME/projects" && exec bash -l ;;
+    9) status_page ;;
     q|Q|'') echo; exec bash -l ;;
     *) echo "  $(color 33 "unknown choice")"; sleep 0.6 ;;
   esac

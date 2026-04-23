@@ -14,7 +14,7 @@ set -euo pipefail
 PROFILE="$HOME/chrome-remote-profile"
 CDP_PORT=9222
 TS_IP=$(tailscale ip -4 2>/dev/null | head -1 || true)
-CHROME='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+CHROME_APP='/Applications/Google Chrome.app'
 
 log() { printf '\033[1;34m[chrome-cdp]\033[0m %s\n' "$*"; }
 
@@ -24,15 +24,15 @@ pkill -f "Google Chrome.*remote-debugging-port" 2>/dev/null || true
 sleep 1
 
 log "launching Chrome with remote debugging (profile: $PROFILE)"
-# nohup + setsid-equivalent so the process survives this script exiting.
-nohup "$CHROME" \
+# Launch via LaunchServices instead of backgrounding the app binary directly.
+# That keeps the dedicated Chrome instance alive more reliably on macOS.
+open -na "$CHROME_APP" --args \
   --remote-debugging-port=$CDP_PORT \
   --user-data-dir="$PROFILE" \
   --no-first-run \
   --no-default-browser-check \
   --disable-features=ChromeWhatsNewUI \
-  </dev/null >/tmp/chrome-cdp.log 2>&1 &
-disown
+  about:blank
 
 # Wait until CDP is up on localhost
 for i in $(seq 1 20); do
@@ -42,7 +42,7 @@ for i in $(seq 1 20); do
   fi
 done
 curl -fsS "http://127.0.0.1:$CDP_PORT/json/version" >/dev/null || {
-  echo "CDP did not come up in time — check /tmp/chrome-cdp.log"; exit 1;
+  echo "CDP did not come up in time — Chrome may still be blocked by an existing profile lock or launch failure"; exit 1;
 }
 
 if [ -n "$TS_IP" ]; then

@@ -77,6 +77,21 @@ Without these toggles, calls return `{"ok": false, "error": "..."}`.
   `~/Library/LaunchAgents/com.wrkflo.mac-bridges.plist`.
 - `~/.hammerspoon/init.lua` — the Hammerspoon HTTP API implementation.
 - `scripts/control-mac-chrome.js` + `.sh` — VM-side puppeteer example.
+- `scripts/control-mac-gui.py` — VM-side wrapper for the `9223` Hammerspoon API.
+
+### VM helper script
+
+On the VM, use the helper instead of raw `curl` when you want AppleScript or
+GUI actions from Linux:
+
+```bash
+~/dev-workspace/scripts/control-mac-gui.py focused
+~/dev-workspace/scripts/control-mac-gui.py open "Terminal"
+~/dev-workspace/scripts/control-mac-gui.py osascript \
+  'tell application "Terminal" to do script "pwd" in front window'
+~/dev-workspace/scripts/control-mac-gui.py click-menu "Safari" "File" "New Window"
+~/dev-workspace/scripts/control-mac-gui.py screenshot --out /tmp/mac-screen.png
+```
 
 ## Debugging
 

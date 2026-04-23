@@ -21,14 +21,16 @@ interactive SSH login to `dev-workspace-vm`.
     4  Voice Agents       — codex (gpt-5.2-codex)
     5  OpenClaw           — codex (gpt-5.2-codex)
     6  GS Azure Quantum   — codex (gpt-5.2-codex)
-    7  Plain shell in ~/projects
-    8  Tailscale / system status
+    7  Orchestrator       — codex full-access (gpt-5.4)
+    8  Plain shell in ~/projects
+    9  Tailscale / system status
     q  quit / drop to bash
    ```
 
-4. When you pick a project, it `cd`'s to `~/projects/<name>` and `exec`'s
-   the chosen tool. When the tool exits, you're back in bash (launcher
-   doesn't re-run — one trip per session).
+4. When you pick a project, it starts from `~/projects`, sets
+   `DWS_PRIMARY_PROJECT=<name>`, and `exec`'s the chosen tool with access to
+   `$HOME`. The launched agent starts with the selected project as its primary
+   focus but may inspect sibling projects when the task calls for it.
 
 ## Files
 
@@ -36,6 +38,16 @@ interactive SSH login to `dev-workspace-vm`.
   `~/bin/dws-launcher.sh` on the VM).
 - `~/.bash_profile` on the VM — runs the picker on interactive TTY logins.
 - `~/projects/` on the VM — symlinks + clones of every Wrk-Flo repo in one place.
+
+## Workspace targets
+
+- `global-sentinel` — primary geopolitical/macro intelligence runtime.
+- `wrkflo-voice-agents-ops` — voice-agent audit, safety, and runbook work.
+- `openclaw-prod` — OpenClaw gateway/runtime/deploy work.
+- `global-sentinel-azure-quantum` — quantum experiments and related notes.
+- `wrkflo-orchestrator` — central multi-agent control plane and workflow
+  coordination project.
+- `dev-workspace` — VM, launcher, Mac bridge, Tailscale, and operator tooling.
 
 ## Escape hatches
 

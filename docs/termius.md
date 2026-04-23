@@ -7,8 +7,9 @@
 - **Username**: `moses`
 - **Port**: `22`
 - **Auth**: Key → import `~/.ssh/termius_20260415` (ED25519, no passphrase)
-- **Startup command** *(optional but recommended)*:
-  `cd ~/global-sentinel && exec codex --profile foundry`
+- **Startup command**: leave blank, or use `exec bash -l`
+  so login drops into the shared `dev-workspace` launcher. Do **not**
+  hard-code a single repo here if you want cross-project access from the VM.
 
 ### 2. Mac (this computer)
 - **Address**: `<mac-hostname>` via Tailscale MagicDNS
@@ -24,10 +25,10 @@ Terminus supports "Snippets" — canned commands. Useful ones:
 
 | Snippet name                | Command                                               |
 |-----------------------------|-------------------------------------------------------|
-| Codex — Global Sentinel     | `cd ~/global-sentinel && codex --profile foundry`     |
-| Codex — gpt-5.4 xhigh       | `codex --profile foundry-5_4`                         |
-| Codex — cheap fallback      | `codex --profile foundry-mini`                        |
-| Claude Code                 | `claude`                                              |
+| Shared launcher             | `exec bash -l`                                        |
+| Codex — shared workspace    | `cd ~/projects && codex --profile foundry --search --dangerously-bypass-approvals-and-sandbox --add-dir "$HOME"` |
+| Codex — gpt-5.4 xhigh       | `cd ~/projects && codex --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox --add-dir "$HOME"` |
+| Claude Code                 | `cd ~/projects && claude --dangerously-skip-permissions --add-dir "$HOME"` |
 | Sync Mac → VM               | `~/dev-workspace/scripts/sync-mac-to-vm.sh <path>`    |
 | VM status                   | `systemctl --user status; tailscale status`            |
 
