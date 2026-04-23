@@ -1,54 +1,38 @@
 #!/usr/bin/env bash
 set -u
 [ -n "${AZURE_OPENAI_API_KEY:-}" ] || { [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"; }
-ok=0 warn=0 fail=0
-c(){ printf '\033[%sm%s\033[0m' "$1" "$2"; }
-good(){ ok=$((ok+1)); printf '  %s %s\n' "$(c 32 OK)" "$*"; }
-meh(){ warn=$((warn+1)); printf '  %s %s\n' "$(c 33 WARN)" "$*"; }
-bad(){ fail=$((fail+1)); printf '  %s %s\n' "$(c 31 FAIL)" "$*"; }
-sec(){ printf '\n%s\n' "$(c '1;36' "== $1 ==")"; }
+R=$'\033[31m'; G=$'\033[32m'; C=$'\033[36m'; N=$'\033[0m'; ok=0; fail=0
 have(){ command -v "$1" >/dev/null 2>&1; }
-ver(){ case "$1" in tmux) tmux -V 2>/dev/null ;; *) "$1" --version 2>/dev/null | sed -n '1p' ;; esac; }
+pass(){ ok=$((ok+1)); printf '%sPASS%s %s\n' "$G" "$N" "$*"; }
+no(){ fail=$((fail+1)); printf '%sFAIL%s %s\n' "$R" "$N" "$*"; }
+ver(){ "$1" --version 2>/dev/null | sed -n '1p'; }
+cfg_names(){ awk '/^\[profiles\./{n=$0; sub(/^\[profiles\./,"",n); sub(/\]$/,"",n); print n}' "$HOME/.codex/config.toml" 2>/dev/null; }
 
-printf '%s\n' "$(c '1' 'Dev Workspace Doctor')"
-sec "Foundry"
-if [ -n "${AZURE_OPENAI_API_KEY:-}" ]; then good "Foundry key loaded"; elif [ -f "$HOME/.config/wrkflo/foundry.env" ]; then bad "foundry.env exists but key is not loaded"; else bad "missing ~/.config/wrkflo/foundry.env"; fi
-
-sec "Tailscale"
-if ! have tailscale; then
-  bad "tailscale CLI missing"
-elif tailscale status >/dev/null 2>&1; then
-  peers=$(tailscale status --peers 2>/dev/null | awk '$5 != "-" {n++} END{print n+0}')
-  good "connected; ${peers} active peer(s)"
-else
-  bad "tailscale not connected"
-fi
-
-sec "Git"
-if ! have git; then
-  bad "git CLI missing"
-else
-  repos=0 dirty=0 no_up=0
-  for d in "$HOME"/projects/*; do
-    git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || continue
-    repos=$((repos+1)); n=$(basename "$d"); b=$(git -C "$d" symbolic-ref --quiet --short HEAD 2>/dev/null || git -C "$d" rev-parse --short HEAD)
-    git -C "$d" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1 || no_up=$((no_up+1))
-    git -C "$d" status --porcelain --ignore-submodules=dirty 2>/dev/null | sed -n '1q' | grep -q . && dirty=$((dirty+1))
-    printf '  %-30s %s\n' "$n" "$b"
-  done
-  [ "$repos" -gt 0 ] && good "checked $repos repos"
-  [ "$dirty" -eq 0 ] || meh "$dirty repo(s) dirty"
-  [ "$no_up" -eq 0 ] || meh "$no_up repo(s) missing upstream"
-fi
-
-sec "Disk"
-pct=$(df / | awk 'NR==2{gsub(/%/,"",$5); print $5}')
-if [ "$pct" -ge 90 ]; then bad "root disk at ${pct}%"; elif [ "$pct" -ge 80 ]; then meh "root disk at ${pct}%"; else good "root disk at ${pct}%"; fi
-
-sec "Required CLIs"
-for cmd in codex claude gh az tmux; do
-  if have "$cmd"; then good "$cmd: $(ver "$cmd")"; else bad "$cmd missing"; fi
+printf '%sDev Workspace Doctor%s\n' "$C" "$N"
+for cmd in codex claude; do
+  if have "$cmd"; then pass "$cmd $(ver "$cmd")"; else no "$cmd missing"; fi
 done
-
-printf '\nSummary: %s ok, %s warn, %s fail\n' "$ok" "$warn" "$fail"
+[ -n "${AZURE_OPENAI_API_KEY:-}" ] && pass "Foundry API key loaded" || no "Foundry API key not loaded"
+if have tailscale && tailscale status >/dev/null 2>&1; then pass "Tailscale connected"; else no "Tailscale not connected"; fi
+if have gh && gh auth status >/dev/null 2>&1; then pass "gh auth ok"; else no "gh auth missing"; fi
+name=$(git config --global user.name 2>/dev/null || true)
+[ -n "$name" ] && pass "git user.name set to $name" || no "git user.name missing"
+repos=(global-sentinel wrkflo-voice-agents-ops openclaw-prod global-sentinel-azure-quantum wrkflo-orchestrator dev-workspace)
+missing=()
+for repo in "${repos[@]}"; do [ -d "$HOME/projects/$repo/.git" ] || missing+=("$repo"); done
+[ "${#missing[@]}" -eq 0 ] && pass "all 6 repos exist under ~/projects" || no "missing repos: ${missing[*]}"
+disk=$(df / | awk 'NR==2{gsub(/%/,"",$5); print $5+0}')
+[ "$disk" -lt 90 ] && pass "disk ${disk}% used" || no "disk ${disk}% used"
+mem=$(free | awk '/Mem:/ {printf "%.0f", ($3/$2)*100}')
+[ "$mem" -lt 90 ] && pass "memory ${mem}% used" || no "memory ${mem}% used"
+req=(foundry-5_4 foundry-5_2 foundry-codex foundry-mini foundry-5-mini foundry-4o foundry-opus foundry-sonnet foundry-haiku)
+have_profiles=()
+while IFS= read -r n; do [ -n "$n" ] && have_profiles+=("$n"); done < <(cfg_names)
+missing=()
+for p in "${req[@]}"; do
+  hit=0; for n in "${have_profiles[@]}"; do [ "$n" = "$p" ] && { hit=1; break; }; done
+  [ "$hit" -eq 1 ] || missing+=("$p")
+done
+[ "${#missing[@]}" -eq 0 ] && pass "all 9 codex profiles exist" || no "missing profiles: ${missing[*]}"
+printf '\n%s passed, %s failed\n' "$ok" "$fail"
 [ "$fail" -eq 0 ]
