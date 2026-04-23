@@ -4,9 +4,9 @@ set -euo pipefail
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(CDPATH='' cd -- "${SCRIPT_DIR}/.." && pwd)
 
-LOG_DIR="${DWS_CRON_LOG_DIR:-/tmp}"
+LOG_DIR="${DWS_CRON_LOG_DIR:-/var/log/dws}"
 HEALTH_SCHEDULE="${DWS_HEALTH_CRON_SCHEDULE:-*/15 * * * *}"
-LOG_ROTATE_SCHEDULE="${DWS_LOG_ROTATE_CRON_SCHEDULE:-30 2 * * *}"
+LOG_ROTATE_SCHEDULE="${DWS_LOG_ROTATE_CRON_SCHEDULE:-30 2 * * 0}"
 SESSION_CLEANUP_SCHEDULE="${DWS_SESSION_CLEANUP_CRON_SCHEDULE:-0 4 * * *}"
 LOG_RETENTION_DAYS="${DWS_LOG_RETENTION_DAYS:-7}"
 SESSION_RETENTION_HOURS="${DWS_SESSION_RETENTION_HOURS:-24}"
@@ -18,6 +18,8 @@ BLOCK_END="# <<< dev-workspace managed cron <<<"
 PASS_COUNT=0
 FAIL_COUNT=0
 HEALTH_SCRIPT=""
+ROTATE_SCRIPT=""
+ROTATE_JOB=""
 CLEANUP_SCRIPT=""
 JOBS=()
 JOB_TAGS=()
@@ -53,8 +55,8 @@ usage() {
 usage: dws-cron-setup.sh [--check|--remove|--show|--help]
 
 Installs a managed crontab block for dev-workspace health checks, log
-rotation/retention, and stale session cleanup. Re-running the installer keeps
-the managed entries up to date without duplicating jobs.
+rotation for /var/log/dws, and stale session cleanup. Re-running the installer
+keeps the managed entries up to date without duplicating jobs.
 EOF
 }
 
@@ -116,9 +118,12 @@ strip_managed_block() {
 
 strip_legacy_jobs() {
   awk '
+    /^# >>> dev-workspace health check >>>$/ { next }
+    /^# <<< dev-workspace health check <<<$/ { next }
     /# dws-(health-check|cleanup|log-rotate|session-cleanup)$/ { next }
-    /(^|[[:space:]])[^#]*dws-health-check\.sh([[:space:]]|$)/ { next }
-    /(^|[[:space:]])[^#]*dws-cleanup\.sh([[:space:]]|$)/ { next }
+    index($0, "dws-health-check.sh") > 0 { next }
+    index($0, "dws-rotate-logs.sh") > 0 { next }
+    index($0, "dws-cleanup.sh") > 0 { next }
     { print }
   '
 }
@@ -127,6 +132,16 @@ build_jobs() {
   HEALTH_SCRIPT="${DWS_HEALTH_CHECK_SCRIPT:-$(resolve_script dws-health-check.sh)}"
   CLEANUP_SCRIPT="${DWS_CLEANUP_SCRIPT:-$(resolve_script dws-cleanup.sh)}"
 
+  if [ -n "${DWS_LOG_ROTATE_SCRIPT:-}" ]; then
+    ROTATE_SCRIPT="${DWS_LOG_ROTATE_SCRIPT}"
+    ROTATE_JOB="\"${ROTATE_SCRIPT}\""
+  elif ROTATE_SCRIPT=$(resolve_script dws-rotate-logs.sh 2>/dev/null); then
+    ROTATE_JOB="\"${ROTATE_SCRIPT}\""
+  else
+    ROTATE_SCRIPT="${CLEANUP_SCRIPT}"
+    ROTATE_JOB="\"${CLEANUP_SCRIPT}\" --session-hours ${DISABLED_RETENTION_HOURS} --log-days ${LOG_RETENTION_DAYS} --temp-days ${DISABLED_RETENTION_DAYS}"
+  fi
+
   JOB_TAGS=(
     dws-health-check
     dws-log-rotate
@@ -134,8 +149,8 @@ build_jobs() {
   )
   JOBS=(
     "${HEALTH_SCHEDULE} \"${HEALTH_SCRIPT}\" >>\"${LOG_DIR}/dws-health-check.cron.log\" 2>&1 # dws-health-check"
-    "${LOG_ROTATE_SCHEDULE} \"${CLEANUP_SCRIPT}\" --session-hours ${DISABLED_RETENTION_HOURS} --log-days ${LOG_RETENTION_DAYS} --temp-days ${DISABLED_RETENTION_DAYS} >>\"${LOG_DIR}/dws-log-rotate.cron.log\" 2>&1 # dws-log-rotate"
-    "${SESSION_CLEANUP_SCHEDULE} \"${CLEANUP_SCRIPT}\" --session-hours ${SESSION_RETENTION_HOURS} --log-days ${DISABLED_RETENTION_DAYS} --temp-days ${DISABLED_RETENTION_DAYS} >>\"${LOG_DIR}/dws-session-cleanup.cron.log\" 2>&1 # dws-session-cleanup"
+    "${LOG_ROTATE_SCHEDULE} ${ROTATE_JOB} >>\"${LOG_DIR}/dws-log-rotate.cron.log\" 2>&1 # dws-log-rotate"
+    "${SESSION_CLEANUP_SCHEDULE} \"${CLEANUP_SCRIPT}\" --session-hours ${SESSION_RETENTION_HOURS} --log-days ${LOG_RETENTION_DAYS} --temp-days ${DISABLED_RETENTION_DAYS} >>\"${LOG_DIR}/dws-session-cleanup.cron.log\" 2>&1 # dws-session-cleanup"
   )
 }
 
@@ -153,14 +168,22 @@ validate_targets() {
     fail "health-check target missing or not executable: ${HEALTH_SCRIPT}"
   fi
 
+  if [ -x "$ROTATE_SCRIPT" ]; then
+    pass "log-rotate target ready: ${ROTATE_SCRIPT}"
+  else
+    fail "log-rotate target missing or not executable: ${ROTATE_SCRIPT}"
+  fi
+
   if [ -x "$CLEANUP_SCRIPT" ]; then
     pass "cleanup target ready: ${CLEANUP_SCRIPT}"
   else
     fail "cleanup target missing or not executable: ${CLEANUP_SCRIPT}"
   fi
 
-  if [ -d "$LOG_DIR" ]; then
+  if [ -d "$LOG_DIR" ] && [ -w "$LOG_DIR" ]; then
     pass "cron log dir ready: ${LOG_DIR}"
+  elif [ -d "$LOG_DIR" ]; then
+    fail "cron log dir is not writable: ${LOG_DIR}"
   else
     fail "cron log dir missing: ${LOG_DIR}"
   fi
@@ -252,11 +275,11 @@ esac
 
 have crontab || die "crontab is required"
 validate_config
-ensure_log_dir
 build_jobs
 
 case "$MODE" in
   install)
+    ensure_log_dir
     validate_targets
     install_jobs
     verify_cron_service

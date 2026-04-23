@@ -2,17 +2,16 @@
 
 Observed on `dev-workspace-vm` on 2026-04-23 UTC.
 
-This file records what the runtime and boot behavior actually looks like before
-service-management cleanup and reboot hardening.
+This file records the live runtime and boot behavior currently in use on the
+VM, not just the checked-in repo intent.
 
-## Active runtime truth
+## Managed tmux truth
 
-Observed `tmux` sessions:
+Observed `tmux` sessions included:
 
 ```text
 dws-a
 dws-b
-monitor
 orchestrator
 worker-c
 worker-d
@@ -20,49 +19,53 @@ worker-e
 worker-f
 worker-g
 worker-h
+worker-i
 ```
 
 Interpretation:
 
-- `monitor` is the active queue/worker supervision loop
-- `orchestrator` is a dedicated `wrkflo-orchestrator` Codex session
-- `dws-a`, `dws-b`, and `worker-c` through `worker-h` are active worker panes
+- The managed boot set is `dws-a`, `dws-b`, `worker-c` through `worker-h`, and
+  `orchestrator` (9 sessions total).
+- `worker-i` is an ad hoc extra session, not part of the managed boot contract.
+- There is no dedicated `monitor` `tmux` session in the managed service model.
 
 ## Task monitor truth
 
-Current monitor entrypoint:
+Current live entrypoint:
 
 - `~/bin/task-monitor.sh`
 
+Current live service:
+
+- `dws-task-monitor.service`
+
 Current runtime behavior:
 
-- runs inside the `tmux` session named `monitor`
+- runs as a systemd user service, not inside `tmux`
 - loops every `30` seconds
 - manages eight worker sessions
-- writes to:
-  - `/tmp/monitor-log.txt`
-  - `/tmp/monitor-status.json`
-  - `/tmp/task-queue.json`
+- writes cycle logs to `/var/log/dws/monitor.log`
+- reads and updates `~/projects/dev-workspace/.state/task-queue.json`
 - recreates worker sessions that are dead, crashed, compacted, or stuck
 - recreates the `orchestrator` `tmux` session if it disappears
 
-Important limitation:
+Important note:
 
-- the monitor is **not** currently managed by systemd
-- it depends on a live `tmux` session and manual/session-init startup
+- some repo tooling and older docs still reference `/tmp/monitor-log.txt`,
+  `/tmp/monitor-status.json`, or `/tmp/task-queue.json`
+- those are legacy assumptions, not the authoritative live task-monitor outputs
 
 ## Queue truth
 
-The runtime queue is live and mutable:
+The live queue is:
 
-- source of truth: `/tmp/task-queue.json`
-- status snapshot: `/tmp/monitor-status.json`
+- source of truth: `~/projects/dev-workspace/.state/task-queue.json`
+- primary monitor log: `/var/log/dws/monitor.log`
 
-Observed during verification:
+Operational implication:
 
-- queue totals and worker assignments were changing live while workers completed
-  and picked up follow-on tasks
-- this means queue docs must treat current counts as ephemeral, not static
+- if `dws-status.sh` or `dws-doctor.sh` disagree with the service state, trust
+  `systemctl --user`, `/var/log/dws/monitor.log`, and the `.state` queue first
 
 ## Systemd user service truth
 
@@ -72,41 +75,22 @@ User lingering is enabled:
 
 Active user services observed:
 
+- `dws-sessions-init.service`
+- `dws-task-monitor.service`
 - `dws-phone-server.service`
 - `wrkflo-orchestrator-api.service`
 
 Service definitions:
 
-- `dws-phone-server.service`
-  - runs `%h/bin/dws-phone-server.py`
-  - restart policy: `always`
-  - binds the phone callback server on `0.0.0.0:8081`
-- `wrkflo-orchestrator-api.service`
-  - runs the orchestrator API on `127.0.0.1:8100`
+- `dws-sessions-init.service`
+  - runs `%h/bin/dws-sessions-init.sh`
+  - oneshot bootstrap that recreates the 9 managed `tmux` sessions
+  - remains `active (exited)` after success
+- `dws-task-monitor.service`
+  - runs `%h/bin/task-monitor.sh`
+  - starts after `dws-sessions-init.service`
   - restart policy: `on-failure`
-
-Important gap:
-
-- there is **no** `task-monitor.service`
-- there is **no** managed service today that ensures the worker `tmux` pool or
-  monitor loop come back after reboot
-
-## Cron truth
-
-`cron` is active and a managed `dev-workspace` block is installed in the user
-crontab.
-
-Observed entries:
-
-- health check every 15 minutes
-- log rotate / cleanup pass at 02:30 UTC
-- session cleanup pass at 04:00 UTC
-
-Current cron logs still write into `/tmp`:
-
-- `/tmp/dws-health-check.cron.log`
-- `/tmp/dws-log-rotate.cron.log`
-- `/tmp/dws-session-cleanup.cron.log`
+  - keeps the monitor loop alive independently of interactive logins
 
 ## Boot truth
 
@@ -116,72 +100,44 @@ What already recovers on reboot:
 - `ssh.socket` / `ssh.service`
 - `cron`
 - user systemd services because `Linger=yes`
+  - `dws-sessions-init.service`
+  - `dws-task-monitor.service`
   - `dws-phone-server.service`
   - `wrkflo-orchestrator-api.service`
 
-What does **not** yet have managed boot recovery:
+What still needs explicit proof:
 
-- `monitor` `tmux` session
-- worker `tmux` sessions
-- `orchestrator` `tmux` session
-- automatic invocation of `bin/dws-sessions-init.sh`
+- a filled reboot drill result has not yet been committed into the repo
+- the repo contains the drill plan and results template, but not a completed run
 
-## Session-init truth
+## Repo / live drift truth
 
-There is already a bootstrap script:
+The VM-local `~/bin` entrypoints can drift from the checked-in repo copies.
 
-- [`bin/dws-sessions-init.sh`](/home/moses/projects/dev-workspace/bin/dws-sessions-init.sh)
+Observed examples on 2026-04-23:
 
-It can:
+- installed `~/bin/dws-sessions-init.sh` recreates the 9 managed sessions only
+- checked-in `scripts/dws-sessions-init.sh` still includes a `monitor` session
+- installed `~/bin/dws-boot-verify.sh` still checks older paths and assumptions
 
-- create `dws-a`, `dws-b`, `worker-c`..`worker-h`, `orchestrator`, and `monitor`
-- set `tmux` metadata for worker sessions
-- verify each session becomes healthy
-- reuse healthy sessions on rerun
-- force recreation with `--force`
+Operational rule:
 
-There is also a focused test:
-
-- [`tests/test_dws_sessions_init.sh`](/home/moses/projects/dev-workspace/tests/test_dws_sessions_init.sh)
-
-Current gap:
-
-- the script exists, but nothing managed runs it automatically at boot
-
-## Reboot-recovery truth
-
-A full reboot-recovery drill has **not** yet been verified.
-
-That means these claims are still unproven end to end:
-
-- monitor auto-recovery after reboot
-- worker pool auto-recovery after reboot
-- launcher/session-init interplay after reboot
-- Mac reconnect and phone operator path after reboot
-
-## Recommended service-management direction
-
-Minimal-risk next step:
-
-1. keep `tmux` as the operator-visible worker substrate
-2. add a user systemd service that runs `bin/dws-sessions-init.sh`
-3. add a user systemd service for `~/bin/task-monitor.sh`
-4. make those depend on network and user linger, not interactive login
-
-This preserves the current workflow while removing manual boot dependence.
+- treat active user-service state plus the installed `~/bin` entrypoints as the
+  live runtime truth
+- treat the repo `bin/`, `scripts/`, and `config/systemd-user/` files as the
+  source used to redeploy or reconcile the host
 
 ## Verification commands
 
 ```bash
 tmux list-sessions
-tmux capture-pane -t monitor -p | tail -40
-sed -n '1,220p' /tmp/monitor-status.json
-sed -n '1,220p' /tmp/task-queue.json
+systemctl --user status dws-sessions-init.service --no-pager
+systemctl --user status dws-task-monitor.service --no-pager
+tail -n 40 /var/log/dws/monitor.log
+sed -n '1,220p' ~/projects/dev-workspace/.state/task-queue.json
 systemctl --user list-units --type=service --state=running --no-pager
-systemctl --user cat dws-phone-server.service
-systemctl --user cat wrkflo-orchestrator-api.service
 loginctl show-user "$USER" -p Linger -p RuntimePath -p State
 crontab -l
-sed -n '1,260p' bin/dws-sessions-init.sh
-sed -n '1,240p' tests/test_dws_sessions_init.sh
+~/projects/dev-workspace/bin/dws-boot-verify.sh
+~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```

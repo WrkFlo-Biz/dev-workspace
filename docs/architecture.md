@@ -13,7 +13,8 @@ Mac Terminal.app / iPhone Termius
         -> Tailscale / MagicDNS
         -> dev-workspace-vm
         -> SSH login shell
-        -> scripts/dws-launcher.sh
+        -> ~/bin/dws-launcher.sh
+           (deployed from scripts/dws-launcher.sh)
         -> tmux
         -> codex --profile ... / claude
 ```
@@ -98,19 +99,20 @@ Notes:
 
 ## SSH and login lifecycle
 
-Interactive SSH logins land in the launcher unless `SKIP_LAUNCHER=1` is set:
+Interactive SSH logins land in the installed launcher unless
+`SKIP_LAUNCHER=1` is set:
 
 ```text
 ssh moses@dev-workspace-vm
   -> login shell / bash -l
   -> loads ~/.config/wrkflo/foundry.env if needed
-  -> scripts/dws-launcher.sh
+  -> ~/bin/dws-launcher.sh
   -> project picker or reconnect menu
   -> tmux attach/new-session
   -> codex or claude inside ~/projects/<repo>
 ```
 
-Launcher behavior from [`scripts/dws-launcher.sh`](../scripts/dws-launcher.sh):
+Live behavior is deployed from [`scripts/dws-launcher.sh`](../scripts/dws-launcher.sh):
 
 - Runs only for interactive shells.
 - Shows active session count, health timestamp, disk usage, and queue summary.
@@ -169,15 +171,14 @@ Recovery and inspection are handled by
 - `recover` respawns the original pane command in place
 - `relaunch` starts a fresh quick-launch session for the same repo/profile
 
-### Autonomous control-plane sessions
+### Managed tmux sessions
 
-The live `tmux` server inspected on April 23, 2026 contains:
+The service-managed `tmux` pool expected on the VM is:
 
 ```text
-monitor
-orchestrator
 dws-a
 dws-b
+orchestrator
 worker-c
 worker-d
 worker-e
@@ -188,26 +189,49 @@ worker-h
 
 Operational meaning:
 
-- `monitor` runs the queue/worker monitor loop.
 - `orchestrator` is a dedicated `wrkflo-orchestrator` Codex session.
 - `dws-a`, `dws-b`, and `worker-c` through `worker-h` are autonomous worker panes.
+- The monitor is not part of the managed `tmux` pool anymore; it runs as the
+  user service `dws-task-monitor.service`.
+- Additional ad hoc sessions can exist during live operation. Those sessions are
+  not part of the managed boot set and should not be used as the expected
+  service baseline.
 
 This matters because older docs reference a `planner` tmux session. On this VM,
 the active control-plane session observed on April 23, 2026 is `orchestrator`,
 not `planner`.
 
+### Systemd user services
+
+Service installation is defined by:
+
+- [`config/systemd-user/dws-sessions-init.service`](../config/systemd-user/dws-sessions-init.service)
+- [`config/systemd-user/dws-task-monitor.service`](../config/systemd-user/dws-task-monitor.service)
+- [`bin/dws-systemd-user-setup.sh`](../bin/dws-systemd-user-setup.sh)
+
+Managed units:
+
+| Unit | ExecStart | Role |
+| --- | --- | --- |
+| `dws-sessions-init.service` | `/usr/bin/bash %h/bin/dws-sessions-init.sh` | oneshot bootstrap that recreates the 9 managed `tmux` sessions |
+| `dws-task-monitor.service` | `/usr/bin/bash %h/bin/task-monitor.sh` | long-running monitor loop that starts after `dws-sessions-init.service` |
+
+The installed `~/bin` copies are the live service entrypoints. The repo files
+are the source used to install or redeploy them.
+
 ## Task monitor
 
-Current entrypoint: `~/bin/task-monitor.sh`
+Current live entrypoint: `~/bin/task-monitor.sh`
+
+Current service: `dws-task-monitor.service`
 
 Current runtime characteristics:
 
 | Item | Value |
 | --- | --- |
 | Loop interval | `30` seconds |
-| Queue file | `/tmp/task-queue.json` |
-| Monitor log | `/tmp/monitor-log.txt` |
-| Status snapshot | `/tmp/monitor-status.json` |
+| Queue file | `~/projects/dev-workspace/.state/task-queue.json` |
+| Monitor log | `/var/log/dws/monitor.log` |
 | Managed workers | `dws-a`, `dws-b`, `worker-c`..`worker-h` |
 | Special session | `orchestrator` is health-checked and recreated immediately if missing |
 
@@ -216,23 +240,30 @@ Behavior:
 - Reads the tail of each worker pane and classifies it as `WORKING`, `IDLE`,
   `COMPACTED`, `CRASHED`, `RATELIMIT`, `DEAD`, or `UNKNOWN`.
 - Marks `in_progress` tasks complete when a worker goes idle again.
-- Assigns the next pending task from `/tmp/task-queue.json`.
+- Assigns the next pending task from
+  `~/projects/dev-workspace/.state/task-queue.json`.
 - Auto-refills the queue when pending tasks drop below the low-water mark.
 - Relaunches crashed, compacted, or dead workers in fresh `tmux` sessions.
 - Recreates the `orchestrator` session immediately if it crashes or disappears.
+- Writes the operator-visible cycle log to `/var/log/dws/monitor.log`.
+
+Some repo tooling still defaults to legacy `/tmp/monitor-*` or `/tmp/task-queue`
+artifacts. Treat the user-service state, the managed queue under `.state/`, and
+`/var/log/dws/monitor.log` as the authoritative runtime surfaces.
 
 The quickest runtime truth checks are:
 
 ```bash
+systemctl --user status dws-sessions-init.service --no-pager
+systemctl --user status dws-task-monitor.service --no-pager
+tail -n 40 /var/log/dws/monitor.log
+sed -n '1,220p' ~/projects/dev-workspace/.state/task-queue.json
 tmux list-sessions
-tmux capture-pane -t monitor -p | tail -40
-sed -n '1,220p' /tmp/monitor-status.json
-sed -n '1,220p' /tmp/task-queue.json
 ```
 
-`bin/dws-status.sh` and the launcher header also try to read the local
-orchestrator health API at `http://127.0.0.1:8100/v1/workspace/health` when it
-is available.
+`bin/dws-status.sh` and `scripts/dws-launcher.sh status` summarize the same
+environment and also try to read the local orchestrator health API at
+`http://127.0.0.1:8100/v1/workspace/health` when it is available.
 
 ## Foundry model layer
 
@@ -501,17 +532,19 @@ Use the session tool instead of guessing:
 Checks:
 
 ```bash
+systemctl --user status dws-task-monitor.service --no-pager
+journalctl --user -u dws-task-monitor.service -n 40 --no-pager
 tmux list-sessions
-tmux capture-pane -t monitor -p | tail -40
-sed -n '1,220p' /tmp/monitor-status.json
-tail -n 40 /tmp/monitor-log.txt
+tail -n 40 /var/log/dws/monitor.log
+sed -n '1,220p' ~/projects/dev-workspace/.state/task-queue.json
 ```
 
 Restart:
 
 ```bash
-tmux kill-session -t monitor 2>/dev/null || true
-tmux new-session -d -s monitor "exec /home/moses/bin/task-monitor.sh"
+systemctl --user restart dws-task-monitor.service
+systemctl --user status dws-task-monitor.service --no-pager
+tail -n 40 /var/log/dws/monitor.log
 ```
 
 The monitor will recreate the `orchestrator` session on its next cycle if that

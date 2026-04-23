@@ -19,7 +19,9 @@ assert_contains() {
 
 assert_not_contains() {
   local haystack="${1:-}" needle="${2:-}"
-  printf '%s\n' "$haystack" | grep -F -- "$needle" >/dev/null && fail "unexpected output: $needle"
+  if printf '%s\n' "$haystack" | grep -F -- "$needle" >/dev/null; then
+    fail "unexpected output: $needle"
+  fi
 }
 
 write_fake_command() {

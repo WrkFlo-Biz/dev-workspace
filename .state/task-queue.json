@@ -806,7 +806,7 @@
       "repo": "wrkflo-orchestrator",
       "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
       "assigned": "worker-c",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "auto-4-ebqb",
@@ -814,7 +814,7 @@
       "repo": "wrkflo-orchestrator",
       "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
       "assigned": "worker-g",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "auto-4-hytp",
@@ -822,15 +822,15 @@
       "repo": "wrkflo-orchestrator",
       "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
       "assigned": "worker-f",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "auto-4-ukpf",
       "phase": 4,
       "repo": "wrkflo-orchestrator",
       "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
-      "assigned": null,
-      "status": "pending"
+      "assigned": "dws-a",
+      "status": "completed"
     },
     {
       "id": "auto-5-iwtb",
@@ -838,7 +838,7 @@
       "repo": "dev-workspace",
       "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
       "assigned": "worker-d",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "auto-5-qylg",
@@ -846,7 +846,7 @@
       "repo": "dev-workspace",
       "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
       "assigned": "dws-b",
-      "status": "in_progress"
+      "status": "completed"
     }
   ]
 }

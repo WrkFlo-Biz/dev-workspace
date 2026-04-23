@@ -10,15 +10,17 @@ When something looks wrong, start here before editing queue state or restarting 
 ~/projects/dev-workspace/bin/dws-status.sh
 ~/projects/dev-workspace/bin/dws-doctor.sh
 ~/projects/dev-workspace/bin/dws-sessions.sh list
-tail -n 40 /tmp/monitor-log.txt
-tail -n 40 /tmp/planner-log.txt
+systemctl --user status dws-task-monitor.service --no-pager
+tail -n 40 /var/log/dws/monitor.log
 ```
 
-If those disagree with each other, inspect the raw queue only after the logs and
-`tmux` state line up:
+If those disagree with each other, trust the user-service state and
+`/var/log/dws/monitor.log` first. Inspect the raw queue only after the service
+log and `tmux` state line up:
 
 ```bash
-jq -r '.tasks[]? | select(.status=="in_progress") | [.id,.assigned,.repo] | @tsv' /tmp/task-queue.json
+jq -r '.tasks[]? | select(.status=="in_progress") | [.id,.assigned,.repo] | @tsv' \
+  ~/projects/dev-workspace/.state/task-queue.json
 ```
 
 ## SSH Drops
@@ -174,13 +176,13 @@ Fix:
 ```bash
 ~/projects/dev-workspace/bin/dws-sessions.sh show <session>
 tmux capture-pane -t <session> -p | tail -n 40
-grep -E 'COMPACTED|compact task|high demand' /tmp/monitor-log.txt | tail -n 20
+grep -E 'COMPACTED|compact task|high demand' /var/log/dws/monitor.log | tail -n 20
 ```
 
 2. If the pane is still at the restart prompt, press `r` once to retry inside the same `tmux` session.
 3. If the same session should continue, run `~/projects/dev-workspace/bin/dws-sessions.sh recover <session>`.
 4. If compaction repeats or the context is obviously too large, run `~/projects/dev-workspace/bin/dws-sessions.sh relaunch <session>`.
-5. Before relaunching, copy the last task text out of `show` or `/tmp/monitor-log.txt` and leave a short handoff note in the repo.
+5. Before relaunching, copy the last task text out of `show` or `/var/log/dws/monitor.log` and leave a short handoff note in the repo.
 
 If it keeps happening:
 1. Start a new session with a cleaner prompt and smaller working set
@@ -191,7 +193,7 @@ If it keeps happening:
 
 Symptoms:
 - `~/projects/dev-workspace/bin/dws-doctor.sh` reports stale or failed monitor artifacts
-- `/tmp/monitor-status.json`, `/tmp/monitor-log.txt`, or `/tmp/orchestrator-monitor.log` stop advancing
+- `dws-task-monitor.service` is inactive or `/var/log/dws/monitor.log` stops advancing
 - Queue-backed workers stop relaunching even though the queue still has work
 
 Fix:
@@ -200,38 +202,42 @@ Fix:
 ```bash
 ~/projects/dev-workspace/bin/dws-status.sh
 ~/projects/dev-workspace/bin/dws-doctor.sh
-tmux list-sessions | grep '^monitor:' || true
-tail -n 40 /tmp/monitor-log.txt
-tail -n 40 /tmp/orchestrator-monitor.log
+systemctl --user status dws-task-monitor.service --no-pager
+journalctl --user -u dws-task-monitor.service -n 40 --no-pager
+tail -n 40 /var/log/dws/monitor.log
+sed -n '1,120p' ~/projects/dev-workspace/.state/task-queue.json
+tmux list-sessions
 ```
 
-2. Restart the monitor loop:
+2. Restart the monitor service:
 
 ```bash
-tmux kill-session -t monitor 2>/dev/null || true
-tmux new-session -d -s monitor \
-  "export SKIP_LAUNCHER=1; source ~/.config/wrkflo/foundry.env 2>/dev/null; exec /home/moses/bin/task-monitor.sh"
-tail -n 40 /tmp/monitor-log.txt
-sed -n '1,120p' /tmp/monitor-status.json
+systemctl --user restart dws-task-monitor.service
+systemctl --user status dws-task-monitor.service --no-pager
+tail -n 40 /var/log/dws/monitor.log
 ```
 
 3. If the whole worker pool disappeared after reboot or a bad deploy, rebuild the managed `tmux` sessions:
 
 ```bash
-~/projects/dev-workspace/bin/dws-sessions-init.sh --force
+systemctl --user restart dws-sessions-init.service
 tmux list-sessions
 ```
 
-4. If the planner artifacts are stale too, restart the planner loop separately:
+4. If the installed units are missing or stale, reinstall them and rerun both services:
 
 ```bash
-tmux kill-session -t planner 2>/dev/null || true
-tmux new-session -d -s planner \
-  "export SKIP_LAUNCHER=1; source ~/.config/wrkflo/foundry.env 2>/dev/null; exec python3 /home/moses/bin/task-planner.py"
-tail -n 40 /tmp/planner-log.txt
+~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
+systemctl --user daemon-reload
+systemctl --user restart dws-sessions-init.service
+systemctl --user restart dws-task-monitor.service
 ```
 
 5. Re-run `~/projects/dev-workspace/bin/dws-status.sh` and `~/projects/dev-workspace/bin/dws-doctor.sh` until the runtime artifacts go fresh again.
+
+Notes:
+- The normal monitor recovery path is the user service, not a dedicated `monitor` `tmux` session.
+- `scripts/dws-doctor.sh` still reads some legacy `/tmp/*` artifacts by default, so let `systemctl --user` plus `/var/log/dws/monitor.log` break ties if the tools disagree.
 
 ## Firewall Rollback
 
@@ -298,7 +304,7 @@ Symptoms:
 Fix:
 1. Snapshot the live runtime first: `~/projects/dev-workspace/bin/dws-backup.sh backup`
 2. Validate the latest snapshot and prune expired backup artifacts in one pass: `~/projects/dev-workspace/bin/dws-backup.sh verify-restore latest --prune`
-3. Validate the queue file itself: `jq . /tmp/task-queue.json >/dev/null`
+3. Validate the queue file itself: `jq . ~/projects/dev-workspace/.state/task-queue.json >/dev/null`
 4. Compare queue assignments to live worker state with `~/projects/dev-workspace/bin/dws-sessions.sh list`
 5. If the queue is corrupted or obviously older than the newest snapshot, restore it: `~/projects/dev-workspace/bin/dws-backup.sh restore latest`
 6. Restart planner and monitor after queue repair so they reread the corrected state
@@ -375,8 +381,11 @@ Notes:
 ~/projects/dev-workspace/bin/dws-connect-test.sh
 ~/projects/dev-workspace/bin/dws-termius-setup.sh
 ~/projects/dev-workspace/bin/dws-firewall.sh --dry-run
-~/projects/dev-workspace/scripts/dws-health.sh
+~/projects/dev-workspace/scripts/dws-launcher.sh status
+~/projects/dev-workspace/scripts/dws-health.sh --json
 ~/projects/dev-workspace/scripts/dws-quick.sh gs codex
+systemctl --user status dws-task-monitor.service --no-pager
+tail -n 40 /var/log/dws/monitor.log
 ```
 
 See also `docs/runbook.md`, `docs/live-access-truth.md`, `docs/termius.md`, `docs/termius-setup.md`, and `docs/tailscale.md`.

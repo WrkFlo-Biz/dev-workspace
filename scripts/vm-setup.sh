@@ -14,6 +14,7 @@ SYSTEMD_USER_DIR="${SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
 ORCHESTRATOR_DIR="${ORCHESTRATOR_DIR:-$PROJECTS_DIR/wrkflo-orchestrator}"
 WRKFLO_ORG="${WRKFLO_ORG:-Wrk-Flo}"
 WRKFLO_GIT_BASE_URL="${WRKFLO_GIT_BASE_URL:-https://github.com/$WRKFLO_ORG}"
+CRON_LOG_DIR="${DWS_CRON_LOG_DIR:-/var/log/dws}"
 
 SYSTEM_PACKAGES=(
   tmux
@@ -583,6 +584,26 @@ EOF
   rm -f "$clean_file" "$final_file" 2>/dev/null || true
 }
 
+ensure_cron_log_dir() {
+  local group_name
+
+  group_name="$(id -gn)"
+  if [ -d "$CRON_LOG_DIR" ] && [ -w "$CRON_LOG_DIR" ]; then
+    skip_item "cron log directory already writable: $CRON_LOG_DIR"
+    return 0
+  fi
+
+  if [ -d "$CRON_LOG_DIR" ]; then
+    run_root chown "$USER:$group_name" "$CRON_LOG_DIR"
+    run_root chmod 0775 "$CRON_LOG_DIR"
+    done_item "updated cron log directory permissions: $CRON_LOG_DIR"
+    return 0
+  fi
+
+  run_root install -d -o "$USER" -g "$group_name" -m 0775 "$CRON_LOG_DIR"
+  done_item "created cron log directory: $CRON_LOG_DIR"
+}
+
 ensure_health_check_cron() {
   local current clean final
 
@@ -590,6 +611,8 @@ ensure_health_check_cron() {
     warn "crontab not available; skipping health-check cron"
     return 0
   fi
+
+  ensure_cron_log_dir
 
   current="$(mktemp)"
   clean="$(mktemp)"
@@ -609,7 +632,7 @@ ensure_health_check_cron() {
   fi
   {
     echo "# >>> dev-workspace health check >>>"
-    printf '*/15 * * * * "%s" >/dev/null 2>&1\n' "$BIN_DIR/dws-health-check.sh"
+    printf '*/15 * * * * "%s" >>"%s/dws-health-check.cron.log" 2>&1\n' "$BIN_DIR/dws-health-check.sh" "$CRON_LOG_DIR"
     echo "# <<< dev-workspace health check <<<"
   } >>"$final"
 
