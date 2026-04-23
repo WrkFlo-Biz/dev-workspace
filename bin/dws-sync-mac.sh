@@ -4,9 +4,6 @@ set -euo pipefail
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(CDPATH='' cd -- "${SCRIPT_DIR}/.." && pwd)
 
-# shellcheck source=../scripts/dws-env.sh
-. "${REPO_ROOT}/scripts/dws-env.sh"
-
 SSH_RSH='ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new'
 MAC_SSH_HOST="${MAC_SSH_HOST:-mosestut@100.78.207.22}"
 MAC_GUI_URL="${MAC_GUI_URL:-http://100.78.207.22:9223}"
