@@ -1,85 +1,74 @@
 #!/usr/bin/env bash
+# dws-health.sh — quick health dashboard for the dev workspace VM
 set -u
-[ -n "${AZURE_OPENAI_API_KEY:-}" ] || { [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"; }
-: "${MAC_GUI_URL:=http://100.78.207.22:9223}"
-: "${MAC_CDP_URL:=http://100.78.207.22:9222}"
 
-c(){ printf '\033[%sm%s\033[0m' "$1" "$2"; }
-g(){ c 32 "$1"; }
-y(){ c 33 "$1"; }
-r(){ c 31 "$1"; }
-h(){ c '1;36' "$1"; }
-d(){ c 2 "$1"; }
-sec(){ printf '\n%s\n' "$(h "== $1 ==")"; }
-have(){ command -v "$1" >/dev/null 2>&1; }
-http(){ curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null || printf 'ERR'; }
-paint(){ case "$1" in 2??) g "$1" ;; 3??) y "$1" ;; *) r "$1" ;; esac; }
-reach(){ case "$1" in 000|ERR) r "$1" ;; *) g "$1" ;; esac; }
-ver(){ case "$1" in tmux) tmux -V 2>/dev/null ;; *) "$1" --version 2>/dev/null | sed -n '1p' ;; esac; }
+c()  { printf '\033[%sm%s\033[0m' "$1" "$2"; }
+bold() { c '1' "$1"; }
+green(){ c '32' "$1"; }
+red()  { c '31' "$1"; }
+dim()  { c '2' "$1"; }
+hr()   { echo '────────────────────────────────────────'; }
 
-[ -t 1 ] && clear 2>/dev/null || true
-printf '%s %s\n' "$(h 'Dev Workspace Health')" "$(d "$(date '+%Y-%m-%d %H:%M:%S %Z')")"
+ok_or_fail() { [ "$1" = "0" ] && green "ok" || red "FAIL"; }
 
-sec "Tailscale Mesh"
-if have tailscale; then
-  tailscale status 2>/dev/null | awk '
-    $2 && $2 != "-" && $0 !~ /offline|stopped/ {
-      s = $5; for (i = 6; i <= NF; i++) s = s " " $i
-      if (s == "-" || s == "") s = "online"
-      printf "  %-24s %-6s %s\n", $2, $4, s
-    }'
-else
-  echo "  tailscale missing"
-fi
+reach() {
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 "$1" 2>/dev/null)
+  [ "$code" -ge 200 ] && [ "$code" -lt 400 ] && echo 0 || echo 1
+}
 
-sec "tmux Sessions"
-if have tmux && tmux ls >/dev/null 2>&1; then
-  tmux ls -F '  #{session_name}  #{?session_attached,attached,detached}  #{session_windows}w'
-else
-  echo "  no tmux sessions"
-fi
+http() { curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 "$1" 2>/dev/null; }
 
-sec "Projects"
-for d in "$HOME"/projects/*; do
-  [ -e "$d" ] || continue
-  git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || continue
-  n=$(basename "$d")
-  b=$(git -C "$d" symbolic-ref --quiet --short HEAD 2>/dev/null || git -C "$d" rev-parse --short HEAD 2>/dev/null)
-  if git -C "$d" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
-    set -- $(git -C "$d" rev-list --left-right --count '@{upstream}...HEAD' 2>/dev/null)
-    div="+$2/-$1"
-  else
-    div="no-upstream"
-  fi
-  dirty=$(git -C "$d" status --porcelain --ignore-submodules=dirty 2>/dev/null | sed -n '1p')
-  printf '  %-30s %-14s %-12s %s\n' "$n" "$b" "$div" "$([ -n "$dirty" ] && y dirty || g clean)"
+clear 2>/dev/null || true
+echo
+bold '  ⎈ dev-workspace health'; echo
+hr
+
+# System
+bold '  system'; echo
+printf '  uptime:  %s\n' "$(uptime -p 2>/dev/null || uptime)"
+printf '  disk:    %s\n' "$(df -h / | awk 'NR==2{print $3"/"$2" ("$5" used)"}')"
+printf '  memory:  %s\n' "$(free -h | awk 'NR==2{print $3"/"$2}')"
+echo
+
+# Tools
+bold '  tools'; echo
+printf '  codex:   %s\n' "$(codex --version 2>/dev/null || echo 'not found')"
+printf '  claude:  %s\n' "$(claude --version 2>/dev/null || echo 'not found')"
+printf '  gh:      %s\n' "$(gh auth status 2>&1 | grep -o 'Logged in to.*' || echo 'not authenticated')"
+printf '  az:      %s\n' "$(az account show --query 'user.name' -o tsv 2>/dev/null || echo 'not authenticated')"
+printf '  foundry: %s\n' "$([ -n "${AZURE_OPENAI_API_KEY:-}" ] && green 'key loaded' || red 'key MISSING')"
+echo
+
+# tmux sessions
+bold '  sessions'; echo
+if tmux ls 2>/dev/null | sed 's/^/  /'; then true; else dim '  (none)'; echo; fi
+echo
+
+# Projects
+bold '  projects'; echo
+for d in "$HOME"/projects/*/; do
+  name=$(basename "$d")
+  branch=$(git -C "$d" symbolic-ref --short HEAD 2>/dev/null || echo '-')
+  dirty=$(git -C "$d" status --porcelain 2>/dev/null | head -1)
+  marker=$([ -n "$dirty" ] && echo ' *' || echo '')
+  printf '  %-30s %s%s\n' "$name" "$branch" "$marker"
 done
+echo
 
-sec "Tooling"
-printf '  foundry key  %s\n' "$([ -n "${AZURE_OPENAI_API_KEY:-}" ] && g loaded || r missing)"
-printf '  codex        %s\n' "$(have codex && ver codex || r missing)"
-printf '  claude       %s\n' "$(have claude && ver claude || r missing)"
+# Services
+bold '  services'; echo
+orch_status=$(reach 'http://127.0.0.1:8787/healthz')
+printf '  orchestrator:  %s  %s\n' "$(ok_or_fail $orch_status)" "http://127.0.0.1:8787"
 
-sec "Auth"
-if have gh && gh auth status >/dev/null 2>&1; then
-  gh_user=$(gh auth status 2>/dev/null | sed -n 's/.*account \([^ ]*\).*/\1/p' | head -1)
-  printf '  gh           %s\n' "$(g "${gh_user:-ok}")"
-else
-  printf '  gh           %s\n' "$(r missing)"
-fi
-if have az; then
-  az_acct=$(az account show --query '[user.name,name]' -o tsv 2>/dev/null | paste -sd'|' -)
-  [ -n "$az_acct" ] && printf '  az           %s\n' "$(g "$az_acct")" || printf '  az           %s\n' "$(r missing)"
-else
-  printf '  az           %s\n' "$(r missing)"
-fi
+mac_gui=$(reach "${MAC_GUI_URL:-http://100.78.207.22:9223}")
+printf '  mac gui:       %s  %s\n' "$(ok_or_fail $mac_gui)" "${MAC_GUI_URL:-http://100.78.207.22:9223}"
 
-sec "System"
-printf '  disk         %s\n' "$(df -h / | awk 'NR == 2 { print $3 "/" $2 " (" $5 " used)" }')"
-printf '  memory       %s\n' "$(free -h | awk 'NR == 2 { print $3 "/" $2 " used" }')"
-printf '  uptime       %s\n' "$(uptime -p 2>/dev/null || uptime)"
+mac_cdp=$(reach "${MAC_CDP_URL:-http://100.78.207.22:9222}")
+printf '  mac cdp:       %s  %s\n' "$(ok_or_fail $mac_cdp)" "${MAC_CDP_URL:-http://100.78.207.22:9222}"
+echo
 
-sec "HTTP"
-printf '  orchestrator %s\n' "$(paint "$(http http://localhost:8787/healthz)")"
-printf '  mac gui      %s  %s\n' "$(reach "$(http "$MAC_GUI_URL")")" "$MAC_GUI_URL"
-printf '  mac cdp      %s  %s\n' "$(reach "$(http "$MAC_CDP_URL")")" "$MAC_CDP_URL"
+# Tailscale
+bold '  tailnet'; echo
+sudo tailscale status 2>&1 | head -5 | sed 's/^/  /'
+echo
