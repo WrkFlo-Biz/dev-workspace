@@ -32,7 +32,7 @@ cyan()  { color '36' "$1"; }
 yellow(){ color '33' "$1"; }
 red()   { color '31' "$1"; }
 
-hr() { printf '%s\n' "──────────────────────────────────────────"; }
+hr() { local w; w=$(tput cols 2>/dev/null || echo 40); printf '%*s\n' "$w" '' | tr ' ' '─'; }
 
 host_info() {
   local h who
@@ -92,8 +92,8 @@ profile_for() {
 
 model_label() {
   case "$1" in
-    1) echo "5.4" ;;
-    2) echo "5.2" ;;
+    1) echo "5-4" ;;
+    2) echo "5-2" ;;
     3) echo "codex" ;;
     4) echo "mini" ;;
     5) echo "5mini" ;;
