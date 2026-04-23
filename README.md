@@ -45,12 +45,19 @@ New device (e.g. reimaged laptop, new phone):
 1. **Install Tailscale** on the device, log in to the same tailnet (`wrkflo.biz` Google).
 2. **Termius** → add host:
    - VM: `moses@dev-workspace-vm` (Tailscale MagicDNS name) or `moses@20.230.203.79`
-   - Mac: `mosestut@<mac-tailscale-ip>` once Mac-side setup is done
+   - Mac: `mosestut@mosess-macbook-air-3` once Mac-side setup is done
    - Auth: `~/.ssh/termius_20260415` (ED25519, no passphrase)
-3. Optional Termius "Startup command" on the VM host:
-   `cd ~/global-sentinel && exec codex --profile foundry`
 
-See `docs/termius.md` for screenshots of the flow.
+Connecting to the VM drops you into the **dev-workspace launcher** — a picker
+menu for Global Sentinel, Voice Agents, OpenClaw, Quantum, and "plain shell".
+Each option cd's into the right project and launches codex (or claude) with the
+right Foundry profile. The Azure Foundry key is auto-loaded from
+`~/.config/wrkflo/foundry.env` before the picker runs.
+
+To bypass the launcher once (e.g. for a pure shell): `SKIP_LAUNCHER=1 ssh …`
+or type `q` at the picker prompt.
+
+See `docs/termius.md` for the full Termius flow.
 
 ## Related infrastructure (not in this repo)
 
