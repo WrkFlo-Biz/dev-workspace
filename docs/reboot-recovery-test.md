@@ -115,11 +115,45 @@ Fail: `ssh.socket` inactive → `sudo systemctl start ssh.socket`. Verify harden
 ### 3.3 User linger + systemd --user
 
 ```bash
-ssh moses@dev-workspace-vm 'loginctl show-user moses -p Linger; systemctl --user list-units --state=running --type=service'
+ssh moses@dev-workspace-vm '
+  loginctl show-user moses -p Linger &&
+  systemctl --user is-enabled dws-sessions-init.service dws-task-monitor.service &&
+  systemctl --user is-active dws-sessions-init.service dws-task-monitor.service &&
+  systemctl --user show dws-sessions-init.service -p ExecStart -p FragmentPath -p UnitFileState &&
+  systemctl --user show dws-task-monitor.service -p ExecStart -p FragmentPath -p UnitFileState &&
+  ls -l ~/.config/systemd/user/default.target.wants/dws-sessions-init.service \
+        ~/.config/systemd/user/default.target.wants/dws-task-monitor.service &&
+  systemctl --user list-units --state=running --type=service
+'
 ```
 
-Pass: `Linger=yes`; `dws-phone-server.service`, `dws-task-monitor.service`, `wrkflo-orchestrator-api.service` all `running`; `dws-sessions-init.service` is `active (exited)` (oneshot, `RemainAfterExit=yes`).
+Pass: `Linger=yes`; both `dws-sessions-init.service` and
+`dws-task-monitor.service` are `enabled`; both are active after login manager
+startup; `ExecStart` resolves to `/usr/bin/bash /home/moses/bin/dws-sessions-init.sh`
+and `/usr/bin/bash /home/moses/bin/task-monitor.sh`; both
+`~/.config/systemd/user/default.target.wants/` symlinks are present; and
+`dws-phone-server.service`, `dws-task-monitor.service`,
+`wrkflo-orchestrator-api.service` all appear in the running user-service list.
 Fail: `Linger=no` → user services did not auto-start on boot; run `sudo loginctl enable-linger moses` and reboot again.
+
+Current live verification snapshot on `2026-04-23 23:52:44 UTC`:
+
+| Check | Observed result |
+|---|---|
+| `loginctl show-user moses -p Linger` | `Linger=yes` |
+| `systemctl --user is-enabled dws-sessions-init.service` | `enabled` |
+| `systemctl --user is-enabled dws-task-monitor.service` | `enabled` |
+| `systemctl --user is-active dws-sessions-init.service` | `active` |
+| `systemctl --user is-active dws-task-monitor.service` | `active` |
+| `dws-sessions-init.service` `ExecStart` | `/usr/bin/bash /home/moses/bin/dws-sessions-init.sh` |
+| `dws-task-monitor.service` `ExecStart` | `/usr/bin/bash /home/moses/bin/task-monitor.sh` |
+| `default.target.wants/` symlinks | present for both services |
+
+Note: the installed live unit files under `~/.config/systemd/user/` currently
+drift from the repo templates under `config/systemd-user/`. The live copies
+hardcode `/home/moses`, and the live `dws-task-monitor.service` additionally
+appends stdout/stderr to `/var/log/dws/monitor.log`. The observed `ExecStart`
+values above are the current source of truth for reboot verification.
 
 ### 3.4 dws-sessions-init.service
 
