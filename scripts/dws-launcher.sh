@@ -9,10 +9,18 @@
 
 set -u
 
-[ -t 0 ] || return 0 2>/dev/null || exit 0
-[ -z "${SKIP_LAUNCHER:-}" ] || return 0 2>/dev/null || exit 0
-[ -z "${DWS_LAUNCHER_RAN:-}" ] || return 0 2>/dev/null || exit 0
-export DWS_LAUNCHER_RAN=1
+DWS_LAUNCHER_CMD="${1:-}"
+case "$DWS_LAUNCHER_CMD" in
+  status) shift ;;
+  *) DWS_LAUNCHER_CMD="" ;;
+esac
+
+if [ "$DWS_LAUNCHER_CMD" != "status" ]; then
+  [ -t 0 ] || return 0 2>/dev/null || exit 0
+  [ -z "${SKIP_LAUNCHER:-}" ] || return 0 2>/dev/null || exit 0
+  [ -z "${DWS_LAUNCHER_RAN:-}" ] || return 0 2>/dev/null || exit 0
+  export DWS_LAUNCHER_RAN=1
+fi
 
 [ -n "${AZURE_OPENAI_API_KEY:-}" ] || {
   [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"
@@ -25,6 +33,7 @@ SESSIONS_TOOL="$SCRIPT_DIR/dws-sessions.sh"
 QUICK_TOOL="$SCRIPT_DIR/dws-quick.sh"
 HEALTH_LOG="/tmp/dws-health.log"
 HEALTH_ALERT_LOG="/tmp/dws-health-alerts.log"
+ORCHESTRATOR_HEALTH_URL="${DWS_ORCHESTRATOR_HEALTH_URL:-http://127.0.0.1:8100/v1/workspace/health}"
 
 # ── Helpers ──
 
@@ -42,6 +51,40 @@ key_status() {
     green "ok"
   else
     red "missing"
+  fi
+}
+
+session_badge() {
+  local n="${1:-0}" label
+  if [ "$n" -eq 1 ]; then
+    label="1 session"
+  else
+    label="$n sessions"
+  fi
+  if [ "$n" -gt 0 ]; then
+    printf '%s' "$(cyan "[$label]")"
+  else
+    printf '%s' "$(dim "[$label]")"
+  fi
+}
+
+latest_health_result() {
+  local line ok fail text
+  [ -f "$HEALTH_LOG" ] || { printf '%s' "$(dim "none")"; return; }
+  line=$(tail -1 "$HEALTH_LOG" 2>/dev/null)
+  [ -n "$line" ] || { printf '%s' "$(dim "none")"; return; }
+  text=$(printf '%s\n' "$line" | sed -n 's/^[0-9-]\{10\} [0-9:]\{8\} //p')
+  ok=$(printf '%s\n' "$line" | sed -n 's/.*health: \([0-9][0-9]*\) ok, \([0-9][0-9]*\) fail.*/\1/p')
+  fail=$(printf '%s\n' "$line" | sed -n 's/.*health: \([0-9][0-9]*\) ok, \([0-9][0-9]*\) fail.*/\2/p')
+  if [ -n "$ok" ] && [ -n "$fail" ]; then
+    text="${ok} ok, ${fail} fail"
+    if [ "$fail" -eq 0 ]; then
+      printf '%s' "$(green "$text")"
+    else
+      printf '%s' "$(red "$text")"
+    fi
+  else
+    printf '%s' "$(dim "${text:-none}")"
   fi
 }
 
@@ -66,6 +109,70 @@ refresh_health_status() {
   dws-health-check.sh >/dev/null 2>&1 || true
 }
 
+orchestrator_health_payload() {
+  local payload
+  command -v curl >/dev/null 2>&1 || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  payload=$(curl -fsS --max-time 2 "$ORCHESTRATOR_HEALTH_URL" 2>/dev/null) || return 1
+  [ -n "$payload" ] || return 1
+  jq -e . >/dev/null 2>&1 <<<"$payload" || return 1
+  printf '%s\n' "$payload"
+}
+
+status_usage() {
+  cat <<EOF
+usage: $(basename "$0") status [--json|--motd]
+EOF
+}
+
+status_motd_orchestrator() {
+  local payload="$1" hostname sessions projects dirty tailscale_ip
+  hostname=$(jq -r '.vm.hostname // "-"' <<<"$payload")
+  sessions=$(jq -r '(.sessions // []) | length' <<<"$payload")
+  projects=$(jq -r '(.projects // []) | length' <<<"$payload")
+  dirty=$(jq -r '[.projects[]? | select(.dirty)] | length' <<<"$payload")
+  tailscale_ip=$(jq -r '.tailscale.ip // ""' <<<"$payload")
+  printf '  orchestrator: %s  host=%s  sessions=%s  projects=%s  dirty=%s' "$(green "ok")" "$hostname" "$sessions" "$projects" "$dirty"
+  if [ -n "$tailscale_ip" ]; then
+    printf '  tailnet=%s' "$tailscale_ip"
+  fi
+  printf '\n'
+}
+
+status_command() {
+  local mode="${1:-}" payload
+  case "$mode" in
+    ""|--json|--motd|-h|--help) ;;
+    *) status_usage >&2; return 2 ;;
+  esac
+  if [ "$mode" = "-h" ] || [ "$mode" = "--help" ]; then
+    status_usage
+    return 0
+  fi
+  refresh_health_status
+  payload=$(orchestrator_health_payload || true)
+  if [ -z "$payload" ]; then
+    case "$mode" in
+      --json)
+        printf '{"error":"orchestrator health unavailable","url":"%s"}\n' "$ORCHESTRATOR_HEALTH_URL"
+        ;;
+      --motd)
+        printf '  orchestrator: %s  source=%s\n' "$(red "unavailable")" "$ORCHESTRATOR_HEALTH_URL"
+        ;;
+      *)
+        red "orchestrator health unavailable"; echo
+        printf '  source: %s\n' "$ORCHESTRATOR_HEALTH_URL"
+        ;;
+    esac
+    return 1
+  fi
+  case "$mode" in
+    --json) printf '%s\n' "$payload" ;;
+    --motd) status_motd_orchestrator "$payload" ;;
+    *) status_page_orchestrator "$payload" ;;
+  esac
+}
+
 show_health_tail() {
   [ -f "$HEALTH_LOG" ] || { dim "    (no health checks logged)"; echo; return; }
   tail -5 "$HEALTH_LOG" | sed 's/^/    /'
@@ -81,6 +188,107 @@ show_health_alerts() {
   else
     dim "    (no alerts in last 24h)"; echo
   fi
+}
+
+status_page_health_logs() {
+  echo
+  bold "  health"; echo
+  dim "    recent checks"; echo
+  show_health_tail
+  dim "    alerts (last 24h)"; echo
+  show_health_alerts
+}
+
+status_page_shell() {
+  bold "  active sessions"; echo
+  if [ "$(session_count)" -gt 0 ]; then
+    list_sessions | sed 's/^/    /'
+  else
+    dim "    (none)"; echo
+  fi
+  echo
+  bold "  projects"; echo
+  for d in "$HOME"/projects/*/; do
+    local name branch dirty
+    name=$(basename "$d")
+    branch=$(git -C "$d" symbolic-ref --short HEAD 2>/dev/null || echo "-")
+    dirty=$(git -C "$d" status --porcelain 2>/dev/null | head -1)
+    if [ -n "$dirty" ]; then
+      printf "    %-28s %s %s\n" "$name" "$branch" "$(yellow "*dirty")"
+    else
+      printf "    %-28s %s\n" "$name" "$branch"
+    fi
+  done
+  echo
+  bold "  system"; echo
+  printf "    uptime: %s\n" "$(uptime -p 2>/dev/null || uptime)"
+  printf "    disk:   %s\n" "$(df -h / | awk 'NR==2{print $3"/"$2" ("$5" used)"}')"
+  printf "    mem:    %s\n" "$(free -h | awk 'NR==2{print $3"/"$2" ("int($3/$2*100)"% used)"}')"
+  printf "    key:    %s\n" "$(key_status)"
+  echo
+  bold "  tailnet"; echo
+  sudo tailscale status 2>&1 | head -6 | sed 's/^/    /'
+  status_page_health_logs
+}
+
+status_page_orchestrator() {
+  local payload="$1" count uptime disk_percent memory_percent hostname tailscale_ip
+  local tailscale_connected foundry_loaded project_count
+  echo "  $(green "orchestrator health API")"
+  printf "    source: %s\n" "$ORCHESTRATOR_HEALTH_URL"
+  echo
+  bold "  active sessions"; echo
+  count=$(jq -r '(.sessions // []) | length' <<<"$payload")
+  if [ "$count" -gt 0 ]; then
+    jq -r '.sessions[]?' <<<"$payload" | sed 's/^/    /'
+  else
+    dim "    (none)"; echo
+  fi
+  echo
+  bold "  projects"; echo
+  project_count=$(jq -r '(.projects // []) | length' <<<"$payload")
+  if [ "$project_count" -gt 0 ]; then
+    while IFS=$'\t' read -r name branch dirty; do
+      [ -n "$name" ] || continue
+      if [ "$dirty" = "true" ]; then
+        printf "    %-28s %s %s\n" "$name" "${branch:--}" "$(yellow "*dirty")"
+      else
+        printf "    %-28s %s\n" "$name" "${branch:--}"
+      fi
+    done < <(jq -r '.projects[]? | [.name, (.branch // "-"), (if .dirty then "true" else "false" end)] | @tsv' <<<"$payload")
+  else
+    dim "    (none)"; echo
+  fi
+  echo
+  hostname=$(jq -r '.vm.hostname // "-"' <<<"$payload")
+  uptime=$(jq -r '.vm.uptime // "-"' <<<"$payload")
+  disk_percent=$(jq -r '.vm.disk_percent // 0' <<<"$payload")
+  memory_percent=$(jq -r '.vm.memory_percent // 0' <<<"$payload")
+  foundry_loaded=$(jq -r '.foundry_key.loaded // false' <<<"$payload")
+  tailscale_connected=$(jq -r '.tailscale.connected // false' <<<"$payload")
+  tailscale_ip=$(jq -r '.tailscale.ip // ""' <<<"$payload")
+  bold "  system"; echo
+  printf "    host:   %s\n" "$hostname"
+  printf "    uptime: %s\n" "$uptime"
+  printf "    disk:   %s%% used\n" "$disk_percent"
+  printf "    mem:    %s%% used\n" "$memory_percent"
+  if [ "$foundry_loaded" = "true" ]; then
+    printf "    key:    %s\n" "$(green "ok")"
+  else
+    printf "    key:    %s\n" "$(red "missing")"
+  fi
+  echo
+  bold "  tailnet"; echo
+  if [ "$tailscale_connected" = "true" ]; then
+    if [ -n "$tailscale_ip" ]; then
+      printf "    connected: %s (%s)\n" "$(green "yes")" "$tailscale_ip"
+    else
+      printf "    connected: %s\n" "$(green "yes")"
+    fi
+  else
+    printf "    connected: %s\n" "$(red "no")"
+  fi
+  status_page_health_logs
 }
 
 # ── tmux session management ──
@@ -198,58 +406,43 @@ exec bash -l"
 # ── Status page ──
 
 status_page() {
+  local orchestrator_payload
   refresh_health_status
   clear 2>/dev/null || true
   echo
-  bold "  active sessions"; echo
-  if [ "$(session_count)" -gt 0 ]; then
-    list_sessions | sed 's/^/    /'
+  orchestrator_payload=$(orchestrator_health_payload || true)
+  if [ -n "$orchestrator_payload" ]; then
+    status_page_orchestrator "$orchestrator_payload"
   else
-    dim "    (none)"; echo
+    yellow "  orchestrator health API unavailable; using shell heuristics"; echo
+    echo
+    status_page_shell
   fi
-  echo
-  bold "  projects"; echo
-  for d in "$HOME"/projects/*/; do
-    local name branch dirty
-    name=$(basename "$d")
-    branch=$(git -C "$d" symbolic-ref --short HEAD 2>/dev/null || echo "-")
-    dirty=$(git -C "$d" status --porcelain 2>/dev/null | head -1)
-    if [ -n "$dirty" ]; then
-      printf "    %-28s %s %s\n" "$name" "$branch" "$(yellow "*dirty")"
-    else
-      printf "    %-28s %s\n" "$name" "$branch"
-    fi
-  done
-  echo
-  bold "  system"; echo
-  printf "    uptime: %s\n" "$(uptime -p 2>/dev/null || uptime)"
-  printf "    disk:   %s\n" "$(df -h / | awk 'NR==2{print $3"/"$2" ("$5" used)"}')"
-  printf "    mem:    %s\n" "$(free -h | awk 'NR==2{print $3"/"$2" ("int($3/$2*100)"% used)"}')"
-  printf "    key:    %s\n" "$(key_status)"
-  echo
-  bold "  tailnet"; echo
-  sudo tailscale status 2>&1 | head -6 | sed 's/^/    /'
-  echo
-  bold "  health"; echo
-  dim "    recent checks"; echo
-  show_health_tail
-  dim "    alerts (last 24h)"; echo
-  show_health_alerts
   echo
   read -rp "  press enter to return "
 }
 
+if [ "$DWS_LAUNCHER_CMD" = "status" ]; then
+  status_command "$@"
+  rc=$?
+  if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+    return "$rc"
+  fi
+  exit "$rc"
+fi
+
 # ── Main loop ──
 
 while :; do
+  refresh_health_status
+  sc=$(session_count)
   clear 2>/dev/null || true
   echo
-  bold "  ⎈ dev-workspace · $(host_info)"; echo
-  dim  "  Foundry key=$(key_status)"; echo
+  printf '  %s · %s %s\n' "$(bold '⎈ dev-workspace')" "$(host_info)" "$(session_badge "$sc")"
+  printf '  Foundry key=%s  latest health=%s\n' "$(key_status)" "$(latest_health_result)"
   hr
 
   # Show active sessions if any exist
-  sc=$(session_count)
   if [ "$sc" -gt 0 ]; then
     echo
     bold "  Active sessions ($sc):"; echo
