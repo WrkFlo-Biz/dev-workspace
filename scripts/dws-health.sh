@@ -3,6 +3,7 @@ set -u
 [ -n "${AZURE_OPENAI_API_KEY:-}" ] || { [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"; }
 : "${MAC_TAILNET_IP:=100.78.207.22}"
 : "${PHONE_TAILNET_IP:=100.88.249.22}"
+: "${GATEWAY_TAILNET_IP:=100.126.194.98}"
 : "${MAC_GUI_URL:=http://${MAC_TAILNET_IP}:9223}"
 : "${MAC_CDP_URL:=http://${MAC_TAILNET_IP}:9222}"
 ORCHESTRATOR_HEALTH_URL="${DWS_ORCHESTRATOR_HEALTH_URL:-http://127.0.0.1:8100/v1/workspace/health}"
@@ -201,6 +202,8 @@ case "${1:-}" in
     mac_ok=false; [ "$mac_state" = "reachable" ] && mac_ok=true
     IFS='|' read -r phone_state phone_lat <<<"$(tailnet_ping_result "$PHONE_TAILNET_IP")"
     phone_ok=false; [ "$phone_state" = "reachable" ] && phone_ok=true
+    IFS='|' read -r gateway_state gateway_lat <<<"$(tailnet_ping_result "$GATEWAY_TAILNET_IP")"
+    gateway_ok=false; [ "$gateway_state" = "reachable" ] && gateway_ok=true
     printf '{\n'
     printf '  "system":{"hostname":"%s","uptime":"%s","disk":"%s","memory":"%s"},\n' \
       "$(jesc "$(hostname -s 2>/dev/null || hostname)")" "$(jesc "$(uptime -p 2>/dev/null || uptime)")" \
@@ -211,8 +214,11 @@ case "${1:-}" in
       "$(jesc "$ORCHESTRATOR_HEALTH_URL")" "$(jesc "$orch_code")" "$orch_ok" "$(jesc "$task_state")" "$task_ok" "$(jesc "$sessions_state")" "$sessions_ok"
     printf '  "security":{"ssh_hardening":{"path":"%s","state":"%s","healthy":%s},"firewall":{"backend":"%s","state":"%s","detail":"%s","healthy":%s}},\n' \
       "$(jesc "$SSH_HARDENING_CONF")" "$(jesc "$ssh_state")" "$ssh_ok" "$(jesc "$fw_backend")" "$(jesc "$fw_state")" "$(jesc "$fw_detail")" "$fw_ok"
-    printf '  "tailnet":{"connected":%s,"peers":{"mac":{"ip":"%s","state":"%s","latency":"%s","reachable":%s},"phone":{"ip":"%s","state":"%s","latency":"%s","reachable":%s}}},\n' \
-      "$tailnet_ok" "$(jesc "$MAC_TAILNET_IP")" "$(jesc "$mac_state")" "$(jesc "$mac_lat")" "$mac_ok" "$(jesc "$PHONE_TAILNET_IP")" "$(jesc "$phone_state")" "$(jesc "$phone_lat")" "$phone_ok"
+    printf '  "tailnet":{"connected":%s,"peers":{"mac":{"ip":"%s","state":"%s","latency":"%s","reachable":%s},"phone":{"ip":"%s","state":"%s","latency":"%s","reachable":%s},"gateway":{"ip":"%s","state":"%s","latency":"%s","reachable":%s}}},\n' \
+      "$tailnet_ok" \
+      "$(jesc "$MAC_TAILNET_IP")" "$(jesc "$mac_state")" "$(jesc "$mac_lat")" "$mac_ok" \
+      "$(jesc "$PHONE_TAILNET_IP")" "$(jesc "$phone_state")" "$(jesc "$phone_lat")" "$phone_ok" \
+      "$(jesc "$GATEWAY_TAILNET_IP")" "$(jesc "$gateway_state")" "$(jesc "$gateway_lat")" "$gateway_ok"
     printf '  "sessions":'; json_sessions; printf ',\n'
     printf '  "projects":'; json_projects; printf '\n'
     printf '}\n'
@@ -315,6 +321,7 @@ if have tailscale; then
   echo '  connectivity'
   tailnet_ping mac "$MAC_TAILNET_IP"
   tailnet_ping phone "$PHONE_TAILNET_IP"
+  tailnet_ping gateway "$GATEWAY_TAILNET_IP"
 else
   echo "  tailscale missing"
 fi

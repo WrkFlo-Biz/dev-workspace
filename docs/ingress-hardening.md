@@ -25,7 +25,8 @@ firewall enforcement is currently minimal:
 
 ## SSH Hardening
 
-The live SSH drop-in currently sets:
+The live SSH hardening drop-in at
+`/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` currently sets:
 
 | Setting | Value |
 | --- | --- |
@@ -34,8 +35,15 @@ The live SSH drop-in currently sets:
 | `ChallengeResponseAuthentication` | `no` |
 | `PubkeyAuthentication` | `yes` |
 | `PermitRootLogin` | `no` |
+| `X11Forwarding` | `no` |
+| `MaxAuthTries` | `3` |
 | `ClientAliveInterval` | `30` |
 | `ClientAliveCountMax` | `3` |
+
+These values match the current live hardening file. `sshd -T` also confirms the
+effective server-side values for password auth, interactive auth, pubkey auth,
+root login, X11 forwarding, max auth tries, and the SSH client keepalive
+settings on this host.
 
 This means SSH is hardened at the authentication layer even though it is not
 currently narrowed by UFW.

@@ -362,12 +362,22 @@ macOS sleep settings or `caffeinate -dimsu &`.
 
 ### Current server-side behavior on the VM
 
-Observed from `/etc/ssh/sshd_config.d`:
+Observed from the live hardening drop-in
+`/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` and confirmed with
+`sshd -T`:
 
-- `ClientAliveInterval 120` in `50-cloudimg-settings.conf`
-- `PasswordAuthentication yes`
+- `PasswordAuthentication no`
+- `KbdInteractiveAuthentication no`
+- `ChallengeResponseAuthentication no`
 - `PubkeyAuthentication yes`
 - `PermitRootLogin no`
+- `X11Forwarding no`
+- `MaxAuthTries 3`
+- `ClientAliveInterval 30`
+- `ClientAliveCountMax 3`
+
+The distro cloud-image drop-ins still contain looser defaults, but they are not
+the effective SSH settings on this VM.
 
 There is no repo-managed `~/.ssh/config` snippet yet, so client keepalive is
 set at the terminal app level today rather than by a checked-in host config.

@@ -107,14 +107,15 @@ print_file() {
   fi
 }
 
-render_file() {
-  local path="$1" source file_ts
+emit_file_records() {
+  local path="$1" order_key="$2" source file_ts
 
   source=$(basename -- "$path")
   file_ts=$(epoch_to_log_ts "$(file_mtime_epoch "$path" || printf '0')" 2>/dev/null || printf '0000-00-00 00:00:00')
 
   print_file "$path" | awk \
     -v source="$source" \
+    -v order_key="$order_key" \
     -v file_ts="$file_ts" \
     -v since_ts="$SINCE_TS" \
     -v pattern="$GREP_PATTERN" '
@@ -129,9 +130,11 @@ render_file() {
 
       BEGIN {
         current_ts = file_ts
+        line_no = 0
       }
 
       {
+        line_no += 1
         parsed = log_ts($0)
         if (parsed != "") {
           current_ts = parsed
@@ -145,9 +148,23 @@ render_file() {
           next
         }
 
-        printf "[%s] %s\n", source, $0
+        printf "%s\t%s-%09d\t[%s] %s\n", current_ts, order_key, line_no, source, $0
       }
     '
+}
+
+render_logs() {
+  local path file_index=0
+
+  while IFS=$'\t' read -r _ path; do
+    file_index=$((file_index + 1))
+    emit_file_records "$path" "$(printf '%09d' "$file_index")"
+  done < <(list_logs 1 | sort -n) | sort -s -t $'\t' -k1,1 -k2,2 | awk '
+    {
+      sub(/^[^\t]*\t[^\t]*\t/, "", $0)
+      print
+    }
+  '
 }
 
 stream_follow() {
@@ -278,21 +295,20 @@ main() {
 
   [ -d "$LOG_DIR" ] || die "log directory not found: ${LOG_DIR}"
   is_uint "$TAIL_LINES" || die "--lines must be a non-negative integer"
-  have tail || die "required command not found: tail"
   have awk || die "required command not found: awk"
+  have sort || die "required command not found: sort"
 
   if [ -n "$SINCE_SPEC" ]; then
     SINCE_TS=$(parse_since_ts "$SINCE_SPEC") || die "could not parse --since value: ${SINCE_SPEC}"
   fi
 
   if [ "$FOLLOW" -eq 1 ]; then
+    have tail || die "required command not found: tail"
     stream_follow
     return 0
   fi
 
-  while IFS=$'\t' read -r _ path; do
-    render_file "$path"
-  done < <(list_logs 1 | sort -n)
+  render_logs
 }
 
 main "$@"
