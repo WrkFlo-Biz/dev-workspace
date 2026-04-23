@@ -33,6 +33,7 @@ SESSIONS_TOOL="$SCRIPT_DIR/dws-sessions.sh"
 QUICK_TOOL="$SCRIPT_DIR/dws-quick.sh"
 HEALTH_LOG="/tmp/dws-health.log"
 HEALTH_ALERT_LOG="/tmp/dws-health-alerts.log"
+TASK_QUEUE_PATH="${DWS_TASK_QUEUE_PATH:-/tmp/task-queue.json}"
 ORCHESTRATOR_HEALTH_URL="${DWS_ORCHESTRATOR_HEALTH_URL:-http://127.0.0.1:8100/v1/workspace/health}"
 STATUS_TOOL_REPO="${DWS_STATUS_TOOL_REPO:-$HOME/projects/dev-workspace/bin/dws-status.sh}"
 
@@ -87,6 +88,87 @@ latest_health_result() {
   else
     printf '%s' "$(dim "${text:-none}")"
   fi
+}
+
+latest_health_timestamp() {
+  local line ts
+  [ -s "$HEALTH_LOG" ] || { printf '%s' "$(yellow "unavailable")"; return; }
+  line=$(tail -1 "$HEALTH_LOG" 2>/dev/null || true)
+  [ -n "$line" ] || { printf '%s' "$(yellow "unavailable")"; return; }
+  ts=$(printf '%s\n' "$line" | sed -n 's/^\([0-9-]\{10\} [0-9:]\{8\}\).*/\1/p')
+  if [ -n "$ts" ]; then
+    printf '%s' "$ts"
+  else
+    printf '%s' "$(yellow "unknown")"
+  fi
+}
+
+disk_usage_percent() {
+  df -P / 2>/dev/null | awk '
+    NR == 2 {
+      gsub("%", "", $5)
+      print $5 + 0
+      found = 1
+    }
+    END {
+      if (!found) {
+        exit 1
+      }
+    }
+  '
+}
+
+disk_usage_badge() {
+  local pct
+  pct=$(disk_usage_percent 2>/dev/null || true)
+  case "$pct" in
+    ''|*[!0-9]*)
+      printf '%s' "$(yellow "unavailable")"
+      ;;
+    *)
+      if [ "$pct" -ge 90 ]; then
+        printf '%s' "$(red "${pct}%")"
+      elif [ "$pct" -ge 80 ]; then
+        printf '%s' "$(yellow "${pct}%")"
+      else
+        printf '%s' "$(green "${pct}%")"
+      fi
+      ;;
+  esac
+}
+
+task_queue_header_summary() {
+  local counts pending in_progress completed
+
+  command -v jq >/dev/null 2>&1 || {
+    printf '%s' "$(yellow "jq missing")"
+    return
+  }
+
+  [ -e "$TASK_QUEUE_PATH" ] || {
+    printf '%s' "$(dim "missing")"
+    return
+  }
+
+  [ -s "$TASK_QUEUE_PATH" ] || {
+    printf '%s' "$(yellow "empty")"
+    return
+  }
+
+  counts=$(jq -r '
+    (.tasks // []) as $tasks |
+    [
+      ($tasks | map(select((.status // "") == "pending")) | length),
+      ($tasks | map(select((.status // "") == "in_progress")) | length),
+      ($tasks | map(select((.status // "") == "completed")) | length)
+    ] | @tsv
+  ' "$TASK_QUEUE_PATH" 2>/dev/null) || {
+    printf '%s' "$(yellow "invalid")"
+    return
+  }
+
+  IFS=$'\t' read -r pending in_progress completed <<<"$counts"
+  printf 'pending=%s  in_progress=%s  completed=%s' "$pending" "$in_progress" "$completed"
 }
 
 model_arg() {
@@ -471,8 +553,9 @@ while :; do
   sc=$(session_count)
   clear 2>/dev/null || true
   echo
-  printf '  %s · %s %s\n' "$(bold '⎈ dev-workspace')" "$(host_info)" "$(session_badge "$sc")"
-  printf '  Foundry key=%s  latest health=%s\n' "$(key_status)" "$(latest_health_result)"
+  printf '  %s · %s\n' "$(bold '⎈ dev-workspace')" "$(host_info)"
+  printf '  status: tmux=%s active  last_health=%s  key=%s\n' "$sc" "$(latest_health_timestamp)" "$(key_status)"
+  printf '  usage:  disk=%s  queue=%s\n' "$(disk_usage_badge)" "$(task_queue_header_summary)"
   hr
 
   # Show active sessions if any exist
