@@ -3,6 +3,10 @@
 These are the 9 Azure Foundry-backed Codex profiles used by the launcher.
 In this repo, each Azure deployment name matches the model name.
 
+Source of truth:
+- Provider + profile fragments live in `config/codex-profiles/`
+- `scripts/apply-codex-profiles.sh` merges them into `~/.codex/config.toml`
+
 | Profile | Model | Tier | Best use case | Azure deployment |
 | --- | --- | --- | --- | --- |
 | `foundry-5_4` | `gpt-5.4` | `xhigh` | Hard bugs, architecture, planning | `gpt-5.4` |
@@ -17,8 +21,8 @@ In this repo, each Azure deployment name matches the model name.
 
 ## Add A New Profile
 
-1. Create the profile dir: `mkdir -p ~/.config/codex/profiles/`
-2. Copy the template: `cp ~/projects/dev-workspace/codex-profiles/foundry-profiles.toml ~/.config/codex/profiles/foundry-profiles.toml`
-3. Add a new `[profiles.<name>]` block with `model`, `model_provider = "azure-foundry"`, and `model_reasoning_effort`.
-4. Set `model` to the Azure deployment name you created in Foundry.
+1. Add a new fragment file under `config/codex-profiles/`.
+2. Use a single `[profiles.<name>]` section with `model`, `model_provider = "azure-foundry"`, and `model_reasoning_effort`.
+3. Set `model` to the Azure deployment name you created in Foundry.
+4. Run `scripts/apply-codex-profiles.sh`.
 5. Use the new profile with `codex --profile <name>`.

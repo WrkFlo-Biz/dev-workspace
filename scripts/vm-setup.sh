@@ -285,19 +285,21 @@ ensure_ssh_key() {
 }
 
 codex_profiles_need_merge() {
-  local src="$REPO_ROOT/codex-profiles/foundry-profiles.toml"
+  local src_dir="$REPO_ROOT/config/codex-profiles"
   local dest="$CODEX_CONFIG_DIR/config.toml"
-  local header
+  local header src
 
   mkdir -p "$CODEX_CONFIG_DIR"
   touch "$dest"
 
-  while IFS= read -r header; do
-    [ -n "$header" ] || continue
-    if ! grep -Fqx "$header" "$dest"; then
-      return 0
-    fi
-  done < <(grep -E '^\[[^]]+\]$' "$src")
+  while IFS= read -r src; do
+    while IFS= read -r header; do
+      [ -n "$header" ] || continue
+      if ! grep -Fqx "$header" "$dest"; then
+        return 0
+      fi
+    done < <(grep -E '^\[[^]]+\]$' "$src")
+  done < <(find "$src_dir" -maxdepth 1 -type f -name '*.toml' | sort)
 
   return 1
 }

@@ -42,7 +42,7 @@ open -a Tailscale           # log in via the menu bar
    - **Mac**: host `<mac-hostname>` (MagicDNS); user `mosestut`;
      key `termius_20260415` (after running `authorize-vm.sh` so that key works on Mac too).
 3. Optional: Termius "Startup command" on VM host →
-   `cd ~/global-sentinel && exec codex --profile foundry`
+   `cd ~/global-sentinel && exec codex --profile foundry-codex`
 
 ## Troubleshooting
 

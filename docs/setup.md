@@ -31,11 +31,9 @@ first bootstrapped. Re-reading this later is faster than re-running every script
 
 ## Codex profiles
 
-- `codex-profiles/foundry-profiles.toml` is the source of truth. Apply with
+- `config/codex-profiles/` is the source of truth for the Azure Foundry provider
+  fragment plus the 9 launcher profile templates. Apply them with
   `scripts/apply-codex-profiles.sh` on any new machine.
-- Existing profiles on this Mac + VM: `foundry`, `foundry-mini`, `foundry-5_4`
-  (already configured in prior work).
-- New profiles to add: `foundry-4o`, `foundry-opus`, `foundry-sonnet`.
 
 ## GitHub repo
 

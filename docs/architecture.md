@@ -48,7 +48,7 @@ VM agent/tool -> http://100.78.207.22:9223 -> socat -> 127.0.0.1:9223 -> Hammers
 - Resource: `moses-8586-resource` in `eastus2`.
 - Deployments (12): `gpt-5.4`, `gpt-5.2`, `gpt-5.2-codex`, `gpt-5.1-codex-mini`, `gpt-5-mini`, `gpt-4o`, `gpt-realtime`, `gpt-realtime-mini`, `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5`, `text-embedding-3-small`.
 - Codex launcher profiles (9): `foundry-5_4`, `foundry-5_2`, `foundry-codex`, `foundry-mini`, `foundry-5-mini`, `foundry-4o`, `foundry-opus`, `foundry-sonnet`, `foundry-haiku`.
-- Profile definitions live in `codex-profiles/foundry-profiles.toml`; launcher mappings live in `scripts/dws-env.sh`.
+- Profile definitions live in `config/codex-profiles/`; launcher mappings live in `scripts/dws-env.sh`.
 
 ## Phone user data flow
 

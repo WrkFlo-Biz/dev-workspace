@@ -1,0 +1,4 @@
+[profiles.foundry-haiku]
+model = "claude-haiku-4-5"
+model_provider = "azure-foundry"
+model_reasoning_effort = "medium"

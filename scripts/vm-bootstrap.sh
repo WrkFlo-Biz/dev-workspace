@@ -67,4 +67,4 @@ for rc in "$HOME/.bashrc" "$HOME/.profile"; do
   fi
 done
 
-log "done. run: codex --profile foundry"
+log "done. run: codex --profile foundry-codex"

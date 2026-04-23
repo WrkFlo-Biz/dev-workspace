@@ -1,0 +1,4 @@
+[profiles.foundry-mini]
+model = "gpt-5.1-codex-mini"
+model_provider = "azure-foundry"
+model_reasoning_effort = "medium"

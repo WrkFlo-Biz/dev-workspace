@@ -1,0 +1,4 @@
+[profiles.foundry-sonnet]
+model = "claude-sonnet-4-6"
+model_provider = "azure-foundry"
+model_reasoning_effort = "medium"

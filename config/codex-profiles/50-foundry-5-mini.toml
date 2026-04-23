@@ -1,0 +1,4 @@
+[profiles.foundry-5-mini]
+model = "gpt-5-mini"
+model_provider = "azure-foundry"
+model_reasoning_effort = "medium"

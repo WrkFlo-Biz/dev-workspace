@@ -1,0 +1,4 @@
+[profiles.foundry-opus]
+model = "claude-opus-4-6"
+model_provider = "azure-foundry"
+model_reasoning_effort = "high"

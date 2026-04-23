@@ -5,7 +5,7 @@ Azure VM remote development infrastructure. Accessed from Mac (Terminal.app) and
 ## Key directories
 - scripts/dws-launcher.sh — two-step project+model picker with tmux persistence
 - scripts/dws-health.sh — system health dashboard
-- codex-profiles/ — Foundry profile configs for Codex CLI
+- config/codex-profiles/ — source-of-truth Foundry provider/profile fragments for Codex CLI
 - mac-setup/ — Mac-side LaunchAgents, Chrome CDP relay, Hammerspoon bridge
 - infra/ — Azure Bicep VM template
 - config/ — tmux.conf and shared dotfiles

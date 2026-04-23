@@ -1,0 +1,4 @@
+[profiles.foundry-codex]
+model = "gpt-5.2-codex"
+model_provider = "azure-foundry"
+model_reasoning_effort = "high"

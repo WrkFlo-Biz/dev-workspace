@@ -1,0 +1,4 @@
+[profiles.foundry-4o]
+model = "gpt-4o"
+model_provider = "azure-foundry"
+model_reasoning_effort = "medium"

@@ -1,0 +1,6 @@
+[model_providers.azure-foundry]
+name = "Azure Foundry (moses-8586)"
+base_url = "https://moses-8586-resource.cognitiveservices.azure.com/openai"
+env_key = "AZURE_OPENAI_API_KEY"
+wire_api = "responses"
+query_params = { api-version = "2025-04-01-preview" }

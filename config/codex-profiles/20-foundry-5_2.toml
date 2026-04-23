@@ -1,0 +1,4 @@
+[profiles.foundry-5_2]
+model = "gpt-5.2"
+model_provider = "azure-foundry"
+model_reasoning_effort = "high"
