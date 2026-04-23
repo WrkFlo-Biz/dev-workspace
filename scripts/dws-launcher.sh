@@ -34,6 +34,7 @@ QUICK_TOOL="$SCRIPT_DIR/dws-quick.sh"
 HEALTH_LOG="/tmp/dws-health.log"
 HEALTH_ALERT_LOG="/tmp/dws-health-alerts.log"
 ORCHESTRATOR_HEALTH_URL="${DWS_ORCHESTRATOR_HEALTH_URL:-http://127.0.0.1:8100/v1/workspace/health}"
+STATUS_TOOL_REPO="${DWS_STATUS_TOOL_REPO:-$HOME/projects/dev-workspace/bin/dws-status.sh}"
 
 # ── Helpers ──
 
@@ -109,6 +110,18 @@ refresh_health_status() {
   dws-health-check.sh >/dev/null 2>&1 || true
 }
 
+status_tool_path() {
+  local candidate
+  for candidate in "${DWS_STATUS_TOOL:-}" "$LAUNCHER_DIR/dws-status.sh" "$STATUS_TOOL_REPO"; do
+    [ -n "$candidate" ] || continue
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 orchestrator_health_payload() {
   local payload
   command -v curl >/dev/null 2>&1 || return 1
@@ -140,7 +153,7 @@ status_motd_orchestrator() {
 }
 
 status_command() {
-  local mode="${1:-}" payload
+  local mode="${1:-}" payload tool
   case "$mode" in
     ""|--json|--motd|-h|--help) ;;
     *) status_usage >&2; return 2 ;;
@@ -148,6 +161,15 @@ status_command() {
   if [ "$mode" = "-h" ] || [ "$mode" = "--help" ]; then
     status_usage
     return 0
+  fi
+  tool=$(status_tool_path || true)
+  if [ -n "$tool" ]; then
+    if [ -n "$mode" ]; then
+      "$tool" "$mode"
+    else
+      "$tool"
+    fi
+    return $?
   fi
   refresh_health_status
   payload=$(orchestrator_health_payload || true)
@@ -406,10 +428,21 @@ exec bash -l"
 # ── Status page ──
 
 status_page() {
-  local orchestrator_payload
+  local orchestrator_payload tool
   refresh_health_status
   clear 2>/dev/null || true
   echo
+  tool=$(status_tool_path || true)
+  if [ -n "$tool" ]; then
+    if "$tool"; then
+      echo
+      read -rp "  press enter to return "
+      return
+    fi
+    echo
+    yellow "  external status tool failed; falling back"; echo
+    echo
+  fi
   orchestrator_payload=$(orchestrator_health_payload || true)
   if [ -n "$orchestrator_payload" ]; then
     status_page_orchestrator "$orchestrator_payload"

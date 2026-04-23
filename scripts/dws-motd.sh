@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -u
 BASE_DIR=$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+STATUS_TOOL="${DWS_STATUS_TOOL:-$HOME/projects/dev-workspace/bin/dws-status.sh}"
 # shellcheck source=/dev/null
 . "$BASE_DIR/dws-env.sh"
 
@@ -17,7 +18,11 @@ printf '  host: %s  vm: %s  mac: %s\n' "$(green "$(hostname -s 2>/dev/null || ho
 
 echo
 printf '%s\n' "$(bold 'Orchestrator')"
-"$BASE_DIR/dws-launcher.sh" status --motd 2>/dev/null || true
+if [ -x "$STATUS_TOOL" ]; then
+  "$STATUS_TOOL" --motd 2>/dev/null || true
+else
+  "$BASE_DIR/dws-launcher.sh" status --motd 2>/dev/null || true
+fi
 
 echo
 printf '%s\n' "$(bold 'Active tmux sessions')"
