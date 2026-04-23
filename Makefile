@@ -10,7 +10,7 @@ help:
 		'Targets:' \
 		'  deploy   Run dws-update.sh --force' \
 		'  health   Run dws-health.sh' \
-		'  check    Run dws-health-check.sh' \
+		'  check    Alias for health' \
 		'  sessions Run dws-sessions.sh list' \
 		'  pull     Git pull all projects in ~/projects' \
 		'  status   Git status all projects in ~/projects' \
@@ -23,8 +23,7 @@ deploy:
 health:
 	@"$(SCRIPTS)/dws-health.sh"
 
-check:
-	@dws-health-check.sh
+check: health
 
 sessions:
 	@"$(SCRIPTS)/dws-sessions.sh" list
