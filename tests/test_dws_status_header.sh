@@ -60,6 +60,11 @@ write_fake_command curl 'cat <<'\''EOF'\''
 {"vm":{"hostname":"dev-workspace-vm","uptime":"up 1 hour","disk_percent":41,"memory_percent":37},"tailscale":{"connected":true,"ip":"100.64.0.10"},"sessions":["gs-5-4","orch-codex"],"projects":[{"name":"global-sentinel","branch":"main","dirty":false},{"name":"wrkflo-orchestrator","branch":"feature/queue","dirty":true}],"foundry_key":{"loaded":true}}
 EOF'
 
+write_fake_command df 'cat <<'\''EOF'\''
+Filesystem     1024-blocks  Used Available Capacity Mounted on
+/dev/root         1000000 410000    590000       41% /
+EOF'
+
 output=$(
   HOME="${FIXTURE_ROOT}/home" \
   PATH="${FAKE_BIN}:${ORIG_PATH}" \
@@ -70,8 +75,8 @@ output=$(
 
 plain_output=$(printf '%s\n' "$output" | strip_ansi)
 
-assert_contains "$plain_output" "status: active_sessions=2 active  health_check=2026-04-23 21:40:00  health=7 ok, 0 fail"
-assert_contains "$plain_output" "usage:  disk=41% used  queue=pending=1  in_progress=2  completed=1  total=4"
+assert_contains "$plain_output" "status: sessions=2  health_check=2026-04-23 21:40:00  health=7 ok, 0 fail"
+assert_contains "$plain_output" "usage:  disk=41% used (410000/1000000)  queue=1 pending, 2 in progress, 1 completed, 4 total"
 assert_contains "$plain_output" "orchestrator health API"
 assert_contains "$plain_output" "wrkflo-orchestrator"
 

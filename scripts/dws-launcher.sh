@@ -57,16 +57,16 @@ key_status() {
 }
 
 active_session_summary() {
-  local n="${1:-0}" label
-  if [ "$n" -eq 1 ]; then
-    label="1 active"
-  else
-    label="$n active"
-  fi
+  local n="${1:-0}"
+
+  case "$n" in
+    ''|*[!0-9]*) n=0 ;;
+  esac
+
   if [ "$n" -gt 0 ]; then
-    printf '%s' "$(cyan "$label")"
+    printf '%s' "$(cyan "$n")"
   else
-    printf '%s' "$(dim "$label")"
+    printf '%s' "$(dim "$n")"
   fi
 }
 
@@ -118,9 +118,29 @@ disk_usage_percent() {
   '
 }
 
+disk_usage_human() {
+  df -hP / 2>/dev/null | awk '
+    NR == 2 {
+      print $3 "/" $2
+      found = 1
+    }
+    END {
+      if (!found) {
+        exit 1
+      }
+    }
+  '
+}
+
 disk_usage_badge() {
-  local pct
-  pct=$(disk_usage_percent 2>/dev/null || true)
+  local pct="${1:-}"
+
+  case "$pct" in
+    ''|*[!0-9]*)
+      pct=$(disk_usage_percent 2>/dev/null || true)
+      ;;
+  esac
+
   case "$pct" in
     ''|*[!0-9]*)
       printf '%s' "$(yellow "unavailable")"
@@ -132,6 +152,30 @@ disk_usage_badge() {
         printf '%s' "$(yellow "${pct}%")"
       else
         printf '%s' "$(green "${pct}%")"
+      fi
+      ;;
+  esac
+}
+
+disk_usage_summary() {
+  local pct human
+
+  pct=$(disk_usage_percent 2>/dev/null || true)
+  human=$(disk_usage_human 2>/dev/null || true)
+
+  case "$pct" in
+    ''|*[!0-9]*)
+      if [ -n "$human" ]; then
+        printf '%s used' "$human"
+      else
+        printf '%s' "$(yellow "unavailable")"
+      fi
+      ;;
+    *)
+      if [ -n "$human" ]; then
+        printf '%s used (%s)' "$(disk_usage_badge "$pct")" "$human"
+      else
+        printf '%s used' "$(disk_usage_badge "$pct")"
       fi
       ;;
   esac
@@ -169,7 +213,7 @@ task_queue_header_summary() {
   }
 
   IFS=$'\t' read -r pending in_progress completed total <<<"$counts"
-  printf 'pending=%s  in_progress=%s  completed=%s  total=%s' \
+  printf '%s pending, %s in progress, %s completed, %s total' \
     "$pending" "$in_progress" "$completed" "$total"
 }
 
@@ -177,12 +221,12 @@ print_status_header() {
   local sc="${1:-0}"
 
   printf '  %s · %s\n' "$(bold '⎈ dev-workspace')" "$(host_info)"
-  printf '  status: active_sessions=%s  health_check=%s  health=%s  key=%s\n' \
+  printf '  status: sessions=%s  health_check=%s  health=%s  key=%s\n' \
     "$(active_session_summary "$sc")" \
     "$(latest_health_timestamp)" \
     "$(latest_health_result)" \
     "$(key_status)"
-  printf '  usage:  disk=%s used  queue=%s\n' "$(disk_usage_badge)" "$(task_queue_header_summary)"
+  printf '  usage:  disk=%s  queue=%s\n' "$(disk_usage_summary)" "$(task_queue_header_summary)"
 }
 
 model_arg() {

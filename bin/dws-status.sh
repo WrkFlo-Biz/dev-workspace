@@ -82,18 +82,16 @@ host_info() {
 }
 
 active_session_summary() {
-  local count="${1:-0}" label
+  local count="${1:-0}"
 
-  if [ "$count" -eq 1 ]; then
-    label='1 active'
-  else
-    label="${count} active"
-  fi
+  case "$count" in
+    ''|*[!0-9]*) count='0' ;;
+  esac
 
   if [ "$count" -gt 0 ]; then
-    printf '%s' "$(cyan "$label")"
+    printf '%s' "$(cyan "$count")"
   else
-    printf '%s' "$(dim "$label")"
+    printf '%s' "$(dim "$count")"
   fi
 }
 
@@ -164,6 +162,20 @@ local_disk_usage_percent() {
   '
 }
 
+local_disk_usage_human() {
+  df -hP / 2>/dev/null | awk '
+    NR == 2 {
+      print $3 "/" $2
+      found = 1
+    }
+    END {
+      if (!found) {
+        exit 1
+      }
+    }
+  '
+}
+
 disk_usage_badge() {
   local pct="${1:-}"
 
@@ -189,12 +201,41 @@ disk_usage_badge() {
   esac
 }
 
+disk_usage_summary() {
+  local pct="${1:-}" human
+
+  human=$(local_disk_usage_human 2>/dev/null || true)
+
+  case "$pct" in
+    ''|*[!0-9]*)
+      pct=$(local_disk_usage_percent 2>/dev/null || true)
+      ;;
+  esac
+
+  case "$pct" in
+    ''|*[!0-9]*)
+      if [ -n "$human" ]; then
+        printf '%s used' "$human"
+      else
+        printf '%s' "$(yellow 'unavailable')"
+      fi
+      ;;
+    *)
+      if [ -n "$human" ]; then
+        printf '%s used (%s)' "$(disk_usage_badge "$pct")" "$human"
+      else
+        printf '%s used' "$(disk_usage_badge "$pct")"
+      fi
+      ;;
+  esac
+}
+
 planner_queue_header_summary() {
   local counts pending in_progress completed total last_reconciled
 
   if counts=$(planner_queue_counts "$TASK_QUEUE_PATH"); then
     IFS=$'\t' read -r pending in_progress completed total last_reconciled <<<"$counts"
-    printf 'pending=%s  in_progress=%s  completed=%s  total=%s' \
+    printf '%s pending, %s in progress, %s completed, %s total' \
       "$pending" "$in_progress" "$completed" "$total"
     return 0
   fi
@@ -250,13 +291,13 @@ render_header() {
   fi
 
   printf '  %s | %s\n' "$(bold 'dev-workspace')" "$(host_info)"
-  printf '  status: active_sessions=%s  health_check=%s  health=%s  key=%s\n' \
+  printf '  status: sessions=%s  health_check=%s  health=%s  key=%s\n' \
     "$(active_session_summary "$count")" \
     "$(latest_health_timestamp)" \
     "$(latest_health_result)" \
     "$(key_status "$body")"
-  printf '  usage:  disk=%s used  queue=%s\n' \
-    "$(disk_usage_badge "$disk_percent")" \
+  printf '  usage:  disk=%s  queue=%s\n' \
+    "$(disk_usage_summary "$disk_percent")" \
     "$(planner_queue_header_summary)"
 }
 
