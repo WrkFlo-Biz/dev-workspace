@@ -23,6 +23,8 @@ LAUNCHER_DIR=$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$LAUNCHER_DIR/dws-env.sh"
 SESSIONS_TOOL="$SCRIPT_DIR/dws-sessions.sh"
 QUICK_TOOL="$SCRIPT_DIR/dws-quick.sh"
+HEALTH_LOG="/tmp/dws-health.log"
+HEALTH_ALERT_LOG="/tmp/dws-health-alerts.log"
 
 # ── Helpers ──
 
@@ -57,6 +59,28 @@ model_arg() {
     c|C) echo "claude" ;;
     *) echo "" ;;
   esac
+}
+
+refresh_health_status() {
+  command -v dws-health-check.sh >/dev/null 2>&1 || return 0
+  dws-health-check.sh >/dev/null 2>&1 || true
+}
+
+show_health_tail() {
+  [ -f "$HEALTH_LOG" ] || { dim "    (no health checks logged)"; echo; return; }
+  tail -5 "$HEALTH_LOG" | sed 's/^/    /'
+}
+
+show_health_alerts() {
+  local cut alerts
+  [ -f "$HEALTH_ALERT_LOG" ] || { dim "    (no alerts in last 24h)"; echo; return; }
+  cut=$(date -d '24 hours ago' '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -v-24H '+%Y-%m-%d %H:%M:%S')
+  alerts=$(awk -v cut="$cut" 'index($0, "ALERT") && substr($0, 1, 19) >= cut' "$HEALTH_ALERT_LOG")
+  if [ -n "$alerts" ]; then
+    printf '%s\n' "$alerts" | sed 's/^/    /'
+  else
+    dim "    (no alerts in last 24h)"; echo
+  fi
 }
 
 # ── tmux session management ──
@@ -174,6 +198,7 @@ exec bash -l"
 # ── Status page ──
 
 status_page() {
+  refresh_health_status
   clear 2>/dev/null || true
   echo
   bold "  active sessions"; echo
@@ -204,6 +229,12 @@ status_page() {
   echo
   bold "  tailnet"; echo
   sudo tailscale status 2>&1 | head -6 | sed 's/^/    /'
+  echo
+  bold "  health"; echo
+  dim "    recent checks"; echo
+  show_health_tail
+  dim "    alerts (last 24h)"; echo
+  show_health_alerts
   echo
   read -rp "  press enter to return "
 }
