@@ -21,6 +21,8 @@ export DWS_LAUNCHER_RAN=1
 export MAC_GUI_URL="${MAC_GUI_URL:-http://100.78.207.22:9223}"
 export MAC_CDP_URL="${MAC_CDP_URL:-http://100.78.207.22:9222}"
 export MAC_SSH_HOST="${MAC_SSH_HOST:-mosestut@100.78.207.22}"
+SESSIONS_TOOL="$HOME/projects/dev-workspace/scripts/dws-sessions.sh"
+QUICK_TOOL="$HOME/projects/dev-workspace/scripts/dws-quick.sh"
 
 # ── Helpers ──
 
@@ -106,14 +108,74 @@ model_label() {
   esac
 }
 
+model_arg() {
+  case "$1" in
+    1) echo "5.4" ;;
+    2) echo "5.2" ;;
+    3) echo "codex" ;;
+    4) echo "mini" ;;
+    5) echo "5mini" ;;
+    6) echo "4o" ;;
+    7) echo "opus" ;;
+    8) echo "sonnet" ;;
+    9) echo "haiku" ;;
+    c|C) echo "claude" ;;
+    *) echo "" ;;
+  esac
+}
+
 # ── tmux session management ──
 
 list_sessions() {
-  tmux ls -F '#{session_name} (#{session_windows} windows, created #{session_created_string})' 2>/dev/null
+  if [ -x "$SESSIONS_TOOL" ]; then
+    "$SESSIONS_TOOL" list
+  else
+    tmux ls -F '#{session_name} #{?session_attached,attached,detached}' 2>/dev/null
+  fi
 }
 
 session_count() {
   tmux ls 2>/dev/null | wc -l | tr -d ' '
+}
+
+session_names() {
+  tmux ls -F '#{session_name}' 2>/dev/null
+}
+
+resolve_session_pick() {
+  local pick="${1:-}" name
+  [ -n "$pick" ] || return 1
+  if tmux has-session -t "$pick" 2>/dev/null; then
+    printf '%s\n' "$pick"
+    return 0
+  fi
+  case "$pick" in
+    ''|*[!0-9]*) return 1 ;;
+    *)
+      name=$(session_names | sed -n "${pick}p")
+      [ -n "$name" ] || return 1
+      printf '%s\n' "$name"
+      ;;
+  esac
+}
+
+attach_named_session() {
+  local name="$1"
+  if [ -n "${TMUX:-}" ]; then
+    tmux switch-client -t "$name"
+  else
+    exec tmux attach -t "$name"
+  fi
+}
+
+launch_choice() {
+  local proj="$1" choice="$2" short arg
+  short=$(proj_short "$proj")
+  arg=$(model_arg "$choice")
+  if [ -n "$arg" ] && [ -x "$QUICK_TOOL" ]; then
+    exec "$QUICK_TOOL" "$short" "$arg"
+  fi
+  return 1
 }
 
 # ── Workspace prompt injected into Codex/Claude ──
@@ -214,9 +276,13 @@ while :; do
   if [ "$sc" -gt 0 ]; then
     echo
     bold "  Active sessions ($sc):"; echo
-    tmux ls -F '    #{session_name}' 2>/dev/null
+    list_sessions | sed 's/^/    /'
     echo
     cyan "  r"; echo -n "  reconnect to session"
+    echo
+    cyan "  k"; echo -n "  kill a session"
+    echo
+    cyan "  x"; echo -n "  cleanup sessions older than 24h"
     echo
     hr
   fi
@@ -244,24 +310,55 @@ MENU
       if [ "$sc" -eq 0 ]; then
         yellow "  no active sessions"; echo; sleep 0.6
       elif [ "$sc" -eq 1 ]; then
-        exec tmux attach
+        attach_named_session "$(session_names | sed -n '1p')"
       else
         echo
         bold "  Pick session:"; echo
-        tmux ls -F '#{session_name}' 2>/dev/null | nl -w2 -s') '
+        session_names | nl -w2 -s') '
         echo
         read -rp "  session name or #: " pick
         if [ -n "$pick" ]; then
-          if tmux has-session -t "$pick" 2>/dev/null; then
-            exec tmux attach -t "$pick"
+          target=$(resolve_session_pick "$pick" || true)
+          if [ -n "$target" ]; then
+            attach_named_session "$target"
           else
-            idx_name=$(tmux ls -F '#{session_name}' 2>/dev/null | sed -n "${pick}p")
-            if [ -n "$idx_name" ]; then
-              exec tmux attach -t "$idx_name"
-            fi
+            red "  session not found"; echo; sleep 0.6
           fi
+        fi
+      fi
+      continue
+      ;;
+    k|K)
+      if [ "$sc" -eq 0 ]; then
+        yellow "  no active sessions"; echo; sleep 0.6
+      else
+        echo
+        bold "  Kill session:"; echo
+        session_names | nl -w2 -s') '
+        echo
+        read -rp "  session name or #: " pick
+        target=$(resolve_session_pick "$pick" || true)
+        if [ -n "$target" ]; then
+          if [ -x "$SESSIONS_TOOL" ]; then
+            "$SESSIONS_TOOL" kill "$target"
+          else
+            tmux kill-session -t "$target"
+          fi
+          sleep 0.7
+        else
           red "  session not found"; echo; sleep 0.6
         fi
+      fi
+      continue
+      ;;
+    x|X)
+      if [ "$sc" -eq 0 ]; then
+        yellow "  no active sessions"; echo; sleep 0.6
+      elif [ -x "$SESSIONS_TOOL" ]; then
+        "$SESSIONS_TOOL" cleanup
+        read -rp "  press enter "
+      else
+        yellow "  missing session tool"; echo; sleep 0.6
       fi
       continue
       ;;
@@ -314,6 +411,9 @@ MENU
 
     case "$model_choice" in
       [1-9])
+        if launch_choice "$proj" "$model_choice"; then
+          continue
+        fi
         local_profile=$(profile_for "$model_choice")
         label=$(model_label "$model_choice")
         short=$(proj_short "$proj")
@@ -323,6 +423,9 @@ MENU
         fi
         ;;
       c|C)
+        if launch_choice "$proj" "$model_choice"; then
+          continue
+        fi
         short=$(proj_short "$proj")
         session_name="${short}-claude"
         launch_tmux "$proj" "claude" "$session_name"
