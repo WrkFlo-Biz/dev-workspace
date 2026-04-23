@@ -1,208 +1,116 @@
 #!/usr/bin/env bash
 set -u
 
-c() { printf '\033[%sm%s\033[0m' "$1" "$2"; }
-b() { c '1;36' "$1"; }
-g() { c '32' "$1"; }
-y() { c '33' "$1"; }
-r() { c '31' "$1"; }
-d() { c '2' "$1"; }
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+BIN_TOOL="${SCRIPT_DIR}/../bin/dws-sessions.sh"
 
-die() { printf '%s\n' "$(r "$*")" >&2; exit 1; }
+if [ -x "$BIN_TOOL" ]; then
+  exec "$BIN_TOOL" "$@"
+fi
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
 have_tmux() { command -v tmux >/dev/null 2>&1; }
-session_names() { tmux list-sessions -F '#{session_name}' 2>/dev/null; }
+rows() { tmux list-sessions -F '#{session_name}|#{session_windows}|#{session_created}|#{session_last_attached}|#{@dws_project}|#{@dws_model}|#{pane_current_path}' 2>/dev/null; }
+session_names() { rows | cut -d'|' -f1; }
 session_exists() { tmux has-session -t "$1" 2>/dev/null; }
 
-proj_alias() {
+proj_name() {
   case "$1" in
-    global-sentinel|gs) echo "gs" ;;
-    wrkflo-voice-agents-ops|voice) echo "voice" ;;
-    openclaw-prod|oclaw) echo "oclaw" ;;
-    global-sentinel-azure-quantum|gsaq) echo "gsaq" ;;
-    wrkflo-orchestrator|orch) echo "orch" ;;
-    dev-workspace|dws) echo "dws" ;;
-    *) echo "${1:-?}" ;;
+    1) echo "global-sentinel" ;; 2) echo "wrkflo-voice-agents-ops" ;; 3) echo "openclaw-prod" ;;
+    4) echo "global-sentinel-azure-quantum" ;; 5) echo "wrkflo-orchestrator" ;; 6) echo "dev-workspace" ;; *) echo "" ;;
   esac
 }
 
-model_alias() {
+proj_short() {
   case "$1" in
-    5.4|5-4|5_4|foundry-5_4) echo "5.4" ;;
-    5.2|5-2|5_2|foundry-5_2) echo "5.2" ;;
-    codex|foundry-codex) echo "codex" ;;
-    mini|foundry-mini) echo "mini" ;;
-    5mini|5-mini|foundry-5-mini) echo "5mini" ;;
-    4o|foundry-4o) echo "4o" ;;
-    opus|foundry-opus) echo "opus" ;;
-    sonnet|foundry-sonnet) echo "sonnet" ;;
-    haiku|foundry-haiku) echo "haiku" ;;
-    claude) echo "claude" ;;
-    *) echo "${1:-?}" ;;
+    global-sentinel|gs) echo "gs" ;; wrkflo-voice-agents-ops|voice) echo "voice" ;; openclaw-prod|oclaw) echo "oclaw" ;;
+    global-sentinel-azure-quantum|gsaq) echo "gsaq" ;; wrkflo-orchestrator|orch) echo "orch" ;; dev-workspace|dws) echo "dws" ;; *) echo "${1:-?}" ;;
   esac
 }
 
-age_brief() {
-  local secs="$1"
-  if [ "$secs" -lt 60 ]; then
-    printf '%ss' "$secs"
-  elif [ "$secs" -lt 3600 ]; then
-    printf '%sm' $((secs / 60))
-  elif [ "$secs" -lt 86400 ]; then
-    printf '%sh' $((secs / 3600))
-  else
-    printf '%sd' $((secs / 86400))
-  fi
-}
-
-session_meta() {
-  local name="$1" created attached proj model path suffix
-  IFS='|' read -r created attached proj model path <<EOF
-$(tmux display-message -p -t "$name" '#{session_created}|#{?session_attached,1,0}|#{@dws_project}|#{@dws_model}|#{pane_current_path}')
-EOF
-  if [ -z "$proj" ]; then
-    proj=$(proj_alias "${path##*/}")
-    [ "$proj" = "${path##*/}" ] && proj=$(proj_alias "${name%%-*}")
-  fi
-  if [ -z "$model" ]; then
-    suffix="${name#*-}"
-    [ "$suffix" = "$name" ] && suffix=""
-    model=$(model_alias "$suffix")
-  fi
-  printf '%s|%s|%s|%s\n' "$created" "$attached" "$(proj_alias "$proj")" "$(model_alias "$model")"
-}
-
-state_label() {
-  if [ "$1" = "1" ]; then
-    g "attached"
-  else
-    d "detached"
-  fi
-}
-
-line_for_session() {
-  local name="$1" now created attached proj model age
-  now=$(date +%s)
-  IFS='|' read -r created attached proj model <<EOF
-$(session_meta "$name")
-EOF
-  age=$(age_brief $((now - created)))
-  printf '%-12s %-4s %-6s %-7s %s\n' \
-    "$name" "$age" "$proj" "$model" "$(state_label "$attached")"
-}
-
-resolve_session() {
-  local pick="${1:-}" name
-  [ -n "$pick" ] || return 1
-  if session_exists "$pick"; then
-    printf '%s\n' "$pick"
-    return 0
-  fi
-  case "$pick" in
-    ''|*[!0-9]*) return 1 ;;
-    *)
-      name=$(session_names | sed -n "${pick}p")
-      [ -n "$name" ] || return 1
-      printf '%s\n' "$name"
-      ;;
+model_label() {
+  case "$1" in
+    1|5.4|5-4|5_4|foundry-5_4) echo "5-4" ;; 2|5.2|5-2|5_2|foundry-5_2) echo "5-2" ;;
+    3|codex|foundry-codex) echo "codex" ;; 4|mini|foundry-mini) echo "mini" ;; 5|5mini|5-mini|foundry-5-mini) echo "5mini" ;;
+    6|4o|foundry-4o) echo "4o" ;; 7|opus|foundry-opus) echo "opus" ;; 8|sonnet|foundry-sonnet) echo "sonnet" ;;
+    9|haiku|foundry-haiku) echo "haiku" ;; c|C|claude) echo "claude" ;; *) echo "${1:-?}" ;;
   esac
-}
-
-confirm() {
-  local prompt="$1" ans
-  read -r -p "$prompt [y/N] " ans
-  case "$ans" in
-    y|Y|yes|YES) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-list_cmd() {
-  if ! have_tmux || ! tmux list-sessions >/dev/null 2>&1; then
-    d "no tmux sessions"; echo
-    return 0
-  fi
-  printf '%-12s %-4s %-6s %-7s %s\n' \
-    "$(b name)" "$(b age)" "$(b proj)" "$(b model)" "$(b state)"
-  while IFS= read -r name; do
-    line_for_session "$name"
-  done < <(session_names)
-}
-
-attach_cmd() {
-  local name
-  name=$(resolve_session "${1:-}") || die "session not found: ${1:-}"
-  if [ -n "${TMUX:-}" ]; then
-    tmux switch-client -t "$name"
-  else
-    exec tmux attach -t "$name"
-  fi
-}
-
-kill_cmd() {
-  local name
-  name=$(resolve_session "${1:-}") || die "session not found: ${1:-}"
-  tmux kill-session -t "$name" || die "failed to kill: $name"
-  printf '%s\n' "$(y "killed $name")"
-}
-
-killall_cmd() {
-  local count
-  if ! have_tmux || ! tmux list-sessions >/dev/null 2>&1; then
-    d "no tmux sessions"; echo
-    return 0
-  fi
-  list_cmd
-  echo
-  count=$(session_names | wc -l | tr -d ' ')
-  confirm "kill all $count sessions?" || { d "cancelled"; echo; return 1; }
-  while IFS= read -r name; do
-    [ -n "$name" ] && tmux kill-session -t "$name"
-  done < <(session_names)
-  printf '%s\n' "$(g "all sessions killed")"
-}
-
-cleanup_cmd() {
-  local now name created attached proj model
-  local -a old=()
-  if ! have_tmux || ! tmux list-sessions >/dev/null 2>&1; then
-    d "no tmux sessions"; echo
-    return 0
-  fi
-  now=$(date +%s)
-  while IFS= read -r name; do
-    IFS='|' read -r created attached proj model <<EOF
-$(session_meta "$name")
-EOF
-    [ $((now - created)) -ge 86400 ] && old+=("$name")
-  done < <(session_names)
-  if [ "${#old[@]}" -eq 0 ]; then
-    d "no sessions older than 24h"; echo
-    return 0
-  fi
-  printf '%-12s %-4s %-6s %-7s %s\n' \
-    "$(b name)" "$(b age)" "$(b proj)" "$(b model)" "$(b state)"
-  for name in "${old[@]}"; do
-    line_for_session "$name"
-  done
-  echo
-  confirm "kill ${#old[@]} old sessions?" || { d "cancelled"; echo; return 1; }
-  for name in "${old[@]}"; do
-    tmux kill-session -t "$name"
-  done
-  printf '%s\n' "$(g "old sessions cleaned")"
 }
 
 usage() {
   cat <<EOF
-usage: $(basename "$0") list | attach <name> | kill <name> | killall | cleanup
+usage: $(basename "$0") [list|kill <name>|kill-all|reconnect [name]|--help]
 EOF
+}
+
+session_name() {
+  local pick="${1:-}" name
+  [ -n "$pick" ] || return 1
+  session_exists "$pick" && { printf '%s\n' "$pick"; return 0; }
+  case "$pick" in
+    ''|*[!0-9]*) return 1 ;;
+    *) name=$(session_names | sed -n "${pick}p"); [ -n "$name" ] || return 1; printf '%s\n' "$name" ;;
+  esac
+}
+
+attach_session() {
+  if [ -n "${TMUX:-}" ]; then tmux switch-client -t "$1"; else exec tmux attach -t "$1"; fi
+}
+
+fmt_created() { date -d "@$1" '+%Y-%m-%d %H:%M' 2>/dev/null || date -r "$1" '+%Y-%m-%d %H:%M'; }
+need_sessions() { have_tmux && rows >/dev/null || return 1; }
+
+list_cmd() {
+  need_sessions || { echo "no tmux sessions"; return 0; }
+  printf '%-16s %-7s %-7s %-3s %s\n' "name" "project" "model" "win" "created"
+  while IFS='|' read -r name wins created _ proj model path; do
+    printf '%-16s %-7s %-7s %-3s %s\n' \
+      "$name" "$(proj_short "${proj:-${path##*/}}")" "$(model_label "${model:-${name#*-}}")" "$wins" "$(fmt_created "$created")"
+  done < <(rows | sort -t'|' -k3,3nr)
+}
+
+reconnect_cmd() {
+  local name="${1:-}"
+  need_sessions || die "no tmux sessions"
+  if [ -n "$name" ]; then
+    name=$(session_name "$name") || die "session not found: $1"
+  else
+    name=$(rows | sort -t'|' -k4,4nr -k3,3nr | sed -n '1s/|.*//p')
+  fi
+  [ -n "$name" ] || die "no tmux sessions"
+  attach_session "$name"
+}
+
+kill_cmd() {
+  local name
+  need_sessions || die "no tmux sessions"
+  name=$(session_name "${1:-}") || die "session not found: ${1:-}"
+  tmux kill-session -t "$name" || die "failed to kill: $name"
+  printf 'killed %s\n' "$name"
+}
+
+kill_all_cmd() {
+  local name
+  need_sessions || { echo "no tmux sessions"; return 0; }
+  while IFS= read -r name; do [ -n "$name" ] && tmux kill-session -t "$name"; done < <(session_names)
+  echo "all sessions killed"
+}
+
+cleanup_cmd() {
+  local now name created hit=0
+  need_sessions || { echo "no tmux sessions"; return 0; }
+  now=$(date +%s)
+  while IFS='|' read -r name _ created _ _ _ _; do
+    [ $((now - created)) -lt 86400 ] || { tmux kill-session -t "$name"; hit=1; }
+  done < <(rows)
+  [ "$hit" -eq 1 ] && echo "old sessions cleaned" || echo "no sessions older than 24h"
 }
 
 case "${1:-list}" in
   list) list_cmd ;;
-  attach) shift; attach_cmd "${1:-}" ;;
+  reconnect|attach) shift; reconnect_cmd "${1:-}" ;;
   kill) shift; kill_cmd "${1:-}" ;;
-  killall) killall_cmd ;;
+  kill-all|killall) kill_all_cmd ;;
   cleanup) cleanup_cmd ;;
   -h|--help|help) usage ;;
   *) usage; exit 1 ;;
