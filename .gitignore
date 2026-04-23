@@ -1,0 +1,10 @@
+# Secrets, keys, and any local-only env files
+*.env
+*.pem
+*.key
+*.pub
+!scripts/**/*.pub.example
+.DS_Store
+
+# Local scratch
+.scratch/

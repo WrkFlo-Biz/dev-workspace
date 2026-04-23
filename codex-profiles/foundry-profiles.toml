@@ -1,0 +1,62 @@
+# Drop-in fragment for ~/.codex/config.toml.
+# Paste into both Mac and VM configs. The `azure-foundry` provider block is
+# only needed once; the profile blocks can all coexist.
+#
+# Deployments exist on moses-8586-resource (rg-moses-8586, eastus2):
+#   gpt-5.4, gpt-5.2, gpt-5.2-codex, gpt-5.1-codex-mini, gpt-5-mini,
+#   gpt-4o, gpt-realtime, gpt-realtime-mini,
+#   claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5,
+#   text-embedding-3-small
+
+[model_providers.azure-foundry]
+name = "Azure Foundry (moses-8586)"
+base_url = "https://moses-8586-resource.cognitiveservices.azure.com/openai"
+env_key = "AZURE_OPENAI_API_KEY"
+wire_api = "responses"
+query_params = { api-version = "2025-04-01-preview" }
+
+# --- Coding profiles ---
+
+# Default codex profile — gpt-5.2-codex, tuned for code tasks, high reasoning.
+[profiles.foundry]
+model = "gpt-5.2-codex"
+model_provider = "azure-foundry"
+model_reasoning_effort = "high"
+
+# Cheap/fast fallback for simple edits, small refactors.
+[profiles.foundry-mini]
+model = "gpt-5.1-codex-mini"
+model_provider = "azure-foundry"
+model_reasoning_effort = "medium"
+
+# Latest general-purpose model, max reasoning. Use for architecture, hard bugs,
+# cross-cutting refactors. Note the underscore — TOML profile keys can't have dots.
+[profiles.foundry-5_4]
+model = "gpt-5.4"
+model_provider = "azure-foundry"
+model_reasoning_effort = "xhigh"
+
+# --- Multimodal / misc ---
+
+# gpt-4o for multimodal tasks (image understanding, long context summarization).
+[profiles.foundry-4o]
+model = "gpt-4o"
+model_provider = "azure-foundry"
+model_reasoning_effort = "medium"
+
+# Claude fallback when you want a second opinion on the same Foundry account.
+[profiles.foundry-opus]
+model = "claude-opus-4-6"
+model_provider = "azure-foundry"
+model_reasoning_effort = "high"
+
+[profiles.foundry-sonnet]
+model = "claude-sonnet-4-6"
+model_provider = "azure-foundry"
+model_reasoning_effort = "medium"
+
+# --- Realtime / voice ---
+# NOTE: gpt-realtime uses a different wire protocol (WebRTC / WS). Codex CLI
+# does not speak realtime directly today — use this deployment from app code:
+#   wss://moses-8586-resource.cognitiveservices.azure.com/openai/realtime?api-version=2024-10-01-preview&deployment=gpt-realtime
+# Profile retained here so `codex-foundry-realtime` aliases point to the right name.
