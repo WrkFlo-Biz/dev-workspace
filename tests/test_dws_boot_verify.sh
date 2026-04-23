@@ -100,7 +100,7 @@ if [ "${1:-}" = "is-active" ]; then
     system:tailscaled.service|system:tailscaled|system:ssh.socket|system:ssh.service|system:cron.service|system:cron)
       exit 0
       ;;
-    user:task-monitor.service|user:task-monitor)
+    user:dws-task-monitor.service|user:dws-task-monitor)
       if [ "${FAKE_TASK_MONITOR_ACTIVE:-1}" = "1" ]; then
         exit 0
       fi
@@ -164,7 +164,7 @@ test_boot_verify_passes_when_all_checks_are_ready() {
   assert_contains "${output}" "PASS tmux server running (2 sessions: monitor, orchestrator)"
   assert_contains "${output}" "PASS cron loaded (cron.service; 2 active crontab entries)"
   assert_contains "${output}" "PASS log directory present (${DWS_BOOT_VERIFY_LOG_DIR}; 1 entries)"
-  assert_contains "${output}" "PASS task-monitor service active (user task-monitor.service)"
+  assert_contains "${output}" "PASS task-monitor service active (user dws-task-monitor.service)"
   assert_contains "${output}" "overall: PASS (6 passed, 0 failed)"
   assert_not_contains "${output}" "FAIL "
 
@@ -184,7 +184,7 @@ test_boot_verify_fails_when_task_monitor_is_inactive() {
     fail "expected dws-boot-verify.sh to fail"
   fi
 
-  assert_contains "${output}" "FAIL task-monitor service not active (task-monitor.service)"
+  assert_contains "${output}" "FAIL task-monitor service not active (dws-task-monitor.service)"
   assert_contains "${output}" "overall: FAIL (5 passed, 1 failed)"
 
   cleanup_fixture

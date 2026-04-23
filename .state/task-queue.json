@@ -861,8 +861,8 @@
       "phase": 7,
       "repo": "dev-workspace",
       "description": "Improve scripts/dws-launcher.sh status header: show active session count, Tailscale IP, health check timestamp, disk usage, task queue summary, monitor service status. Stage, commit, push.",
-      "assigned": null,
-      "status": "pending"
+      "assigned": "worker-e",
+      "status": "in_progress"
     },
     {
       "id": "refill-39r9p3",

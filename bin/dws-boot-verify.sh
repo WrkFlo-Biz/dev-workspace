@@ -5,7 +5,7 @@ SSH_HOST="${DWS_BOOT_VERIFY_SSH_HOST:-127.0.0.1}"
 SSH_PORT="${DWS_BOOT_VERIFY_SSH_PORT:-22}"
 SSH_TIMEOUT_SECONDS="${DWS_BOOT_VERIFY_SSH_TIMEOUT_SECONDS:-5}"
 LOG_DIR="${DWS_BOOT_VERIFY_LOG_DIR:-/var/log/dws}"
-TASK_MONITOR_UNIT="${DWS_BOOT_VERIFY_TASK_MONITOR_UNIT:-task-monitor.service}"
+TASK_MONITOR_UNIT="${DWS_BOOT_VERIFY_TASK_MONITOR_UNIT:-dws-task-monitor.service}"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -47,7 +47,7 @@ Verify post-reboot dev-workspace readiness:
   - tmux has a live server/session set
   - cron is active and a crontab is loaded
   - /var/log/dws exists
-  - task-monitor.service is active
+  - dws-task-monitor.service is active
 
 Exits non-zero when one or more checks fail.
 EOF
