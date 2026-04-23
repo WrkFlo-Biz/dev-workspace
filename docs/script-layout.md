@@ -35,6 +35,7 @@ exec "$(dirname "$0")/../scripts/<name>.sh" "$@"
 - dws-health.sh — Health check suite
 - dws-health-check.sh — Cron health check
 - dws-launcher.sh — Interactive session launcher
+- dws-rotate-logs.sh — Weekly log rotation with gzip archives and four-week retention
 - dws-motd.sh — Login message-of-the-day
 - dws-sessions.sh — tmux session manager
 - dws-sessions-init.sh — Boot all tmux sessions

@@ -293,7 +293,7 @@ There are two cron paths in this repo.
 `vm-setup.sh` installs a simple health-check cron entry:
 
 ```cron
-*/15 * * * * "$HOME/bin/dws-health-check.sh" >/dev/null 2>&1
+*/15 * * * * "$HOME/bin/dws-health-check.sh" >>"/var/log/dws/health-check.log" 2>&1
 ```
 
 Verify it with:
@@ -321,12 +321,13 @@ The repo already provides:
 
 - `scripts/dws-health-check.sh`
 - `scripts/dws-cleanup.sh`
+- `scripts/dws-rotate-logs.sh`
 
-The repo does not currently ship `scripts/dws-rotate-logs.sh`, so you must
-either provide your own executable path in `DWS_LOG_ROTATE_SCRIPT` or skip the
-full managed cron block for now.
+By default the managed cron block uses the repo rotate helper and writes its
+cron logs under `/var/log/dws`.
 
-Example if you have a rotate script at `~/bin/dws-rotate-logs.sh`:
+If you need a different rotate helper, override it with
+`DWS_LOG_ROTATE_SCRIPT`. Example:
 
 ```bash
 DWS_LOG_ROTATE_SCRIPT="$HOME/bin/dws-rotate-logs.sh" \
