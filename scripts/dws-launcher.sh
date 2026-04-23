@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # dws-launcher.sh — runs on SSH login to the dev-workspace VM.
-# Shows a picker for "which project + which tool" so Termius connects
-# feel like one-tap launches.
+# Two-step picker: project -> model/tool, so every Azure deployment is reachable.
 #
 # Escape hatches:
 #   - press q or ^C at the prompt to drop to a plain shell
@@ -60,6 +59,7 @@ bold()  { color '1'  "$1"; }
 dim()   { color '2'  "$1"; }
 green() { color '32' "$1"; }
 cyan()  { color '36' "$1"; }
+yellow(){ color '33' "$1"; }
 
 hr() { printf '%s\n' "────────────────────────────────────────────────────────────"; }
 
@@ -84,7 +84,9 @@ azure_line() {
   echo "Azure Foundry: moses-8586-resource (eastus2)  key=$key_state"
 }
 
-menu() {
+# ── Project menu ──
+
+project_menu() {
   clear 2>/dev/null || true
   echo
   bold "   ⎈ dev-workspace  ·  $(host_info)"; echo
@@ -92,20 +94,68 @@ menu() {
   hr
   cat <<MENU
 
-  $(cyan 1)  Global Sentinel    — codex full-access (gpt-5.4)
-  $(cyan 2)  Global Sentinel    — codex full-access (gpt-5.4 xhigh)
-  $(cyan 3)  Global Sentinel    — Claude Code full-access
-  $(cyan 4)  Voice Agents       — codex full-access (gpt-5.4)
-  $(cyan 5)  OpenClaw           — codex full-access (gpt-5.4)
-  $(cyan 6)  GS Azure Quantum   — codex full-access (gpt-5.4)
-  $(cyan 7)  Orchestrator       — codex full-access (gpt-5.4)
-  $(cyan 8)  Plain shell in ~/projects
-  $(cyan 9)  Tailscale / system status
+  $(bold "Select project:")
+
+  $(cyan 1)  Global Sentinel
+  $(cyan 2)  Voice Agents Ops
+  $(cyan 3)  OpenClaw Prod
+  $(cyan 4)  GS Azure Quantum
+  $(cyan 5)  Orchestrator
+  $(cyan 6)  Plain shell in ~/projects
+  $(cyan 7)  Tailscale / system status
 
   $(dim "q  quit / drop to bash")
 
 MENU
   hr
+}
+
+# ── Model menu ──
+
+model_menu() {
+  local proj="$1"
+  clear 2>/dev/null || true
+  echo
+  bold "   ⎈ $proj  ·  select model"; echo
+  hr
+  cat <<MENU
+
+  $(bold "── OpenAI ──")
+  $(cyan 1)  gpt-5.4          $(dim "xhigh  — architecture, hard bugs, planning")
+  $(cyan 2)  gpt-5.2          $(dim "high   — general coding, medium tasks")
+  $(cyan 3)  gpt-5.2-codex    $(dim "high   — code completions, diffs, tests")
+  $(cyan 4)  gpt-5.1-codex-mini $(dim "med  — quick edits, small refactors")
+  $(cyan 5)  gpt-5-mini       $(dim "med    — cheapest/fastest, trivial lookups")
+  $(cyan 6)  gpt-4o           $(dim "med    — multimodal, images, long context")
+
+  $(bold "── Claude (via Azure Foundry) ──")
+  $(cyan 7)  claude-opus-4-6  $(dim "high   — complex reasoning, second opinion")
+  $(cyan 8)  claude-sonnet-4-6 $(dim "med   — balanced, code review")
+  $(cyan 9)  claude-haiku-4-5 $(dim "med    — fast, simple Q&A")
+
+  $(bold "── Other ──")
+  $(cyan c)  Claude Code CLI   $(dim "       — native claude, not codex")
+
+  $(dim "b  back to project menu")
+
+MENU
+  hr
+}
+
+# Profile name for each model choice
+profile_for() {
+  case "$1" in
+    1) echo "foundry-5_4" ;;
+    2) echo "foundry-5_2" ;;
+    3) echo "foundry-codex" ;;
+    4) echo "foundry-mini" ;;
+    5) echo "foundry-5-mini" ;;
+    6) echo "foundry-4o" ;;
+    7) echo "foundry-opus" ;;
+    8) echo "foundry-sonnet" ;;
+    9) echo "foundry-haiku" ;;
+    *) echo "" ;;
+  esac
 }
 
 launch() {
@@ -132,26 +182,58 @@ status_page() {
     printf "    %-32s branch=%s  ahead=%s\n" "$name" "$branch" "$ahead"
   done
   echo
-  bold "  azure"; echo
-  az account show --query "[name,user.name]" -o tsv 2>/dev/null | sed 's/^/    /'
+  bold "  azure deployments"; echo
+  az cognitiveservices account deployment list \
+    --name moses-8586-resource --resource-group rg-moses-8586 \
+    --query "[].name" -o tsv 2>/dev/null | sed 's/^/    /' || echo "    (az cli not authenticated)"
+  echo
+  bold "  system"; echo
+  printf "    uptime: %s\n" "$(uptime -p 2>/dev/null || uptime)"
+  printf "    disk:   %s\n" "$(df -h / | awk 'NR==2{print $3"/"$2" ("$5" used)"}')"
+  printf "    mem:    %s\n" "$(free -h | awk 'NR==2{print $3"/"$2" ("int($3/$2*100)"% used)"}')"
   echo
   read -rp "press enter to return to menu "
 }
 
+# ── Main loop ──
+
 while :; do
-  menu
-  read -rp "  choice: " choice
-  case "$choice" in
-    1) launch global-sentinel                "$(codex_cmd foundry)" ;;
-    2) launch global-sentinel                "$(codex_cmd foundry-5_4)" ;;
-    3) launch global-sentinel                "$(claude_cmd)" ;;
-    4) launch wrkflo-voice-agents-ops        "$(codex_cmd foundry)" ;;
-    5) launch openclaw-prod                  "$(codex_cmd foundry)" ;;
-    6) launch global-sentinel-azure-quantum  "$(codex_cmd foundry)" ;;
-    7) launch wrkflo-orchestrator            "$(codex_cmd foundry-5_4)" ;;
-    8) cd "$HOME/projects" && exec bash -l ;;
-    9) status_page ;;
+  project_menu
+  read -rp "  project: " proj_choice
+
+  case "$proj_choice" in
+    1) proj="global-sentinel" ;;
+    2) proj="wrkflo-voice-agents-ops" ;;
+    3) proj="openclaw-prod" ;;
+    4) proj="global-sentinel-azure-quantum" ;;
+    5) proj="wrkflo-orchestrator" ;;
+    6) cd "$HOME/projects" && exec bash -l ;;
+    7) status_page; continue ;;
     q|Q|'') echo; exec bash -l ;;
-    *) echo "  $(color 33 "unknown choice")"; sleep 0.6 ;;
+    *) echo "  $(yellow "unknown choice")"; sleep 0.6; continue ;;
   esac
+
+  # Model sub-menu
+  while :; do
+    model_menu "$proj"
+    read -rp "  model: " model_choice
+
+    case "$model_choice" in
+      [1-9])
+        local_profile=$(profile_for "$model_choice")
+        if [ -n "$local_profile" ]; then
+          launch "$proj" "$(codex_cmd "$local_profile")"
+        fi
+        ;;
+      c|C)
+        launch "$proj" "$(claude_cmd)"
+        ;;
+      b|B|'')
+        break
+        ;;
+      *)
+        echo "  $(yellow "unknown choice")"; sleep 0.6
+        ;;
+    esac
+  done
 done
