@@ -36,6 +36,7 @@ HEALTH_ALERT_LOG="/tmp/dws-health-alerts.log"
 TASK_QUEUE_PATH="${DWS_TASK_QUEUE_PATH:-/tmp/task-queue.json}"
 ORCHESTRATOR_HEALTH_URL="${DWS_ORCHESTRATOR_HEALTH_URL:-http://127.0.0.1:8100/v1/workspace/health}"
 STATUS_TOOL_REPO="${DWS_STATUS_TOOL_REPO:-$HOME/projects/dev-workspace/bin/dws-status.sh}"
+MONITOR_SERVICE_NAME="${DWS_MONITOR_SERVICE_NAME:-dws-task-monitor}"
 
 # ── Helpers ──
 
@@ -68,6 +69,77 @@ active_session_summary() {
   else
     printf '%s' "$(dim "$label")"
   fi
+}
+
+tailscale_ip_value() {
+  if ! command -v tailscale >/dev/null 2>&1; then
+    return 0
+  fi
+
+  tailscale ip -4 2>/dev/null | sed -n '1p'
+}
+
+tailscale_ip_badge() {
+  local ip="${1:-}"
+
+  if [ -n "$ip" ]; then
+    printf '%s' "$(green "$ip")"
+  else
+    printf '%s' "$(yellow "unavailable")"
+  fi
+}
+
+unit_name() {
+  case "$1" in
+    *.service) printf '%s' "$1" ;;
+    *) printf '%s.service' "$1" ;;
+  esac
+}
+
+user_unit_state() {
+  local unit state sub
+
+  unit=$(unit_name "$1")
+  command -v systemctl >/dev/null 2>&1 || {
+    printf '%s' "unavailable"
+    return 0
+  }
+
+  state=$(systemctl --user is-active "$unit" 2>/dev/null || true)
+  state=$(printf '%s\n' "$state" | sed -n '1p')
+
+  case "$state" in
+    active)
+      sub=$(systemctl --user show "$unit" --property=SubState --value 2>/dev/null | sed -n '1p')
+      if [ -n "$sub" ] && [ "$sub" != "$state" ]; then
+        printf '%s (%s)' "$state" "$sub"
+      else
+        printf '%s' "$state"
+      fi
+      ;;
+    '')
+      printf '%s' "unknown"
+      ;;
+    *)
+      printf '%s' "$state"
+      ;;
+  esac
+}
+
+monitor_service_badge() {
+  local state="${1:-}"
+
+  case "$state" in
+    active*)
+      printf '%s' "$(green "$state")"
+      ;;
+    activating*|reloading*|unknown|unavailable)
+      printf '%s' "$(yellow "$state")"
+      ;;
+    *)
+      printf '%s' "$(red "$state")"
+      ;;
+  esac
 }
 
 latest_health_result() {
@@ -137,47 +209,76 @@ disk_usage_badge() {
   esac
 }
 
+task_queue_pending_count() {
+  local path="${1:-$TASK_QUEUE_PATH}"
+
+  [ -e "$path" ] || return 2
+  [ -s "$path" ] || return 3
+
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '
+      (.tasks // [])
+      | map(select(((.status // "") | ascii_downcase) == "pending"))
+      | length
+    ' "$path" 2>/dev/null || return 4
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$path" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+except Exception:
+    raise SystemExit(4)
+
+tasks = data.get("tasks") or []
+pending = sum(1 for task in tasks if str(task.get("status") or "").lower() == "pending")
+print(pending)
+PY
+    return $?
+  fi
+
+  return 5
+}
+
 task_queue_header_summary() {
-  local counts pending in_progress completed total
+  local pending status
 
-  command -v jq >/dev/null 2>&1 || {
-    printf '%s' "$(yellow "jq missing")"
-    return
-  }
+  pending=$(task_queue_pending_count "$TASK_QUEUE_PATH")
+  status=$?
 
-  [ -e "$TASK_QUEUE_PATH" ] || {
-    printf '%s' "$(dim "missing")"
-    return
-  }
+  if [ "$status" -eq 0 ]; then
+    if [ "$pending" -eq 0 ]; then
+      printf '%s' "$(green "pending=0")"
+    else
+      printf '%s' "$(cyan "pending=${pending}")"
+    fi
+    return 0
+  fi
 
-  [ -s "$TASK_QUEUE_PATH" ] || {
-    printf '%s' "$(yellow "empty")"
-    return
-  }
-
-  counts=$(jq -r '
-    (.tasks // []) as $tasks |
-    [
-      ($tasks | map(select((.status // "") == "pending")) | length),
-      ($tasks | map(select((.status // "") == "in_progress")) | length),
-      ($tasks | map(select((.status // "") == "completed")) | length),
-      ($tasks | length)
-    ] | @tsv
-  ' "$TASK_QUEUE_PATH" 2>/dev/null) || {
-    printf '%s' "$(yellow "invalid")"
-    return
-  }
-
-  IFS=$'\t' read -r pending in_progress completed total <<<"$counts"
-  printf 'pending=%s  in_progress=%s  completed=%s  total=%s' \
-    "$pending" "$in_progress" "$completed" "$total"
+  case "$status" in
+    2) printf '%s' "$(dim "missing")" ;;
+    3) printf '%s' "$(yellow "empty")" ;;
+    4) printf '%s' "$(yellow "invalid")" ;;
+    5) printf '%s' "$(yellow "parser missing")" ;;
+    *) printf '%s' "$(yellow "unavailable")" ;;
+  esac
 }
 
 print_status_header() {
-  local sc="${1:-0}"
+  local sc="${1:-0}" tailnet_ip monitor_state
 
+  tailnet_ip=$(tailscale_ip_value)
+  monitor_state=$(user_unit_state "$MONITOR_SERVICE_NAME")
   printf '  %s · %s\n' "$(bold '⎈ dev-workspace')" "$(host_info)"
   printf '  sessions: %s\n' "$(active_session_summary "$sc")"
+  printf '  tailnet:  %s\n' "$(tailscale_ip_badge "$tailnet_ip")"
+  printf '  monitor:  %s\n' "$(monitor_service_badge "$monitor_state")"
   printf '  health:   check=%s  result=%s  key=%s\n' \
     "$(latest_health_timestamp)" \
     "$(latest_health_result)" \
