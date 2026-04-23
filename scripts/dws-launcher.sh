@@ -171,6 +171,18 @@ task_queue_header_summary() {
   printf 'pending=%s  in_progress=%s  completed=%s' "$pending" "$in_progress" "$completed"
 }
 
+print_status_header() {
+  local sc="${1:-0}"
+
+  printf '  %s · %s\n' "$(bold '⎈ dev-workspace')" "$(host_info)"
+  printf '  status: sessions=%s  last_health=%s  health=%s  key=%s\n' \
+    "$(session_badge "$sc")" \
+    "$(latest_health_timestamp)" \
+    "$(latest_health_result)" \
+    "$(key_status)"
+  printf '  usage:  disk=%s  queue=%s\n' "$(disk_usage_badge)" "$(task_queue_header_summary)"
+}
+
 model_arg() {
   case "$1" in
     1) echo "5.4" ;;
@@ -304,8 +316,12 @@ status_page_health_logs() {
 }
 
 status_page_shell() {
+  local sc
+  sc=$(session_count)
+  print_status_header "$sc"
+  echo
   bold "  active sessions"; echo
-  if [ "$(session_count)" -gt 0 ]; then
+  if [ "$sc" -gt 0 ]; then
     list_sessions | sed 's/^/    /'
   else
     dim "    (none)"; echo
@@ -338,11 +354,13 @@ status_page_shell() {
 status_page_orchestrator() {
   local payload="$1" count uptime disk_percent memory_percent hostname tailscale_ip
   local tailscale_connected foundry_loaded project_count
+  count=$(jq -r '(.sessions // []) | length' <<<"$payload")
+  print_status_header "$count"
+  echo
   echo "  $(green "orchestrator health API")"
   printf "    source: %s\n" "$ORCHESTRATOR_HEALTH_URL"
   echo
   bold "  active sessions"; echo
-  count=$(jq -r '(.sessions // []) | length' <<<"$payload")
   if [ "$count" -gt 0 ]; then
     jq -r '.sessions[]?' <<<"$payload" | sed 's/^/    /'
   else
@@ -553,9 +571,7 @@ while :; do
   sc=$(session_count)
   clear 2>/dev/null || true
   echo
-  printf '  %s · %s\n' "$(bold '⎈ dev-workspace')" "$(host_info)"
-  printf '  status: tmux=%s active  last_health=%s  key=%s\n' "$sc" "$(latest_health_timestamp)" "$(key_status)"
-  printf '  usage:  disk=%s  queue=%s\n' "$(disk_usage_badge)" "$(task_queue_header_summary)"
+  print_status_header "$sc"
   hr
 
   # Show active sessions if any exist
