@@ -18,6 +18,7 @@ WRKFLO_GIT_BASE_URL="${WRKFLO_GIT_BASE_URL:-https://github.com/$WRKFLO_ORG}"
 SYSTEM_PACKAGES=(
   tmux
   git
+  openssh-client
   curl
   cron
   jq
@@ -44,6 +45,7 @@ WRKFLO_REPOS=(
 SUMMARY_DONE=()
 SUMMARY_SKIPPED=()
 SUMMARY_WARNINGS=()
+SSH_PUBKEY_PATH=""
 
 APT_UPDATED=0
 APT_SOURCES_CHANGED=0
@@ -252,6 +254,34 @@ copy_if_changed() {
 
   install -m "$mode" "$src" "$dest"
   done_item "$label updated"
+}
+
+ensure_ssh_key() {
+  local key_base="$HOME/.ssh/id_ed25519"
+  local existing_pub=""
+
+  mkdir -p "$HOME/.ssh"
+  chmod 700 "$HOME/.ssh"
+
+  existing_pub="$(find "$HOME/.ssh" -maxdepth 1 -type f -name '*.pub' | sort | head -1 || true)"
+  if [ -n "$existing_pub" ]; then
+    SSH_PUBKEY_PATH="$existing_pub"
+    skip_item "SSH public key already present: $SSH_PUBKEY_PATH"
+    return 0
+  fi
+
+  if [ -f "$key_base" ]; then
+    log "deriving SSH public key at ${key_base}.pub"
+    ssh-keygen -y -f "$key_base" > "${key_base}.pub"
+    chmod 644 "${key_base}.pub"
+    done_item "derived SSH public key: ${key_base}.pub"
+  else
+    log "generating SSH key at $key_base"
+    ssh-keygen -t ed25519 -N "" -C "${USER}@$(hostname -s 2>/dev/null || hostname)" -f "$key_base" >/dev/null
+    done_item "generated SSH key: ${key_base}.pub"
+  fi
+
+  SSH_PUBKEY_PATH="${key_base}.pub"
 }
 
 codex_profiles_need_merge() {
@@ -502,6 +532,9 @@ print_summary() {
   if [ ! -f "$WRKFLO_CONFIG_DIR/foundry.env" ]; then
     SUMMARY_WARNINGS+=("Foundry env file is not present at $WRKFLO_CONFIG_DIR/foundry.env")
   fi
+  if [ -n "$SSH_PUBKEY_PATH" ]; then
+    SUMMARY_WARNINGS+=("SSH public key ready at $SSH_PUBKEY_PATH")
+  fi
 
   if [ "${#SUMMARY_WARNINGS[@]}" -gt 0 ]; then
     printf 'Notes:\n'
@@ -523,6 +556,7 @@ main() {
   ensure_npm_cli codex "@openai/codex" "Codex CLI"
   ensure_npm_cli claude "@anthropic-ai/claude-code" "Claude Code"
   ensure_cron_service
+  ensure_ssh_key
 
   local repo
   for repo in "${WRKFLO_REPOS[@]}"; do
