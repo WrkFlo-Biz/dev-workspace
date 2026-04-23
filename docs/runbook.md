@@ -412,8 +412,9 @@ Termius. Leave the startup command blank so the dev-workspace launcher runs.
 
 ```bash
 ls -l ~/.ssh/termius_20260415 ~/.ssh/id_ed25519 ~/.ssh/id_rsa 2>/dev/null
+DWS_TERMIUS_HOST="$(~/projects/dev-workspace/bin/dws-termius-setup.sh | sed -n 's/^  Hostname: \(.*\)$/\1/p')"
 DWS_TERMIUS_KEY="$(~/projects/dev-workspace/bin/dws-termius-setup.sh | sed -n 's/^  SSH key path: \([^ ]*\) (.*/\1/p')"
-ssh -i "$DWS_TERMIUS_KEY" -o BatchMode=yes -o ConnectTimeout=5 moses@100.117.16.63 'printf phone-key-ok\n'
+ssh -i "$DWS_TERMIUS_KEY" -o BatchMode=yes -o ConnectTimeout=5 "moses@${DWS_TERMIUS_HOST}" 'printf phone-key-ok\n'
 journalctl -u ssh --since '24 hours ago' --no-pager | rg '100\.88\.249\.22|iphone-15-pro-max|Accepted publickey|Failed publickey'
 ```
 
