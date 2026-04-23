@@ -474,6 +474,8 @@ main() {
   copy_if_changed "$REPO_ROOT/config/tmux.conf" "$HOME/.tmux.conf" 0644 "~/.tmux.conf"
   copy_if_changed "$REPO_ROOT/scripts/dws-launcher.sh" "$BIN_DIR/dws-launcher.sh" 0755 "~/bin/dws-launcher.sh"
   copy_if_changed "$REPO_ROOT/scripts/dws-health.sh" "$BIN_DIR/dws-health.sh" 0755 "~/bin/dws-health.sh"
+  copy_if_changed "$REPO_ROOT/scripts/dws-health-check.sh" "$BIN_DIR/dws-health-check.sh" 0755 "~/bin/dws-health-check.sh"
+  copy_if_changed "$REPO_ROOT/scripts/dws-notify.sh" "$BIN_DIR/dws-notify.sh" 0755 "~/bin/dws-notify.sh"
   ensure_codex_profiles
   ensure_bash_profile_launcher
   ensure_orchestrator_systemd
