@@ -137,11 +137,28 @@ launch_tmux() {
   fi
 
   local cmd
+  local base_cmd
   if [ "$tool" = "claude" ]; then
-    cmd="cd $HOME/projects/$proj && claude --dangerously-skip-permissions"
+    base_cmd="claude --dangerously-skip-permissions"
   else
-    cmd="cd $HOME/projects/$proj && codex --profile $tool --search --dangerously-bypass-approvals-and-sandbox"
+    base_cmd="codex --profile $tool --search --dangerously-bypass-approvals-and-sandbox"
   fi
+
+  # Wrap in retry loop so crashes don't kill the tmux session
+  local wrapped_cmd
+  wrapped_cmd="export AZURE_OPENAI_API_KEY='${AZURE_OPENAI_API_KEY:-}'; \
+export MAC_GUI_URL='${MAC_GUI_URL:-}'; \
+export MAC_CDP_URL='${MAC_CDP_URL:-}'; \
+export MAC_SSH_HOST='${MAC_SSH_HOST:-}'; \
+export DWS_PRIMARY_PROJECT='$proj'; \
+cd $HOME/projects/$proj; \
+while true; do \
+  $base_cmd; \
+  echo; echo 'Session ended. [r]estart / [q]uit:'; \
+  read -r _ch; \
+  case \$_ch in r|R) continue ;; *) break ;; esac; \
+done; \
+exec bash -l"
 
   if tmux has-session -t "$session_name" 2>/dev/null; then
     echo "  $(green "reconnecting") to $session_name..."
@@ -150,13 +167,7 @@ launch_tmux() {
   else
     echo "  $(green "launching") $session_name..."
     sleep 0.3
-    exec tmux new-session -s "$session_name" -c "$HOME/projects/$proj" \
-      "export AZURE_OPENAI_API_KEY='${AZURE_OPENAI_API_KEY:-}'; \
-       export MAC_GUI_URL='${MAC_GUI_URL:-}'; \
-       export MAC_CDP_URL='${MAC_CDP_URL:-}'; \
-       export MAC_SSH_HOST='${MAC_SSH_HOST:-}'; \
-       export DWS_PRIMARY_PROJECT='$proj'; \
-       $cmd; exec bash -l"
+    exec tmux new-session -s "$session_name" -c "$HOME/projects/$proj" "$wrapped_cmd"
   fi
 }
 
