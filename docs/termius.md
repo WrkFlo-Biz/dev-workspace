@@ -1,49 +1,59 @@
-# Termius setup (iPhone / iPad / laptop)
+# Termius (Phone) Setup Guide
 
-## Hosts to add
+Access the dev workspace from iPhone via Termius SSH client.
 
-### 1. dev-workspace-vm
-- **Address**: `20.230.203.79` (public) OR `dev-workspace-vm` (via Tailscale MagicDNS)
-- **Username**: `moses`
-- **Port**: `22`
-- **Auth**: Key → import `~/.ssh/termius_20260415` (ED25519, no passphrase)
-- **Startup command**: leave blank, or use `exec bash -l`
-  so login drops into the shared `dev-workspace` launcher. Do **not**
-  hard-code a single repo here if you want cross-project access from the VM.
+## Host Configuration
 
-### 2. Mac (this computer)
-- **Address**: `<mac-hostname>` via Tailscale MagicDNS
-  (find with `tailscale status` on the Mac after login)
-- **Username**: `mosestut`
-- **Port**: `22`
-- **Auth**: same key `termius_20260415` (already added to Mac by `authorize-vm.sh`,
-  or manually paste the public key into `~/.ssh/authorized_keys`).
+| Field | Value |
+|-------|-------|
+| Label | Dev Workspace |
+| Hostname | dev-workspace-vm |
+| Fallback IP | 20.230.203.79 |
+| Tailscale IP | 100.117.16.63 |
+| Port | 22 |
+| Username | moses |
+| Auth | SSH key (import from Mac keychain or generate in Termius) |
 
-## Snippets to save in Termius
+Use the Tailscale hostname when on the mesh. Use the public IP as fallback.
 
-Terminus supports "Snippets" — canned commands. Useful ones:
+## First connect
 
-| Snippet name                | Command                                               |
-|-----------------------------|-------------------------------------------------------|
-| Shared launcher             | `exec bash -l`                                        |
-| Codex — shared workspace    | `cd ~/projects && codex --profile foundry --search --dangerously-bypass-approvals-and-sandbox --add-dir "$HOME"` |
-| Codex — gpt-5.4 xhigh       | `cd ~/projects && codex --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox --add-dir "$HOME"` |
-| Claude Code                 | `cd ~/projects && claude --dangerously-skip-permissions --add-dir "$HOME"` |
-| Sync Mac → VM               | `~/dev-workspace/scripts/sync-mac-to-vm.sh <path>`    |
-| VM status                   | `systemctl --user status; tailscale status`            |
+1. SSH in — the launcher auto-runs and shows the project picker.
+2. Pick a project (1-6), then pick a model (1-9 or c for Claude).
+3. Session launches inside tmux — survives disconnects.
 
-## Port forwarding (optional)
+## Reconnecting
 
-Termius "Port forwarding" can forward a local port over SSH — handy for
-previewing a webapp running on the VM in your phone's browser:
+When you SSH back in after a disconnect:
+- The launcher shows active tmux sessions at the top.
+- Press **r** to reconnect. If only one session exists, it auto-attaches.
+- To pick from multiple sessions, press r then enter the session name or number.
 
-- Local: `8080`
-- Remote host: `localhost`
-- Remote port: `3000` (or whatever the app binds to)
+## tmux shortcuts (prefix = Ctrl-a)
 
-Then open `http://localhost:8080` in Safari on the phone.
+| Keys | Action |
+|------|--------|
+| Ctrl-a d | Detach (leave session running, exit SSH) |
+| Ctrl-a c | New window |
+| Ctrl-a n / p | Next / previous window |
+| Ctrl-a \| | Split pane vertical |
+| Ctrl-a - | Split pane horizontal |
+| Ctrl-a h | Health dashboard popup |
+| Ctrl-a [ | Scroll mode (vi keys, q to exit) |
 
-## Keep-alive
+## Termius snippets (optional)
 
-Enable "Keep alive" in the host settings (interval ≈ 60s) so sessions survive
-moving between Wi-Fi networks.
+Save these as snippets for quick access:
+
+| Name | Command |
+|------|---------|
+| Status | ssh moses@dev-workspace-vm "tmux ls 2>/dev/null \|\| echo 'no sessions'" |
+| Health | ssh moses@dev-workspace-vm "~/bin/dws-health.sh" |
+| Kill all | ssh moses@dev-workspace-vm "tmux kill-server" |
+
+## Tips
+
+- Use **landscape mode** for Codex/Claude — the wider screen helps.
+- Ctrl-a is the tmux prefix, not Ctrl-b (easier on phone keyboards).
+- If the launcher doesn't appear, you may already be inside tmux. Press Ctrl-a d to detach first.
+- To skip the launcher entirely: set SKIP_LAUNCHER=1 in Termius host environment variables.
