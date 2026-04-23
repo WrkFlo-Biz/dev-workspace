@@ -56,6 +56,7 @@ Azure Foundry launcher targets plus native Claude Code:
 | `dws-env.sh` | Shared project/model mappings and Mac bridge env vars |
 | `dws-health.sh` | Health dashboard for mesh, sessions, tooling, auth, and HTTP endpoints |
 | `dws-launcher.sh` | SSH login picker for project, model, session attach, and status |
+| `dws-log.sh` | Unified log viewer for health, alerts, sync, and Mac bridge logs |
 | `dws-phone-server.py` | VM-side HTTP queue for iPhone Shortcut actions |
 | `dws-quick.sh` | Fast non-menu launcher for `<project-short> <model-short>` |
 | `dws-sessions.sh` | List, attach, kill, or clean up `tmux` sessions |
