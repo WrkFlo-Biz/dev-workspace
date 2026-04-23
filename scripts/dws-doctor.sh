@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -u
-[ -n "${AZURE_OPENAI_API_KEY:-}" ] || { [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"; }
+if [ -z "${AZURE_OPENAI_API_KEY:-}" ] && [ -f "$HOME/.config/wrkflo/foundry.env" ]; then
+  # shellcheck source=/dev/null
+  . "$HOME/.config/wrkflo/foundry.env"
+fi
 R=$'\033[31m'; G=$'\033[32m'; C=$'\033[36m'; N=$'\033[0m'; ok=0; fail=0
 have(){ command -v "$1" >/dev/null 2>&1; }
 pass(){ ok=$((ok+1)); printf '%sPASS%s %s\n' "$G" "$N" "$*"; }

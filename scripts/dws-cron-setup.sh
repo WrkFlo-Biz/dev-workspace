@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_DIR=$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+BASE_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PATTERN=' # dws-(health-check|cleanup|sync-all)$'
 JOBS=(
   "*/15 * * * * $BASE_DIR/dws-health-check.sh >/dev/null 2>&1 # dws-health-check"
