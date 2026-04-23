@@ -115,7 +115,18 @@ exit 1
 
   write_fake_command tmux '
 if [ "${1:-}" = "list-sessions" ]; then
-  printf "monitor\norchestrator\n"
+  cat <<'\''EOF'\''
+dws-a
+dws-b
+worker-c
+worker-d
+worker-e
+worker-f
+worker-g
+worker-h
+worker-i
+orchestrator
+EOF
   exit 0
 fi
 exit 1
@@ -161,7 +172,7 @@ test_boot_verify_passes_when_all_checks_are_ready() {
   assert_contains "${output}" "DWS Boot Verify"
   assert_contains "${output}" "PASS tailscale up (100.117.16.63; tailscaled.service)"
   assert_contains "${output}" "PASS ssh accepting connections on 127.0.0.1:22 (SSH-2.0-OpenSSH_9.7; active ssh.socket, ssh.service)"
-  assert_contains "${output}" "PASS tmux server running (2 sessions: monitor, orchestrator)"
+  assert_contains "${output}" "PASS tmux managed sessions ready (10 sessions: dws-a, dws-b, worker-c, worker-d, worker-e, worker-f, worker-g, worker-h, worker-i, orchestrator)"
   assert_contains "${output}" "PASS cron loaded (cron.service; 2 active crontab entries)"
   assert_contains "${output}" "PASS log directory present (${DWS_BOOT_VERIFY_LOG_DIR}; 1 entries)"
   assert_contains "${output}" "PASS task-monitor service active (user dws-task-monitor.service)"
@@ -191,7 +202,43 @@ test_boot_verify_fails_when_task_monitor_is_inactive() {
   trap - EXIT
 }
 
+test_boot_verify_fails_when_worker_i_is_missing() {
+  local output
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  write_fake_command tmux '
+if [ "${1:-}" = "list-sessions" ]; then
+  cat <<'\''EOF'\''
+dws-a
+dws-b
+worker-c
+worker-d
+worker-e
+worker-f
+worker-g
+worker-h
+orchestrator
+EOF
+  exit 0
+fi
+exit 1
+'
+
+  if output=$("${SCRIPT}" 2>&1); then
+    fail "expected dws-boot-verify.sh to fail when worker-i is missing"
+  fi
+
+  assert_contains "${output}" "FAIL tmux managed sessions missing (worker-i; active: dws-a, dws-b, worker-c, worker-d, worker-e, worker-f, worker-g, worker-h, orchestrator)"
+  assert_contains "${output}" "overall: FAIL (5 passed, 1 failed)"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
 test_boot_verify_passes_when_all_checks_are_ready
 test_boot_verify_fails_when_task_monitor_is_inactive
+test_boot_verify_fails_when_worker_i_is_missing
 
 printf 'PASS: %s\n' "$(basename "$0")"

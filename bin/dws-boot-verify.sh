@@ -6,6 +6,18 @@ SSH_PORT="${DWS_BOOT_VERIFY_SSH_PORT:-22}"
 SSH_TIMEOUT_SECONDS="${DWS_BOOT_VERIFY_SSH_TIMEOUT_SECONDS:-5}"
 LOG_DIR="${DWS_BOOT_VERIFY_LOG_DIR:-/var/log/dws}"
 TASK_MONITOR_UNIT="${DWS_BOOT_VERIFY_TASK_MONITOR_UNIT:-dws-task-monitor.service}"
+EXPECTED_TMUX_SESSIONS=(
+  dws-a
+  dws-b
+  worker-c
+  worker-d
+  worker-e
+  worker-f
+  worker-g
+  worker-h
+  worker-i
+  orchestrator
+)
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -44,7 +56,7 @@ usage: dws-boot-verify.sh [--help]
 Verify post-reboot dev-workspace readiness:
   - Tailscale is connected
   - SSH is accepting local connections
-  - tmux has a live server/session set
+  - tmux has the managed session set
   - cron is active and a crontab is loaded
   - /var/log/dws exists
   - dws-task-monitor.service is active
@@ -276,7 +288,7 @@ check_ssh() {
 }
 
 check_tmux() {
-  local rows count names
+  local rows count names missing=() session
 
   if ! have tmux; then
     fail "tmux command not found"
@@ -291,7 +303,18 @@ check_tmux() {
 
   count=$(printf '%s\n' "$rows" | awk 'NF { count++ } END { print count + 0 }')
   names=$(printf '%s\n' "$rows" | awk 'NF { printf("%s%s", sep, $0); sep=", " }')
-  pass "tmux server running (${count} sessions: ${names})"
+
+  for session in "${EXPECTED_TMUX_SESSIONS[@]}"; do
+    if ! printf '%s\n' "$rows" | grep -Fx -- "$session" >/dev/null 2>&1; then
+      missing+=("$session")
+    fi
+  done
+
+  if [ "${#missing[@]}" -gt 0 ]; then
+    fail "tmux managed sessions missing ($(join_by ', ' "${missing[@]}"); active: ${names})"
+  else
+    pass "tmux managed sessions ready (${count} sessions: ${names})"
+  fi
 }
 
 check_cron() {
