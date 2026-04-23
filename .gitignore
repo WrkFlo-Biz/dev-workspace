@@ -8,3 +8,4 @@
 
 # Local scratch
 .scratch/
+__pycache__/

@@ -19,14 +19,17 @@ SYSTEM_PACKAGES=(
   tmux
   git
   openssh-client
+  openssh-server
   curl
   cron
   jq
   iputils-ping
   python3
+  python3-pip
   python3-venv
   nodejs
   npm
+  unattended-upgrades
   ca-certificates
   gnupg
   lsb-release
@@ -157,6 +160,32 @@ install_root_file_if_changed() {
   return 0
 }
 
+systemd_unit_exists() {
+  local unit="$1"
+  local load_state=""
+
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 1
+  fi
+
+  load_state="$(systemctl show -p LoadState --value "$unit" 2>/dev/null || true)"
+  [ -n "$load_state" ] && [ "$load_state" != "not-found" ]
+}
+
+detect_ssh_service_unit() {
+  if systemd_unit_exists "ssh.service"; then
+    printf '%s\n' "ssh.service"
+    return 0
+  fi
+
+  if systemd_unit_exists "sshd.service"; then
+    printf '%s\n' "sshd.service"
+    return 0
+  fi
+
+  return 1
+}
+
 ensure_github_cli() {
   local source_line
 
@@ -228,6 +257,38 @@ ensure_npm_cli() {
   log "installing $label via npm"
   run_root npm install -g "$package_name"
   done_item "installed $label"
+}
+
+ensure_tailscale() {
+  local installer
+
+  if command -v tailscale >/dev/null 2>&1; then
+    skip_item "Tailscale already installed"
+  else
+    installer="$(mktemp)"
+    log "installing Tailscale"
+    curl -fsSL "https://tailscale.com/install.sh" >"$installer"
+    run_root sh "$installer"
+    rm -f "$installer"
+    done_item "installed Tailscale"
+  fi
+
+  if ! command -v systemctl >/dev/null 2>&1; then
+    warn "systemctl not available; skipping tailscaled enablement"
+  elif ! systemd_unit_exists "tailscaled.service"; then
+    warn "tailscaled service not found after installation"
+  elif systemctl is-enabled tailscaled >/dev/null 2>&1 && systemctl is-active tailscaled >/dev/null 2>&1; then
+    skip_item "tailscaled service already enabled"
+  else
+    run_root systemctl enable --now tailscaled
+    done_item "enabled tailscaled service"
+  fi
+
+  if command -v tailscale >/dev/null 2>&1 && run_root tailscale status >/dev/null 2>&1; then
+    skip_item "Tailscale already authenticated"
+  else
+    warn "Tailscale is installed but not connected. Run: sudo tailscale up --ssh --operator=$USER --hostname=$(hostname)"
+  fi
 }
 
 ensure_directory() {
@@ -329,6 +390,162 @@ ensure_cron_service() {
   done_item "enabled cron service"
 }
 
+ensure_sshd_hardening() {
+  local sshd_bin=""
+  local ssh_service=""
+  local hardening_file="/etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf"
+  local hardening_content
+  local hardening_tmp=""
+  local backup=""
+  local changed=0
+
+  if [ -x /usr/sbin/sshd ]; then
+    sshd_bin="/usr/sbin/sshd"
+  elif command -v sshd >/dev/null 2>&1; then
+    sshd_bin="$(command -v sshd)"
+  else
+    warn "sshd not available after package installation; skipping SSH hardening"
+    return 0
+  fi
+
+  if ! grep -Eq '(ssh-|ecdsa-|sk-)' "$HOME/.ssh/authorized_keys" 2>/dev/null; then
+    warn "no SSH authorized_keys entries detected for $USER; verify key or Tailscale SSH access before ending this session"
+  fi
+
+  hardening_content="$(cat <<'EOF'
+# Managed by dev-workspace/scripts/vm-setup.sh
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+PubkeyAuthentication yes
+ClientAliveInterval 300
+ClientAliveCountMax 2
+EOF
+)"
+
+  hardening_tmp="$(mktemp)"
+  printf '%s\n' "$hardening_content" >"$hardening_tmp"
+
+  if [ -f "$hardening_file" ] && cmp -s "$hardening_tmp" "$hardening_file"; then
+    rm -f "$hardening_tmp"
+    skip_item "sshd hardening already configured"
+  else
+    if [ -f "$hardening_file" ]; then
+      backup="$(mktemp)"
+      run_root cp "$hardening_file" "$backup"
+    fi
+
+    run_root install -d -m 0755 "$(dirname "$hardening_file")"
+    run_root install -m 0644 "$hardening_tmp" "$hardening_file"
+    rm -f "$hardening_tmp"
+
+    changed=1
+    if ! run_root "$sshd_bin" -t; then
+      if [ -n "$backup" ] && [ -f "$backup" ]; then
+        run_root install -m 0644 "$backup" "$hardening_file"
+      else
+        run_root rm -f "$hardening_file"
+      fi
+      rm -f "$backup"
+      printf 'sshd configuration validation failed\n' >&2
+      exit 1
+    fi
+    rm -f "$backup"
+    done_item "applied sshd hardening"
+  fi
+
+  if ! command -v systemctl >/dev/null 2>&1; then
+    warn "systemctl not available; SSH service was not reloaded"
+    return 0
+  fi
+
+  ssh_service="$(detect_ssh_service_unit || true)"
+  if [ -z "$ssh_service" ]; then
+    warn "SSH service unit not found; sshd hardening was written but not reloaded"
+    return 0
+  fi
+
+  if systemctl is-enabled "$ssh_service" >/dev/null 2>&1 && systemctl is-active "$ssh_service" >/dev/null 2>&1; then
+    if [ "$changed" -eq 1 ]; then
+      if run_root systemctl reload "$ssh_service" >/dev/null 2>&1; then
+        done_item "reloaded $ssh_service"
+      else
+        run_root systemctl restart "$ssh_service"
+        done_item "restarted $ssh_service"
+      fi
+    else
+      skip_item "$ssh_service already enabled"
+    fi
+    return 0
+  fi
+
+  run_root systemctl enable --now "$ssh_service"
+  done_item "enabled $ssh_service"
+}
+
+ensure_automatic_security_updates() {
+  local auto_updates_file="/etc/apt/apt.conf.d/20auto-upgrades"
+  local unattended_file="/etc/apt/apt.conf.d/52dev-workspace-unattended-upgrades"
+  local auto_updates_content
+  local unattended_content
+  local config_changed=0
+  local timers_changed=0
+  local timer
+
+  auto_updates_content="$(cat <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::AutocleanInterval "7";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+)"
+
+  unattended_content="$(cat <<'EOF'
+Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "false";
+EOF
+)"
+
+  if install_root_file_if_changed "$auto_updates_file" "$auto_updates_content"; then
+    config_changed=1
+  fi
+  if install_root_file_if_changed "$unattended_file" "$unattended_content"; then
+    config_changed=1
+  fi
+
+  if [ "$config_changed" -eq 1 ]; then
+    done_item "configured unattended security updates"
+  else
+    skip_item "unattended security updates already configured"
+  fi
+
+  if ! command -v systemctl >/dev/null 2>&1; then
+    warn "systemctl not available; could not verify apt security update timers"
+    return 0
+  fi
+
+  for timer in apt-daily.timer apt-daily-upgrade.timer; do
+    if ! systemd_unit_exists "$timer"; then
+      warn "systemd timer not found: $timer"
+      continue
+    fi
+
+    if systemctl is-enabled "$timer" >/dev/null 2>&1 && systemctl is-active "$timer" >/dev/null 2>&1; then
+      continue
+    fi
+
+    run_root systemctl enable --now "$timer"
+    timers_changed=1
+  done
+
+  if [ "$timers_changed" -eq 1 ]; then
+    done_item "enabled apt automatic update timers"
+  else
+    skip_item "apt automatic update timers already enabled"
+  fi
+}
+
 ensure_bash_profile_launcher() {
   local file="$HOME/.bash_profile"
   local clean_file final_file
@@ -357,10 +574,10 @@ fi
 EOF
 
   if cmp -s "$final_file" "$file"; then
-    skip_item "~/.bash_profile already sources dws-launcher.sh"
+    skip_item "$HOME/.bash_profile already sources dws-launcher.sh"
   else
     mv "$final_file" "$file"
-    done_item "updated ~/.bash_profile to source dws-launcher.sh"
+    done_item "updated $HOME/.bash_profile to source dws-launcher.sh"
   fi
 
   rm -f "$clean_file" "$final_file" 2>/dev/null || true
@@ -555,21 +772,24 @@ main() {
   ensure_apt_packages "${SYSTEM_PACKAGES[@]}"
   ensure_github_cli
   ensure_azure_cli
+  ensure_tailscale
   ensure_npm_cli codex "@openai/codex" "Codex CLI"
   ensure_npm_cli claude "@anthropic-ai/claude-code" "Claude Code"
   ensure_cron_service
   ensure_ssh_key
+  ensure_sshd_hardening
+  ensure_automatic_security_updates
 
   local repo
   for repo in "${WRKFLO_REPOS[@]}"; do
     clone_repo "$repo"
   done
 
-  copy_if_changed "$REPO_ROOT/config/tmux.conf" "$HOME/.tmux.conf" 0644 "~/.tmux.conf"
-  copy_if_changed "$REPO_ROOT/scripts/dws-launcher.sh" "$BIN_DIR/dws-launcher.sh" 0755 "~/bin/dws-launcher.sh"
-  copy_if_changed "$REPO_ROOT/scripts/dws-health.sh" "$BIN_DIR/dws-health.sh" 0755 "~/bin/dws-health.sh"
-  copy_if_changed "$REPO_ROOT/scripts/dws-health-check.sh" "$BIN_DIR/dws-health-check.sh" 0755 "~/bin/dws-health-check.sh"
-  copy_if_changed "$REPO_ROOT/scripts/dws-notify.sh" "$BIN_DIR/dws-notify.sh" 0755 "~/bin/dws-notify.sh"
+  copy_if_changed "$REPO_ROOT/config/tmux.conf" "$HOME/.tmux.conf" 0644 "$HOME/.tmux.conf"
+  copy_if_changed "$REPO_ROOT/scripts/dws-launcher.sh" "$BIN_DIR/dws-launcher.sh" 0755 "$HOME/bin/dws-launcher.sh"
+  copy_if_changed "$REPO_ROOT/scripts/dws-health.sh" "$BIN_DIR/dws-health.sh" 0755 "$HOME/bin/dws-health.sh"
+  copy_if_changed "$REPO_ROOT/scripts/dws-health-check.sh" "$BIN_DIR/dws-health-check.sh" 0755 "$HOME/bin/dws-health-check.sh"
+  copy_if_changed "$REPO_ROOT/scripts/dws-notify.sh" "$BIN_DIR/dws-notify.sh" 0755 "$HOME/bin/dws-notify.sh"
   ensure_codex_profiles
   ensure_bash_profile_launcher
   ensure_health_check_cron

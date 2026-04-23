@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 export MAC_GUI_URL="${MAC_GUI_URL:-http://100.78.207.22:9223}"
 export MAC_CDP_URL="${MAC_CDP_URL:-http://100.78.207.22:9222}"
 export MAC_SSH_HOST="${MAC_SSH_HOST:-mosestut@100.78.207.22}"

@@ -2,7 +2,7 @@
 set -euo pipefail
 H=/tmp/dws-health.log
 A=/tmp/dws-health-alerts.log
-S=/tmp/global-sentinel-sync.out.log
+S=/tmp/dws-sync-all.out.log
 M=/tmp/mac-bridges.out.log
 R=$'\033[31m'; G=$'\033[32m'; D=$'\033[2m'; C=$'\033[36m'; N=$'\033[0m'
 

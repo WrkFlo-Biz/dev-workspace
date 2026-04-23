@@ -1,0 +1,852 @@
+{
+  "tasks": [
+    {
+      "id": "dws-setup-01",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Audit and fix SSH connectivity: verify ~/.ssh/authorized_keys has all needed public keys (Mac, iPhone, Termius). Test SSH from localhost. Verify sshd_config has ClientAliveInterval 30 and ClientAliveCountMax 5. Verify Tailscale is running and IP is 100.117.16.63. Document findings in docs/ssh-connectivity.md. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "dws-setup-02",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create a comprehensive VM health check script bin/dws-health-full.sh: check Tailscale status and IP, SSH daemon running, all tmux sessions alive, disk usage, memory usage, CPU load, Python/Node/Git versions, firewall rules, open ports (22, 8080, 9222). Output a clean status report. Make executable. Stage, commit, push.",
+      "assigned": "worker-g",
+      "status": "completed"
+    },
+    {
+      "id": "dws-setup-03",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create bin/dws-termius-setup.sh: a helper script that outputs the exact Termius configuration needed \u2014 hostname (100.117.16.63), port 22, username moses, SSH key path, recommended terminal settings. Also create docs/termius-setup.md with step-by-step instructions for adding the VM on iPhone and desktop Termius. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "completed"
+    },
+    {
+      "id": "dws-setup-04",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Improve bin/dws-motd.sh: show Tailscale IP, connected clients count, active tmux sessions with their repos, task queue summary (pending/active/done), disk and memory usage, uptime, last backup time. This runs on login so keep it fast. Make executable. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "completed"
+    },
+    {
+      "id": "dws-setup-05",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create bin/dws-firewall.sh: configure UFW or iptables to allow SSH (22), Tailscale (41641/udp), and dev ports (8080, 9222, 3000) only from Tailscale subnet 100.64.0.0/10. Deny all other inbound. Log the rules applied. Make executable. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "dws-setup-06",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Harden bin/vm-setup.sh: ensure it installs and configures all essential packages (tmux, git, python3, pip, node, tailscale, codex CLI). Add sshd hardening (disable password auth, disable root login, set ClientAliveInterval). Add automatic security updates. Make idempotent so it can be re-run safely. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "completed"
+    },
+    {
+      "id": "dws-setup-07",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create bin/dws-connect-test.sh: tests connectivity from the VM side \u2014 ping Tailscale peers (Mac 100.78.207.22, iPhone 100.88.249.22, gateway 100.126.194.98), check SSH reverse connectivity, check if Codex API endpoint is reachable, check DNS resolution. Output pass/fail for each. Make executable. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "dws-setup-08",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create bin/dws-backup.sh improvements: backup ~/.config/wrkflo/, ~/projects/ git repos (just refs and stashes, not full clones), ~/bin/ scripts, tmux layouts, crontab, SSH keys to a timestamped tarball. Add restore instructions. Keep last 5 backups, prune older. Make executable. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "completed"
+    },
+    {
+      "id": "dws-setup-09",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create bin/dws-sessions-init.sh: on VM boot or manual run, create all expected tmux sessions (dws-a, dws-b, worker-c through worker-h, orchestrator, monitor) with correct working directories and Codex CLI launched. Verify each session is alive after creation. Make executable. Stage, commit, push.",
+      "assigned": "worker-h",
+      "status": "completed"
+    },
+    {
+      "id": "dws-setup-10",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create docs/architecture.md: document the full dev-workspace system \u2014 VM specs, Tailscale mesh topology (Mac, iPhone, gateway IPs), tmux session layout, task monitor, Mac reconnect agent, SSH keepalive config, how to connect from Termius/Terminal.app/phone, troubleshooting common issues. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "completed"
+    },
+    {
+      "id": "dws-setup-11",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create bin/dws-tailscale-diag.sh: run tailscale status, tailscale ping for each known peer, check if DERP relay is being used vs direct connection, show connection latency, check tailscale version and update availability. Output clean diagnostic report. Make executable. Stage, commit, push.",
+      "assigned": "worker-g",
+      "status": "completed"
+    },
+    {
+      "id": "dws-setup-12",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Improve bin/dws-cleanup.sh: prune stale git worktrees across all ~/projects repos, compress /tmp logs older than 2 days, remove dead tmux sessions, clean pip cache, clean apt cache, report disk space recovered. Make idempotent. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-irwq",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-cxqu",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "worker-h",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-kiam",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-fhwx",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-sape",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-sedr",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-zfkc",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-xisg",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "worker-h",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-seph",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-colp",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": "worker-g",
+      "status": "completed"
+    },
+    {
+      "id": "p5-hammerspoon-relay-health",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Create a health check and operator docs for Mac Hammerspoon plus Chrome relay connectivity over Tailscale, with clear failure messages and recovery steps. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "completed"
+    },
+    {
+      "id": "p5-mac-sync-verify",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Extend dws-sync-mac.sh or add a verification mode that checks key scripts and config parity between VM and Mac and reports drift without overwriting by default. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-rvqz",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-rplm",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-wljo",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-epvf",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-likc",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-efmy",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-pern",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-vliy",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-lohx",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": "worker-g",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-ieek",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": "worker-h",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-djil",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-fyiv",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-gjvr",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-ynob",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "worker-h",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-ezgp",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-tubw",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-ttam",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-pdws",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-uuxp",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-uuku",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-dggb",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": "worker-h",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-gyvs",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-gcks",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-cfte",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-pmaw",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-mlwh",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "worker-g",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-adze",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-amoe",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-mbwf",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-tuwi",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-iewn",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-hkeg",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-ojfg",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-wwhr",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": "worker-h",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-sjxe",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-ozey",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-dwfw",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-dsmv",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-biqr",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": "worker-h",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-adgw",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-lmzq",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-upxk",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-zdjh",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-hmye",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "worker-g",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-hvlc",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": null,
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-4-frmr",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": null,
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-5-seec",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-gstz",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "completed"
+    },
+    {
+      "id": "dws-harden-01",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create bin/dws-tailscale-diag.sh: run tailscale status, tailscale ping for each peer (100.78.207.22 Mac, 100.88.249.22 iPhone, 100.126.194.98 gateway), check DERP relay vs direct, show latency, check version. Make executable. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "completed"
+    },
+    {
+      "id": "dws-harden-02",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Improve bin/dws-cleanup.sh: add git worktree prune for all repos in ~/projects, compress /tmp logs older than 2 days, remove dead tmux sessions with no pane content, clean pip and apt cache, report disk space recovered. Make executable. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "dws-harden-03",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create bin/dws-boot-verify.sh: after reboot, verify Tailscale is up, SSH is accepting connections, tmux server is running, cron is loaded, /var/log/dws/ exists, task-monitor service is active. Output pass/fail checklist. Make executable. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "dws-harden-04",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Review and improve docs/troubleshooting.md: add sections for SSH lockout recovery, firewall rollback, task-monitor restart, Codex compaction recovery, Tailscale reconnection, phone/Termius issues. Ensure each has exact commands. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-nbqu",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "worker-g",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-czye",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-qfgi",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-zfqc",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": null,
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-5-qkyk",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-rjun",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-mwsb",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "worker-h",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-ozee",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": null,
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-4-nfan",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": null,
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-4-cmei",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": null,
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-5-mfxm",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-ivlr",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "worker-g",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-ihqk",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "completed"
+    },
+    {
+      "id": "auto-4-ccuy",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-4-acpq",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": "worker-h",
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-4-orxw",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-5-gazl",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-vljb",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "worker-h",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-afev",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-4-tfga",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": null,
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-4-lrmu",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": null,
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-4-assl",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": null,
+      "status": "cancelled"
+    },
+    {
+      "id": "auto-5-xmdg",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "completed"
+    },
+    {
+      "id": "auto-5-zlxb",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "completed"
+    },
+    {
+      "id": "auto-2-stzl",
+      "phase": 2,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create workers/browser_worker.py: Chrome DevTools Protocol worker connecting to localhost:9222, can navigate URLs, take screenshots, extract page text. Tier-2 classification, dry-run mode, audit logging. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "in_progress"
+    },
+    {
+      "id": "auto-4-ebqb",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Create a dashboard API at GET /v1/dashboard returning JSON with worker statuses, active/completed task counts, phase progress, system health. Query state.db. Add tests. Stage, commit, push.",
+      "assigned": "worker-g",
+      "status": "in_progress"
+    },
+    {
+      "id": "auto-4-hytp",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add cross-project query to WorkspaceBroker: GET /v1/projects/search?q=term searches across project names and descriptions. Add CLI example. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "in_progress"
+    },
+    {
+      "id": "auto-4-ukpf",
+      "phase": 4,
+      "repo": "wrkflo-orchestrator",
+      "description": "Add task completion tracking to state.py: write completion records to state.db with task_id, worker, duration, success/failure. Add GET /v1/tasks/history endpoint. Stage, commit, push.",
+      "assigned": null,
+      "status": "pending"
+    },
+    {
+      "id": "auto-5-iwtb",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Add session recovery to bin/dws-sessions.sh: detect crashed sessions via capture-pane, show last task from monitor-log.txt, offer one-command relaunch. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "in_progress"
+    },
+    {
+      "id": "auto-5-qylg",
+      "phase": 5,
+      "repo": "dev-workspace",
+      "description": "Improve dws-launcher.sh status header: show active session count, health check timestamp, disk usage, task queue summary. Stage, commit, push.",
+      "assigned": "dws-b",
+      "status": "in_progress"
+    }
+  ]
+}

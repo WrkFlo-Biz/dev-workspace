@@ -1,5 +1,3 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-REPO_ROOT=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-exec "${REPO_ROOT}/scripts/dws-motd.sh" "$@"
+# Wrapper — canonical source is scripts/dws-motd.sh
+exec "./../scripts/dws-motd.sh" "$@"

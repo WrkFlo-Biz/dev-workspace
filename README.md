@@ -53,18 +53,54 @@ Azure Foundry launcher targets plus native Claude Code:
 | `control-mac-chrome.js` | Example Puppeteer client for the Mac Chrome CDP bridge |
 | `control-mac-chrome.sh` | Wrapper that sets `NODE_PATH` and runs the Chrome CDP script |
 | `control-mac-gui.py` | CLI for the Mac Hammerspoon GUI bridge |
+| `dws-backup.sh` | Snapshot launcher/runtime state, verify restoreability, and prune expired backup artifacts |
+| `dws-cleanup.sh` | Trim stale worktrees, old tmux sessions, old logs, and temp artifacts |
+| `dws-cron-setup.sh` | Install or verify the managed `dws` cron block |
+| `dws-doctor.sh` | Pass/warn/fail health checks for runtime, cron, backups, cleanup, and artifacts |
 | `dws-env.sh` | Shared project/model mappings and Mac bridge env vars |
 | `dws-health.sh` | Health dashboard for mesh, sessions, tooling, auth, and HTTP endpoints |
 | `dws-launcher.sh` | SSH login picker for project, model, session attach, and status |
 | `dws-log.sh` | Unified log viewer for health, alerts, sync, and Mac bridge logs |
 | `dws-phone-server.py` | VM-side HTTP queue for iPhone Shortcut actions |
 | `dws-quick.sh` | Fast non-menu launcher for `<project-short> <model-short>` |
-| `dws-sessions.sh` | List, attach, kill, or clean up `tmux` sessions |
+| `dws-sessions.sh` | List session history, inspect recovery state, reconnect, recover, relaunch, or clean up `tmux` sessions |
 | `dws-update.sh` | Pull repo updates and deploy tracked config/script changes |
 | `sync-mac-to-vm.sh` | `rsync` a local Mac folder up to the VM |
 | `sync-vm-to-mac.sh` | `rsync` a VM folder back down to the Mac |
 | `vm-bootstrap.sh` | Lightweight idempotent VM bootstrap |
 | `vm-setup.sh` | Full Ubuntu VM setup for packages, repos, profiles, and services |
+
+## Backup Verification
+
+Validate the latest snapshot without touching live runtime files:
+
+```bash
+~/projects/dev-workspace/bin/dws-backup.sh verify-restore
+```
+
+That flow restores the snapshot into a temp directory, checks `state.db`,
+`task-queue.json`, `planner-status.md`, and both monitor logs, then only
+reports success if those artifacts restore cleanly.
+
+Use `~/projects/dev-workspace/bin/dws-backup.sh verify-restore latest --prune`
+when you also want to prune expired backup and verify scratch directories.
+
+## Doctor Checks
+
+Use the doctor when the VM feels off or before launching more workers:
+
+```bash
+~/projects/dev-workspace/bin/dws-doctor.sh
+```
+
+It validates:
+
+- root disk usage and memory pressure
+- Tailscale connectivity and active `tmux` sessions
+- the exact managed cron block installed by `dws-cron-setup.sh`
+- the latest backup under `~/backups/dev-workspace` (warn after 24h, fail after 48h by default)
+- the latest successful cleanup via `/tmp/dws-cleanup.last-success`, with cron-log fallback for older installs
+- planner or monitor artifact freshness, and points you at `dws-status.sh` plus the relevant log tail when the runtime looks stale
 
 ## tmux Cheatsheet
 Prefix is `Ctrl-a`.
@@ -83,9 +119,9 @@ Prefix is `Ctrl-a`.
 | `Ctrl-a r` | Reload `~/.tmux.conf` |
 
 ## Troubleshooting
-- No launcher: interactive SSH only; unset `SKIP_LAUNCHER=1` or run `scripts/dws-launcher.sh`.
-- Foundry key missing: check `~/.config/wrkflo/foundry.env`, then run `scripts/dws-health.sh`.
+- No launcher: interactive SSH only; unset `SKIP_LAUNCHER=1` or run `~/bin/dws-launcher.sh`.
+- Foundry key missing: check `~/.config/wrkflo/foundry.env`, then run `~/projects/dev-workspace/bin/dws-status.sh` or `~/projects/dev-workspace/scripts/dws-health.sh`.
 - Cannot reach the VM: verify Tailscale on both devices, try `dev-workspace-vm`, then fall back to `20.230.203.79`.
-- Lost your session: reconnect and press `r`, or run `scripts/dws-sessions.sh list`.
+- Lost your session: reconnect and press `r`, or run `~/projects/dev-workspace/bin/dws-sessions.sh list`, `show`, and `reconnect`.
 - Mac automation is down: make sure the Mac is awake and on Tailscale; test ports `9222` and `9223`.
-- Repo or local tooling drift: run `scripts/dws-update.sh` on the VM.
+- Repo or local tooling drift: run `~/projects/dev-workspace/scripts/dws-update.sh` on the VM.

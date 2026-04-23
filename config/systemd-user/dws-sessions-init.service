@@ -1,0 +1,17 @@
+[Unit]
+Description=Dev Workspace tmux Sessions Init
+After=network-online.target
+Wants=network-online.target
+Before=dws-task-monitor.service
+ConditionPathExists=%h/bin/dws-sessions-init.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash %h/bin/dws-sessions-init.sh
+RemainAfterExit=yes
+Environment=HOME=%h
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:%h/.local/bin
+WorkingDirectory=%h
+
+[Install]
+WantedBy=default.target

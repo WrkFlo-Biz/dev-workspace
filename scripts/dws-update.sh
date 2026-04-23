@@ -30,7 +30,13 @@ while [ $# -gt 0 ]; do
 done
 
 echo "Pulling latest dev-workspace changes..."
-git -C "$REPO" pull --ff-only
+if [ -n "$(git -C "$REPO" status --porcelain 2>/dev/null)" ]; then
+  echo "Skipping git pull: repo has local changes; using current checkout."
+elif git -C "$REPO" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
+  git -C "$REPO" pull --ff-only
+else
+  echo "Skipping git pull: current branch has no upstream; using current checkout."
+fi
 
 changes=(); tmux_changed=0; echo
 for item in "${FILES[@]}"; do

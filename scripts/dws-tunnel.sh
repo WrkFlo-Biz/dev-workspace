@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-BASE_DIR=$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+BASE_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=/dev/null
 . "$BASE_DIR/dws-env.sh"
 

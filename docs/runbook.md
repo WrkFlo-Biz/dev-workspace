@@ -1,125 +1,204 @@
-# Runbook
+# Dev Workspace Runbook
 
-Operate the VM from `~/projects/dev-workspace`.
+Operational procedures for the dev-workspace-vm multi-agent environment.
 
-## Standard Paths
+## Quick Reference
 
-- Repo checkout: `~/projects/dev-workspace`
-- Launcher: `~/bin/dws-launcher.sh`
-- Sessions: `~/projects/dev-workspace/scripts/dws-sessions.sh`
-- Health dashboard: `~/projects/dev-workspace/scripts/dws-health.sh`
-- Doctor: `~/projects/dev-workspace/bin/dws-doctor.sh`
+| Item | Location |
+|------|----------|
+| Repo | ~/projects/dev-workspace |
+| Scripts (canonical) | ~/projects/dev-workspace/scripts/ |
+| Bin (wrappers) | ~/projects/dev-workspace/bin/ |
+| VM-only scripts | ~/bin/ |
+| Task queue | ~/projects/dev-workspace/.state/task-queue.json |
+| Monitor log | /var/log/dws/monitor.log |
+| Health check | ~/bin/dws-boot-verify.sh |
+| Systemd services | ~/.config/systemd/user/dws-*.service |
+| SSH hardening | /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf |
+| Foundry env | ~/.config/wrkflo/foundry.env |
 
-## Start
+## Tailscale Network
 
-1. Run `~/projects/dev-workspace/bin/dws-doctor.sh` to check disk, memory, Tailscale, tmux, and cron health before launching more work.
-2. SSH to `moses@dev-workspace-vm`, or run `~/bin/dws-launcher.sh` directly on the VM.
-3. Pick a project and Codex profile in the launcher, or use `bash scripts/dws-quick.sh <project> <model>`.
-4. Verify state with `bash scripts/dws-health.sh` and `bash scripts/dws-sessions.sh list`.
+| Device | IP |
+|--------|-----|
+| dev-workspace-vm | 100.117.16.63 |
+| Mac | 100.78.207.22 |
+| iPhone | 100.88.249.22 |
+| openclaw-gateway | 100.126.194.98 |
 
-## Reconnect
+## Start / Resume
 
-1. List sessions: `bash scripts/dws-sessions.sh list`
-2. Reattach to the newest session: `bash scripts/dws-sessions.sh reconnect`
-3. Reattach to a specific session: `bash scripts/dws-sessions.sh reconnect <session>`
-4. If you are already inside `tmux`, switch clients instead of starting a nested shell
+### After reboot (automatic)
+The systemd services handle startup automatically:
+1. `dws-sessions-init.service` creates all 9 tmux sessions
+2. `dws-task-monitor.service` starts the monitor loop
 
-## Manage Sessions
-
-Use these commands when the launcher is not enough:
-
+Verify with:
 ```bash
-bash scripts/dws-sessions.sh list
-bash scripts/dws-sessions.sh reconnect <session>
-bash scripts/dws-sessions.sh kill <session>
-bash scripts/dws-sessions.sh cleanup
+bash ~/bin/dws-boot-verify.sh
 ```
 
-Guidelines:
-- Detach with `Ctrl-a d` instead of closing the SSH window when you want the session to survive
-- Kill only stale or dead sessions that block relaunch
-- Use `cleanup` to remove sessions older than 24 hours when the list gets noisy
-
-## Replace Dead Workers
-
-Symptoms:
-- The launcher returns instead of showing an active Codex process
-- `tmux` still has a stale session but the worker inside it is dead
-- SSH reconnects, but the expected job is no longer making progress
-
-Procedure:
-1. List sessions: `bash scripts/dws-sessions.sh list`
-2. Reattach to confirm the worker is actually dead: `bash scripts/dws-sessions.sh reconnect <session>`
-3. If the pane is idle or the tool crashed out, kill the stale session: `bash scripts/dws-sessions.sh kill <session>`
-4. Launch a replacement through the normal launcher flow
-5. Leave a short handoff note in the repo if the previous worker produced partial work
-
-## Health Checks
-
-Use the dashboard for operator visibility:
-
+### Manual start (if needed)
 ```bash
-bash scripts/dws-health.sh
+# Start sessions
+bash ~/bin/dws-sessions-init.sh
+
+# Start monitor
+systemctl --user start dws-task-monitor.service
+
+# Or in tmux (fallback)
+tmux new-session -d -s monitor 'bash ~/bin/task-monitor.sh'
 ```
 
-Use the doctor for pass/warn/fail diagnostics:
+## Stop
 
+### Graceful stop (keep sessions)
 ```bash
-bin/dws-doctor.sh
+systemctl --user stop dws-task-monitor.service
 ```
 
-The doctor checks:
-- Root disk usage
-- Memory pressure
-- Tailscale availability and connection state
-- Active `tmux` sessions
-- Installed cron jobs and how many are tagged `dws`
+### Full stop (kill all sessions)
+```bash
+systemctl --user stop dws-task-monitor.service
+for s in dws-a dws-b worker-c worker-d worker-e worker-f worker-g worker-h orchestrator; do
+  tmux kill-session -t $s 2>/dev/null
+done
+```
 
-When the doctor fails:
-1. Read the failing line first; it is already scoped to one subsystem
-2. Fix the specific issue
-3. Re-run `bin/dws-doctor.sh` until the summary reports `0 fail`
+## Monitor Management
+
+### Check status
+```bash
+systemctl --user status dws-task-monitor.service
+tail -20 /var/log/dws/monitor.log
+```
+
+### Restart monitor
+```bash
+systemctl --user restart dws-task-monitor.service
+```
+
+### View live log
+```bash
+tail -f /var/log/dws/monitor.log
+```
+
+## Task Queue
+
+### Check queue
+```bash
+python3 -c "import json; d=json.load(open('$HOME/projects/dev-workspace/.state/task-queue.json')); p=sum(1 for t in d['tasks'] if t['status']=='pending'); i=sum(1 for t in d['tasks'] if t['status']=='in_progress'); c=sum(1 for t in d['tasks'] if t['status']=='completed'); print(f'pending={p} in_progress={i} completed={c}')"
+```
+
+### Add a task manually
+```bash
+python3 -c "import json; d=json.load(open('$HOME/projects/dev-workspace/.state/task-queue.json')); d['tasks'].append({'id':'manual-001','phase':7,'repo':'dev-workspace','description':'YOUR TASK HERE','assigned':None,'status':'pending'}); json.dump(d,open('$HOME/projects/dev-workspace/.state/task-queue.json','w'),indent=2)"
+```
+
+## tmux Sessions
+
+### List sessions
+```bash
+tmux list-sessions
+```
+
+### Attach to a session
+```bash
+tmux attach-session -t dws-a
+# Detach: Ctrl+B then D
+```
+
+### Check what a worker is doing
+```bash
+tmux capture-pane -t worker-c -p | tail -10
+```
+
+## SSH
+
+### Current config
+```bash
+cat /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
+```
+
+### Test config before reload
+```bash
+sudo sshd -t
+```
+
+### Reload SSH (keeps active connections)
+```bash
+sudo systemctl reload ssh
+```
+
+### SSH lockout recovery
+If locked out via SSH:
+1. Use Azure Portal serial console
+2. Restore backup: `sudo cp /tmp/99-wrkflo-hardening.conf.bak /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf`
+3. `sudo systemctl reload ssh`
 
 ## Backup
 
-1. Preview the backup with `bash scripts/dws-backup.sh --dry-run`.
-2. Run `bash scripts/dws-backup.sh`.
-3. Confirm the manifest at `/tmp/dws-backup-manifest.txt`.
-4. Confirm the dated backup dir at `~/backups/YYYY-MM-DD/`.
-
-What gets backed up:
-- Repo branch name and commit hash for every git repo in `~/projects/`
-- `~/.tmux.conf`
-- `~/.config/wrkflo/foundry.env`
-- `~/.config/codex/profiles/`
+```bash
+bash ~/projects/dev-workspace/scripts/dws-backup.sh
+```
 
 ## Restore
 
-1. Verify `~/projects/` repos already exist locally.
-2. Restore repo branch pointers with `bash scripts/dws-backup.sh --restore`.
-3. Restore configs from the dated backup dir into `~/.tmux.conf`, `~/.config/wrkflo/foundry.env`, and `~/.config/codex/profiles/`.
-4. Re-run `bash scripts/dws-health.sh` and `bin/dws-doctor.sh`.
+```bash
+bash ~/projects/dev-workspace/scripts/dws-backup.sh --restore <backup-file>
+```
 
-## Upgrade
+## Update Scripts
 
-1. Review pending deploy changes with `bash scripts/dws-update.sh --dry-run`.
-2. Apply them with `bash scripts/dws-update.sh --force`.
-3. For a fresh or drifted VM, run `bash scripts/vm-setup.sh`.
-4. Re-check with `bash scripts/dws-health.sh`, `bin/dws-doctor.sh`, and `bash scripts/dws-sessions.sh list`.
+```bash
+cd ~/projects/dev-workspace && git pull
+```
 
-## Common Failure Recovery
+## Reboot Recovery
 
-If SSH drops:
-1. Reconnect to `moses@dev-workspace-vm`
-2. Reattach with `bash scripts/dws-sessions.sh reconnect`
+Full procedure in docs/reboot-recovery-test.md. Quick version:
+```bash
+sudo reboot
+# Wait 60-90s
+ssh dev-workspace-vm 'bash ~/bin/dws-boot-verify.sh'
+```
 
-If Codex exits unexpectedly:
-1. Reattach to confirm the session state
-2. Kill the stale session if the worker is dead
-3. Launch a fresh Codex session from the launcher
-4. Leave a brief handoff note if the dead worker had partial progress
+## Phone / Termius Access
 
-If the doctor reports pressure or missing services:
-1. Address the failing subsystem first
-2. Re-run `bin/dws-doctor.sh`
-3. Do not launch more workers until the failing check is clean
+1. Install Termius on iPhone
+2. Add host: IP=100.117.16.63, port=22, user=moses
+3. Import SSH key (ed25519 labeled termius-20260415)
+4. Connect — requires Tailscale active on phone
+5. Run `tmux attach-session -t orchestrator` to view work
+
+See docs/termius-setup.md for detailed steps.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| Worker stuck | Monitor auto-detects after 2 cycles and relaunches |
+| Worker compacted | Monitor relaunches automatically |
+| SSH dropped (Mac) | Reconnect agent restores within 30s |
+| SSH dropped (phone) | Manual reconnect in Termius |
+| Monitor down | `systemctl --user start dws-task-monitor` |
+| No tmux sessions | `bash ~/bin/dws-sessions-init.sh` |
+| Queue empty | Monitor auto-refills when pending < 3 |
+| Can't push to git | Check OAuth token scope — may need workflow scope for .github/ files |
+| Firewall locked out | Use Azure serial console, `sudo ufw disable` |
+
+## Cron Jobs
+
+```
+*/15 * * * *  dws-health-check.sh    # periodic health check
+ 30  2 * * *  dws-cleanup.sh         # daily log rotation
+  0  4 * * *  dws-cleanup.sh         # daily dead session cleanup
+```
+
+## Self-Healing Stack
+
+```
+Layer 3: Mac Reconnect Agent (30s)  — SSH drops → reconnect Terminal windows
+Layer 2: VM Task Monitor (30s)      — Codex crashes → relaunch + redispatch
+Layer 1: SSH Keepalive (30s)        — Prevent connection drops
+```

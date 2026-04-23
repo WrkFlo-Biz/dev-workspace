@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -eu
 
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+TMUX_SOCKET="${DWS_TMUX_SOCKET:-}"
+
+# shellcheck source=/dev/null
+. "$SCRIPT_DIR/dws-session-meta.sh"
+
 die(){ printf 'error: %s\n' "$*" >&2; exit 1; }
 usage(){ cat <<EOF
 usage: $(basename "$0") <project-short> <model-short>
@@ -8,7 +14,21 @@ projects: gs voice oclaw gsaq orch dws
 models: 5-4 5-2 codex mini 5mini 4o opus sonnet haiku claude
 EOF
 }
-attach(){ if [ -n "${TMUX:-}" ]; then tmux switch-client -t "$1"; else exec tmux attach -t "$1"; fi; }
+tmux_q() {
+  if [ -n "$TMUX_SOCKET" ]; then
+    tmux -L "$TMUX_SOCKET" "$@"
+  else
+    tmux "$@"
+  fi
+}
+attach() {
+  local session="$1"
+  if [ -n "${TMUX:-}" ]; then
+    tmux_q switch-client -t "$session"
+  else
+    exec tmux_q attach-session -t "$session"
+  fi
+}
 project(){ case "$1" in
   gs|global-sentinel) echo "global-sentinel|gs" ;;
   voice|wrkflo-voice-agents-ops) echo "wrkflo-voice-agents-ops|voice" ;;
@@ -44,7 +64,7 @@ $(model "$2")
 EOF
 [ -d "$HOME/projects/$proj" ] || die "missing ~/projects/$proj"
 session="${short}-${label}"
-if tmux has-session -t "$session" 2>/dev/null; then
+if tmux_q has-session -t "$session" 2>/dev/null; then
   printf 'reconnecting %s\n' "$session"
   attach "$session"
 fi
@@ -55,9 +75,11 @@ else
   runner="codex --profile $profile --search --dangerously-bypass-approvals-and-sandbox"
 fi
 cmd="[ -n \"\${AZURE_OPENAI_API_KEY:-}\" ] || { [ -f '$HOME/.config/wrkflo/foundry.env' ] && . '$HOME/.config/wrkflo/foundry.env'; }; export MAC_GUI_URL='${MAC_GUI_URL:-}' MAC_CDP_URL='${MAC_CDP_URL:-}' MAC_SSH_HOST='${MAC_SSH_HOST:-}' DWS_PRIMARY_PROJECT='$proj' DWS_PRIMARY_MODEL='$label'; cd '$HOME/projects/$proj' && $runner; exec bash -l"
-tmux new-session -d -s "$session" -c "$HOME/projects/$proj" "$cmd" || die "failed to create $session"
-tmux set-option -t "$session" -q @dws_project "$proj"
-tmux set-option -t "$session" -q @dws_model "$label"
-tmux set-option -t "$session" -q @dws_profile "$profile"
+tmux_q new-session -d -s "$session" -c "$HOME/projects/$proj" "$cmd" || die "failed to create $session"
+tmux_q set-option -t "$session" -q @dws_project "$proj"
+tmux_q set-option -t "$session" -q @dws_model "$label"
+tmux_q set-option -t "$session" -q @dws_profile "$profile"
+tmux_q set-option -t "$session" -q @dws_task ""
+dws_session_meta_write "$session" "$proj" "$label" "$profile" ""
 printf 'launching %s\n' "$session"
 attach "$session"

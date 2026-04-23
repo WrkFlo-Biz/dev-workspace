@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-SESSION_TOOL="${ROOT}/scripts/dws-sessions.sh"
+SESSION_TOOL="${ROOT}/bin/dws-sessions.sh"
 SOCKET="dws-test-$$"
 SESSION_NAME="recovery-test"
 CRASHED_SESSION="compacted-test"

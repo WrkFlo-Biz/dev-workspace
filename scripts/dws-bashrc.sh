@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=/dev/null
 . "$SCRIPT_DIR/dws-env.sh"
 
@@ -14,10 +14,10 @@ case ":$PATH:" in
 esac
 export PATH
 
-alias dws="$SCRIPT_DIR/dws-launcher.sh"
-alias dwsh="$SCRIPT_DIR/dws-health.sh"
-alias dwss="$SCRIPT_DIR/dws-sessions.sh list"
-alias dwsq="$SCRIPT_DIR/dws-quick.sh"
+dws() { "$SCRIPT_DIR/dws-launcher.sh" "$@"; }
+dwsh() { "$SCRIPT_DIR/dws-health.sh" "$@"; }
+dwss() { "$SCRIPT_DIR/dws-sessions.sh" list "$@"; }
+dwsq() { "$SCRIPT_DIR/dws-quick.sh" "$@"; }
 
 if [ -n "${PS1:-}" ] && [ -z "${DWS_MOTD_SHOWN:-}" ]; then
   export DWS_MOTD_SHOWN=1
