@@ -26,7 +26,7 @@ fi
   [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"
 }
 
-LAUNCHER_DIR=$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+LAUNCHER_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=/dev/null
 . "$LAUNCHER_DIR/dws-env.sh"
 SESSIONS_TOOL="$SCRIPT_DIR/dws-sessions.sh"
@@ -45,7 +45,7 @@ host_info() {
   local h who
   h=$(hostname -s 2>/dev/null || echo "?")
   who=$(whoami)
-  echo "$(bold "$who@$h")"
+  bold "$who@$h"
 }
 
 key_status() {
@@ -56,17 +56,17 @@ key_status() {
   fi
 }
 
-session_badge() {
+active_session_summary() {
   local n="${1:-0}" label
   if [ "$n" -eq 1 ]; then
-    label="1 session"
+    label="1 active"
   else
-    label="$n sessions"
+    label="$n active"
   fi
   if [ "$n" -gt 0 ]; then
-    printf '%s' "$(cyan "[$label]")"
+    printf '%s' "$(cyan "$label")"
   else
-    printf '%s' "$(dim "[$label]")"
+    printf '%s' "$(dim "$label")"
   fi
 }
 
@@ -138,7 +138,7 @@ disk_usage_badge() {
 }
 
 task_queue_header_summary() {
-  local counts pending in_progress completed
+  local counts pending in_progress completed total
 
   command -v jq >/dev/null 2>&1 || {
     printf '%s' "$(yellow "jq missing")"
@@ -160,27 +160,30 @@ task_queue_header_summary() {
     [
       ($tasks | map(select((.status // "") == "pending")) | length),
       ($tasks | map(select((.status // "") == "in_progress")) | length),
-      ($tasks | map(select((.status // "") == "completed")) | length)
+      ($tasks | map(select((.status // "") == "completed")) | length),
+      ($tasks | length)
     ] | @tsv
   ' "$TASK_QUEUE_PATH" 2>/dev/null) || {
     printf '%s' "$(yellow "invalid")"
     return
   }
 
-  IFS=$'\t' read -r pending in_progress completed <<<"$counts"
-  printf 'pending=%s  in_progress=%s  completed=%s' "$pending" "$in_progress" "$completed"
+  IFS=$'\t' read -r pending in_progress completed total <<<"$counts"
+  printf 'pending=%s  in_progress=%s  completed=%s  total=%s' \
+    "$pending" "$in_progress" "$completed" "$total"
 }
 
 print_status_header() {
   local sc="${1:-0}"
 
   printf '  %s · %s\n' "$(bold '⎈ dev-workspace')" "$(host_info)"
-  printf '  status: sessions=%s  last_health=%s  health=%s  key=%s\n' \
-    "$(session_badge "$sc")" \
+  printf '  sessions: %s\n' "$(active_session_summary "$sc")"
+  printf '  health:   check=%s  result=%s  key=%s\n' \
     "$(latest_health_timestamp)" \
     "$(latest_health_result)" \
     "$(key_status)"
-  printf '  usage:  disk=%s  queue=%s\n' "$(disk_usage_badge)" "$(task_queue_header_summary)"
+  printf '  usage:    disk=%s used\n' "$(disk_usage_badge)"
+  printf '  queue:    %s\n' "$(task_queue_header_summary)"
 }
 
 model_arg() {
