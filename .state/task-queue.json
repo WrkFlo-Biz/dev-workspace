@@ -998,7 +998,7 @@
       "repo": "dev-workspace",
       "description": "Review and update docs/runbook.md to cover: start, stop, backup, restore, update, reboot recovery, SSH/firewall recovery, phone access, monitor management. Ensure each section has exact commands. Stage, commit, push.",
       "assigned": "worker-g",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "refill-nktlf0",
@@ -1046,7 +1046,7 @@
       "repo": "dev-workspace",
       "description": "Review and update docs/runbook.md to cover: start, stop, backup, restore, update, reboot recovery, SSH/firewall recovery, phone access, monitor management. Ensure each section has exact commands. Stage, commit, push.",
       "assigned": "worker-f",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "refill-eylm56",
@@ -1054,7 +1054,7 @@
       "repo": "dev-workspace",
       "description": "Improve scripts/dws-launcher.sh status header: show active session count, Tailscale IP, health check timestamp, disk usage, task queue summary, monitor service status. Stage, commit, push.",
       "assigned": "worker-c",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "refill-rng592",
@@ -1070,7 +1070,7 @@
       "repo": "dev-workspace",
       "description": "Update scripts/dws-health.sh to include: systemd service checks for dws-task-monitor and dws-sessions-init, SSH hardening verification, firewall status, Tailscale peer connectivity. Stage, commit, push.",
       "assigned": "worker-e",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "refill-g7w6kf",
@@ -1102,7 +1102,7 @@
       "repo": "dev-workspace",
       "description": "Improve scripts/dws-launcher.sh status header: show active session count, Tailscale IP, health check timestamp, disk usage, task queue summary, monitor service status. Stage, commit, push.",
       "assigned": "worker-h",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "refill-y363sn",
@@ -1118,7 +1118,7 @@
       "repo": "dev-workspace",
       "description": "Update scripts/dws-health.sh to include: systemd service checks for dws-task-monitor and dws-sessions-init, SSH hardening verification, firewall status, Tailscale peer connectivity. Stage, commit, push.",
       "assigned": "dws-a",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "refill-ka01ym",
@@ -1141,24 +1141,24 @@
       "phase": 7,
       "repo": "dev-workspace",
       "description": "Review and update docs/runbook.md to cover: start, stop, backup, restore, update, reboot recovery, SSH/firewall recovery, phone access, monitor management. Ensure each section has exact commands. Stage, commit, push.",
-      "assigned": null,
-      "status": "pending"
+      "assigned": "dws-b",
+      "status": "in_progress"
     },
     {
       "id": "refill-npstdu",
       "phase": 7,
       "repo": "dev-workspace",
       "description": "Improve scripts/dws-launcher.sh status header: show active session count, Tailscale IP, health check timestamp, disk usage, task queue summary, monitor service status. Stage, commit, push.",
-      "assigned": null,
-      "status": "pending"
+      "assigned": "worker-g",
+      "status": "completed"
     },
     {
       "id": "refill-3ywasr",
       "phase": 7,
       "repo": "dev-workspace",
       "description": "Create scripts/dws-log-viewer.sh: unified log viewer that can tail, search, and filter across all /var/log/dws/ logs. Support --follow, --grep, --since flags. Make executable. Stage, commit, push.",
-      "assigned": null,
-      "status": "pending"
+      "assigned": "worker-h",
+      "status": "completed"
     },
     {
       "id": "refill-2up8pl",
@@ -1166,7 +1166,7 @@
       "repo": "dev-workspace",
       "description": "Update scripts/dws-health.sh to include: systemd service checks for dws-task-monitor and dws-sessions-init, SSH hardening verification, firewall status, Tailscale peer connectivity. Stage, commit, push.",
       "assigned": null,
-      "status": "pending"
+      "status": "completed"
     },
     {
       "id": "refill-dyedml",
@@ -1174,10 +1174,154 @@
       "repo": "dev-workspace",
       "description": "Create scripts/dws-rotate-logs.sh: rotate /var/log/dws/ logs weekly, compress old logs, keep 4 weeks of history. Add to cron via dws-cron-setup.sh. Stage, commit, push.",
       "assigned": null,
-      "status": "pending"
+      "status": "completed"
     },
     {
       "id": "refill-fefny0",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Update docs/setup.md with current SSH hardening config, systemd services, Tailscale setup, script layout convention. Ensure a new operator can set up from scratch. Stage, commit, push.",
+      "assigned": null,
+      "status": "completed"
+    },
+    {
+      "id": "refill-nnct6k",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Review and update docs/runbook.md to cover: start, stop, backup, restore, update, reboot recovery, SSH/firewall recovery, phone access, monitor management. Ensure each section has exact commands. Stage, commit, push.",
+      "assigned": "worker-c",
+      "status": "in_progress"
+    },
+    {
+      "id": "refill-49jv17",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Improve scripts/dws-launcher.sh status header: show active session count, Tailscale IP, health check timestamp, disk usage, task queue summary, monitor service status. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "completed"
+    },
+    {
+      "id": "refill-bhc8u1",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create scripts/dws-log-viewer.sh: unified log viewer that can tail, search, and filter across all /var/log/dws/ logs. Support --follow, --grep, --since flags. Make executable. Stage, commit, push.",
+      "assigned": "worker-g",
+      "status": "completed"
+    },
+    {
+      "id": "refill-kq1aps",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Update scripts/dws-health.sh to include: systemd service checks for dws-task-monitor and dws-sessions-init, SSH hardening verification, firewall status, Tailscale peer connectivity. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "completed"
+    },
+    {
+      "id": "refill-zlarfu",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create scripts/dws-rotate-logs.sh: rotate /var/log/dws/ logs weekly, compress old logs, keep 4 weeks of history. Add to cron via dws-cron-setup.sh. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "in_progress"
+    },
+    {
+      "id": "refill-gxp71i",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Update docs/setup.md with current SSH hardening config, systemd services, Tailscale setup, script layout convention. Ensure a new operator can set up from scratch. Stage, commit, push.",
+      "assigned": "worker-h",
+      "status": "in_progress"
+    },
+    {
+      "id": "refill-qp3vy0",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Review and update docs/runbook.md to cover: start, stop, backup, restore, update, reboot recovery, SSH/firewall recovery, phone access, monitor management. Ensure each section has exact commands. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "in_progress"
+    },
+    {
+      "id": "refill-610k4r",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Improve scripts/dws-launcher.sh status header: show active session count, Tailscale IP, health check timestamp, disk usage, task queue summary, monitor service status. Stage, commit, push.",
+      "assigned": "worker-d",
+      "status": "in_progress"
+    },
+    {
+      "id": "refill-fhszao",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create scripts/dws-log-viewer.sh: unified log viewer that can tail, search, and filter across all /var/log/dws/ logs. Support --follow, --grep, --since flags. Make executable. Stage, commit, push.",
+      "assigned": "worker-e",
+      "status": "in_progress"
+    },
+    {
+      "id": "refill-dbes0c",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Update scripts/dws-health.sh to include: systemd service checks for dws-task-monitor and dws-sessions-init, SSH hardening verification, firewall status, Tailscale peer connectivity. Stage, commit, push.",
+      "assigned": "worker-g",
+      "status": "in_progress"
+    },
+    {
+      "id": "refill-7hitbn",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create scripts/dws-rotate-logs.sh: rotate /var/log/dws/ logs weekly, compress old logs, keep 4 weeks of history. Add to cron via dws-cron-setup.sh. Stage, commit, push.",
+      "assigned": null,
+      "status": "pending"
+    },
+    {
+      "id": "refill-dz2dwu",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Update docs/setup.md with current SSH hardening config, systemd services, Tailscale setup, script layout convention. Ensure a new operator can set up from scratch. Stage, commit, push.",
+      "assigned": null,
+      "status": "pending"
+    },
+    {
+      "id": "refill-a3em5l",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Review and update docs/runbook.md to cover: start, stop, backup, restore, update, reboot recovery, SSH/firewall recovery, phone access, monitor management. Ensure each section has exact commands. Stage, commit, push.",
+      "assigned": null,
+      "status": "pending"
+    },
+    {
+      "id": "refill-r66zz9",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Improve scripts/dws-launcher.sh status header: show active session count, Tailscale IP, health check timestamp, disk usage, task queue summary, monitor service status. Stage, commit, push.",
+      "assigned": null,
+      "status": "pending"
+    },
+    {
+      "id": "refill-1i5263",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create scripts/dws-log-viewer.sh: unified log viewer that can tail, search, and filter across all /var/log/dws/ logs. Support --follow, --grep, --since flags. Make executable. Stage, commit, push.",
+      "assigned": null,
+      "status": "pending"
+    },
+    {
+      "id": "refill-b5zd3k",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Update scripts/dws-health.sh to include: systemd service checks for dws-task-monitor and dws-sessions-init, SSH hardening verification, firewall status, Tailscale peer connectivity. Stage, commit, push.",
+      "assigned": null,
+      "status": "pending"
+    },
+    {
+      "id": "refill-ihjoq8",
+      "phase": 7,
+      "repo": "dev-workspace",
+      "description": "Create scripts/dws-rotate-logs.sh: rotate /var/log/dws/ logs weekly, compress old logs, keep 4 weeks of history. Add to cron via dws-cron-setup.sh. Stage, commit, push.",
+      "assigned": null,
+      "status": "pending"
+    },
+    {
+      "id": "refill-te786w",
       "phase": 7,
       "repo": "dev-workspace",
       "description": "Update docs/setup.md with current SSH hardening config, systemd services, Tailscale setup, script layout convention. Ensure a new operator can set up from scratch. Stage, commit, push.",

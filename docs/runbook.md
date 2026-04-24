@@ -2,6 +2,9 @@
 
 Operator runbook for the `dev-workspace-vm` multi-agent environment.
 
+Unless a heading says otherwise, every command block below is intended to be
+copy/paste ready on the VM.
+
 ## Quick Reference
 
 | Item | Location / command |
@@ -41,11 +44,14 @@ Operator runbook for the `dev-workspace-vm` multi-agent environment.
 ```bash
 systemctl --user start dws-sessions-init.service
 systemctl --user start dws-task-monitor.service
+systemctl --user start dws-phone-server.service 2>/dev/null || true
 systemctl --user status dws-sessions-init.service --no-pager
 systemctl --user status dws-task-monitor.service --no-pager
+systemctl --user status dws-phone-server.service --no-pager || true
 ~/projects/dev-workspace/bin/dws-sessions.sh list
 ~/projects/dev-workspace/bin/dws-status.sh
 ~/projects/dev-workspace/bin/dws-doctor.sh
+~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```
 
 ### Install or repair the repo-managed user units
@@ -65,6 +71,7 @@ systemctl --user status dws-task-monitor.service --no-pager
 
 ```bash
 ~/projects/dev-workspace/bin/dws-sessions.sh list
+~/projects/dev-workspace/bin/dws-sessions.sh reconnect
 ~/projects/dev-workspace/bin/dws-sessions.sh show <session>
 ~/projects/dev-workspace/bin/dws-sessions.sh reconnect <session>
 ```
@@ -134,20 +141,21 @@ find ~/backups/dev-workspace -maxdepth 1 -type f -name 'dws-backup-*.tar.gz' | s
 mkdir -p ~/restore
 ~/projects/dev-workspace/bin/dws-backup.sh restore latest --target ~/restore
 RESTORE_NOTE=$(find ~/restore -maxdepth 2 -name RESTORE.txt -print | sort | tail -1)
+RESTORE_ROOT=$(dirname "$RESTORE_NOTE")
 printf '%s\n' "$RESTORE_NOTE"
+printf '%s\n' "$RESTORE_ROOT"
 sed -n '1,160p' "$RESTORE_NOTE"
 ```
 
 ### Restore the backed-up home data after extraction
 
-Replace `<archive-root>` with the extracted backup directory name shown by the
-restore command.
-
 ```bash
-mkdir -p ~/.config/wrkflo && cp -a ~/restore/<archive-root>/home/.config/wrkflo/. ~/.config/wrkflo/
-mkdir -p ~/bin && cp -a ~/restore/<archive-root>/home/bin/. ~/bin/
-mkdir -p ~/.ssh && chmod 700 ~/.ssh && cp -a ~/restore/<archive-root>/home/.ssh/. ~/.ssh/
-crontab ~/restore/<archive-root>/system/crontab.txt
+RESTORE_NOTE=$(find ~/restore -maxdepth 2 -name RESTORE.txt -print | sort | tail -1)
+RESTORE_ROOT=$(dirname "$RESTORE_NOTE")
+mkdir -p ~/.config/wrkflo && cp -a "$RESTORE_ROOT/home/.config/wrkflo/." ~/.config/wrkflo/
+mkdir -p ~/bin && cp -a "$RESTORE_ROOT/home/bin/." ~/bin/
+mkdir -p ~/.ssh && chmod 700 ~/.ssh && cp -a "$RESTORE_ROOT/home/.ssh/." ~/.ssh/
+[ -f "$RESTORE_ROOT/system/crontab.txt" ] && crontab "$RESTORE_ROOT/system/crontab.txt" || true
 ```
 
 ### Post-restore validation
@@ -159,9 +167,11 @@ crontab ~/restore/<archive-root>/system/crontab.txt
   ~/projects/dev-workspace/bin/dws-cron-setup.sh
 systemctl --user restart dws-sessions-init.service
 systemctl --user restart dws-task-monitor.service
+systemctl --user restart dws-phone-server.service 2>/dev/null || true
 ~/projects/dev-workspace/bin/dws-status.sh
 ~/projects/dev-workspace/bin/dws-doctor.sh
 ~/projects/dev-workspace/bin/dws-sessions.sh list
+~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```
 
 ## Update
@@ -176,13 +186,18 @@ git pull --ff-only
 ~/projects/dev-workspace/scripts/dws-update.sh --force
 ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh check || \
   ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
+~/projects/dev-workspace/bin/dws-cron-setup.sh --check || \
+  ~/projects/dev-workspace/bin/dws-cron-setup.sh
 systemctl --user daemon-reload
 systemctl --user restart dws-sessions-init.service
 systemctl --user restart dws-task-monitor.service
+systemctl --user restart dws-phone-server.service 2>/dev/null || true
 systemctl --user status dws-sessions-init.service --no-pager
 systemctl --user status dws-task-monitor.service --no-pager
+systemctl --user status dws-phone-server.service --no-pager || true
 ~/projects/dev-workspace/bin/dws-status.sh
 ~/projects/dev-workspace/bin/dws-doctor.sh
+~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```
 
 ### When the repo has local changes and `dws-update.sh` skips `git pull`
@@ -213,6 +228,7 @@ ssh moses@dev-workspace-vm 'systemctl --user status dws-task-monitor.service --n
 ssh moses@dev-workspace-vm 'systemctl --user status dws-phone-server.service --no-pager || true'
 ssh moses@dev-workspace-vm 'tail -n 20 /var/log/dws/monitor.log'
 ssh moses@dev-workspace-vm 'curl -s http://127.0.0.1:8081/health || true'
+ssh moses@dev-workspace-vm '~/projects/dev-workspace/scripts/dws-launcher.sh status'
 ```
 
 ### Quick recovery path when already on the VM
@@ -243,6 +259,9 @@ systemctl is-active ssh ssh.socket sshd sshd.socket 2>/dev/null || true
 ss -tlnp | grep -E '[:.]22[[:space:]]'
 sudo sh -c 'for f in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*; do [ -e "$f" ] || continue; echo "--- $f ---"; sed -n "1,160p" "$f"; done'
 journalctl -u ssh --since '24 hours ago' --no-pager | tail -n 40
+sudo grep -E 'PasswordAuthentication|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax' \
+  /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
+sudo sshd -T | rg '^(passwordauthentication|permitrootlogin|x11forwarding|maxauthtries|clientaliveinterval|clientalivecountmax) '
 sudo sshd -t
 sudo systemctl reload ssh || sudo systemctl restart ssh
 ```
@@ -266,6 +285,9 @@ sudo install -d -m 0755 /etc/ssh/sshd_config.d
 sudo install -m 0644 \
   ~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf \
   /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
+sudo grep -E 'PasswordAuthentication|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax' \
+  /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
+sudo sshd -T | rg '^(passwordauthentication|permitrootlogin|x11forwarding|maxauthtries|clientaliveinterval|clientalivecountmax) '
 sudo sshd -t
 sudo systemctl reload ssh || sudo systemctl restart ssh
 ```
@@ -312,12 +334,23 @@ ssh -o ConnectTimeout=5 moses@100.117.16.63 'printf ssh-ok\n'
 ls -l ~/.ssh/termius_20260415 ~/.ssh/id_ed25519 ~/.ssh/id_rsa 2>/dev/null
 ```
 
+### Verify the phone SSH key from a trusted desktop or Mac
+
+```bash
+DWS_TERMIUS_KEY="$(~/projects/dev-workspace/bin/dws-termius-setup.sh | sed -n 's/^  SSH key path: \([^ ]*\) (.*/\1/p')"
+printf '%s\n' "$DWS_TERMIUS_KEY"
+ssh -i "$DWS_TERMIUS_KEY" -o BatchMode=yes -o ConnectTimeout=5 moses@100.117.16.63 'printf phone-key-ok\n'
+ssh -i "$DWS_TERMIUS_KEY" -o BatchMode=yes -o ConnectTimeout=5 moses@dev-workspace-vm 'printf phone-key-ok\n'
+```
+
 ### Termius reconnect path after a phone sleep or network drop
 
 ```bash
 ~/projects/dev-workspace/bin/dws-sessions.sh list
+~/projects/dev-workspace/bin/dws-sessions.sh reconnect
 ~/projects/dev-workspace/bin/dws-sessions.sh show <session>
 ~/projects/dev-workspace/bin/dws-sessions.sh reconnect <session>
+~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```
 
 ### Phone server health and recovery
@@ -372,6 +405,7 @@ tail -n 40 /var/log/dws/monitor.log
 sed -n '1,220p' ~/projects/dev-workspace/.state/task-queue.json
 ~/projects/dev-workspace/bin/dws-status.sh
 ~/projects/dev-workspace/bin/dws-doctor.sh
+~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```
 
 ### Start, stop, and restart the monitor
