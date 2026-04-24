@@ -2359,6 +2359,38 @@
       "description": "Update docs/runbook.md Quick Reference table with new commands: dws-summary, dws-alerting, dws-queue-inspector, dws-termius-verify, dws-reboot-drill, dws-service-map. ONLY touch docs/runbook.md. Stage and commit.",
       "assigned": "worker-f",
       "status": "completed"
+    },
+    {
+      "id": "ops-ci-setup",
+      "phase": 10,
+      "repo": "dev-workspace",
+      "description": "Create .github/workflows/ci.yml with a GitHub Actions workflow that runs all 21 test files in tests/ on push to main. Use ubuntu-latest, bash, set -euo pipefail. Run each test file individually and report pass/fail. Do NOT use any external actions beyond actions/checkout. Commit the workflow file.",
+      "assigned": "worker-h",
+      "status": "in_progress"
+    },
+    {
+      "id": "ops-safe-mode-boot",
+      "phase": 10,
+      "repo": "dev-workspace",
+      "description": "Create scripts/dws-safe-mode.sh: a boot profile that starts only SSH, Tailscale, health checks, and log rotation \u2014 NO worker dispatch, NO task monitor, NO session pool. Add a systemd user service dws-safe-mode.service (disabled by default) that runs this script. Add usage docs to docs/runbook.md under a Safe Mode section. Use case: upgrades, incident response, debugging rate-limit storms.",
+      "assigned": "worker-d",
+      "status": "in_progress"
+    },
+    {
+      "id": "ops-ci-setup",
+      "phase": 10,
+      "repo": "dev-workspace",
+      "description": "Create .github/workflows/ci.yml with a GitHub Actions workflow that runs all 21 test files in tests/ on push to main. Use ubuntu-latest, bash, set -euo pipefail. Run each test file individually and report pass/fail. Do NOT use any external actions beyond actions/checkout. Commit the workflow file.",
+      "assigned": null,
+      "status": "pending"
+    },
+    {
+      "id": "ops-safe-mode-boot",
+      "phase": 10,
+      "repo": "dev-workspace",
+      "description": "Create scripts/dws-safe-mode.sh: a boot profile that starts only SSH, Tailscale, health checks, and log rotation with NO worker dispatch, NO task monitor, NO session pool. Add a systemd user service dws-safe-mode.service disabled by default that runs this script. Add usage docs to docs/runbook.md under a Safe Mode section. Use case: upgrades, incident response, debugging rate-limit storms.",
+      "assigned": null,
+      "status": "pending"
     }
   ]
 }

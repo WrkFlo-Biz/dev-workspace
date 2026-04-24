@@ -345,3 +345,20 @@ The task monitor includes global rate-limit awareness:
 - **Staggered dispatch**: 3s delay between consecutive worker dispatches in the same cycle
 
 To check throttle state: `tail -20 /var/log/dws/monitor.log | grep -i rate`
+
+## Safe Mode
+
+Safe mode stops all worker dispatch and session management while keeping SSH,
+Tailscale, health checks, and log rotation running. Use for upgrades, incident
+response, or debugging.
+
+```bash
+# Enter safe mode
+scripts/dws-safe-mode.sh on
+
+# Check status
+scripts/dws-safe-mode.sh status
+
+# Exit safe mode
+scripts/dws-safe-mode.sh off
+```
