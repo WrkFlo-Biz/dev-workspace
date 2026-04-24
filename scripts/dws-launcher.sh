@@ -1019,7 +1019,13 @@ session_rows() {
     ''|'no tmux sessions'|'failed to connect to server'*) return 0 ;;
   esac
 
-  printf '%s\n' "$rows" | sed '/^[[:space:]]*$/d'
+  printf '%s\n' "$rows" | awk '
+    /^[[:space:]]*$/ { next }
+    /^name[[:space:]]+state[[:space:]]+project[[:space:]]+profile[[:space:]]+last-task$/ { next }
+    /^recover in place:/ { next }
+    /^one-command relaunch:/ { next }
+    { print }
+  '
 }
 
 list_sessions() {
