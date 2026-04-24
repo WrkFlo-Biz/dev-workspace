@@ -15,25 +15,19 @@ FOUNDRY_ENV="$HOME/.config/wrkflo/foundry.env"
 PROJECTS_DIR="$HOME/projects"
 LOG="/tmp/orchestrator-log.txt"
 PROMPT_FILE="/tmp/orchestrator-prompt.txt"
-PROJECT_LIST=$(find "$PROJECTS_DIR" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort || true)
 
 green() { printf "\033[32m%s\033[0m\n" "$1"; }
 yellow() { printf "\033[33m%s\033[0m\n" "$1"; }
 
 green "=== Dev Workspace Orchestrator Boot ==="
-echo "Workers: $WORKER_COUNT | Projects: $(printf '%s\n' "$PROJECT_LIST" | sed '/^$/d' | wc -l | tr -d ' ')"
+echo "Workers: $WORKER_COUNT | Projects: $(ls "$PROJECTS_DIR" | wc -l | tr -d ' ')"
 
-if [ -f "$FOUNDRY_ENV" ]; then
-    # shellcheck source=/dev/null
-    source "$FOUNDRY_ENV"
-    green "Foundry config loaded"
-fi
+[ -f "$FOUNDRY_ENV" ] && source "$FOUNDRY_ENV" && green "Foundry config loaded"
 
 TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "unknown")
 DISK_PCT=$(df / --output=pcent 2>/dev/null | tail -1 | tr -d ' %')
 MEM_AVAIL=$(free -h 2>/dev/null | awk '/Mem:/{print $7}' || echo "unknown")
-REPOS=$(printf '%s\n' "$PROJECT_LIST" | awk 'NF { if (count++) printf ", "; printf "%s", $0 } END { if (count) print "" }')
-[ -n "$REPOS" ] || REPOS="none"
+REPOS=$(ls "$PROJECTS_DIR" | tr '\n' ', ' | sed 's/,$//')
 SERVICES=$(systemctl --user list-units --type=service --state=active 2>/dev/null | grep -cE 'dws|wrkflo' || echo 0)
 CRON_JOBS=$(crontab -l 2>/dev/null | grep -c 'dws-' || echo 0)
 
@@ -61,6 +55,14 @@ done
 
 # Discover active workers
 WORKERS=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -v "$SESSION_NAME" | tr '\n' ', ' | sed 's/,$//')
+
+# Load handoff from previous session
+HANDOFF_FILE="$PROJECTS_DIR/dev-workspace/.state/orchestrator-handoff.md"
+HANDOFF_CONTEXT=""
+if [ -f "$HANDOFF_FILE" ]; then
+    HANDOFF_CONTEXT=$(cat "$HANDOFF_FILE")
+    green "Loaded handoff from previous session"
+fi
 
 # Build orchestrator prompt
 cat > "$PROMPT_FILE" << ORCHESTRATOR_PROMPT
@@ -108,7 +110,11 @@ RULES:
 - Always press Enter after sending text to a session
 - Read /tmp/agent-coordination.md for file boundaries
 
-Start your first scan now.
+PREVIOUS SESSION HANDOFF (read this first — it tells you what was built and what still needs work):
+$HANDOFF_CONTEXT
+
+Start by reading the handoff above. Prioritize the "What Still Needs Work" items as your task backlog.
+Then begin your monitoring scan.
 ORCHESTRATOR_PROMPT
 
 green "Prompt ready ($(wc -c < "$PROMPT_FILE" | tr -d ' ') bytes)"
