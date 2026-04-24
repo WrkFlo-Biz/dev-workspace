@@ -206,7 +206,10 @@ compress_log() {
 }
 
 write_success_stamp() {
-  [ "$DRY" -eq 0 ] || return 0
+  if [ "$DRY" -eq 1 ]; then
+    printf 'would write %-8s %s\n' stamp "$CLEANUP_STAMP_PATH"
+    return 0
+  fi
 
   mkdir -p -- "$(dirname "$CLEANUP_STAMP_PATH")"
   cat >"$CLEANUP_STAMP_PATH" <<EOF

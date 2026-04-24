@@ -262,6 +262,24 @@ test_backup_exits_non_zero_when_source_path_is_unsafe() {
   trap - EXIT
 }
 
+test_backup_exits_non_zero_when_timestamp_is_invalid() {
+  local output invalid_timestamp
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  invalid_timestamp='20260423T000000Z/escape'
+
+  if output=$(DWS_BACKUP_TIMESTAMP="${invalid_timestamp}" "${SCRIPT}" backup 2>&1); then
+    fail "expected backup with invalid timestamp to fail"
+  fi
+
+  assert_contains "${output}" "timestamp must match YYYYMMDDTHHMMSSZ: ${invalid_timestamp}"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
 test_backup_exits_non_zero_when_projects_root_is_not_directory() {
   local output invalid_source
 
@@ -289,6 +307,7 @@ test_backup_exits_non_zero_when_archive_verification_fails() {
 
   archive="${DWS_BACKUP_ROOT}/dws-backup-${DWS_BACKUP_TIMESTAMP}.tar.gz"
 
+  # shellcheck disable=SC2016
   install_fake_tar_wrapper '
 for arg in "$@"; do
   if [ "$arg" = "-tzf" ]; then
@@ -307,6 +326,37 @@ exec "'"${REAL_TAR}"'" "$@"
   assert_contains "${output}" "backup verification failed: ${archive}"
   [ -f "${archive}" ] || fail "expected archive to exist before verification failure"
   [ ! -L "${DWS_BACKUP_ROOT}/latest" ] || fail "expected latest symlink not to be refreshed on verification failure"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
+test_verify_restore_exits_non_zero_when_archive_members_are_unsafe() {
+  local output archive
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  archive="${DWS_BACKUP_ROOT}/unsafe.tar.gz"
+  printf 'not a real archive\n' >"${archive}"
+
+  # shellcheck disable=SC2016
+  install_fake_tar_wrapper '
+if [ "${1:-}" = "-tzf" ]; then
+  printf "%s\n" "../escape.txt"
+  exit 0
+fi
+
+printf "%s\n" "unexpected tar extraction attempt" >&2
+exit 1
+'
+
+  if output=$("${SCRIPT}" verify-restore --archive "${archive}" 2>&1); then
+    fail "expected verify-restore to fail when archive members are unsafe"
+  fi
+
+  assert_contains "${output}" "unsafe archive path for archive member: ../escape.txt"
+  assert_contains "${output}" "verify failed: archive extraction failed: ${archive}"
 
   cleanup_fixture
   trap - EXIT
@@ -458,8 +508,10 @@ test_backup_skips_missing_optional_dirs_gracefully
 test_backup_exits_non_zero_when_backup_root_is_invalid
 test_backup_exits_non_zero_when_source_path_is_not_directory
 test_backup_exits_non_zero_when_source_path_is_unsafe
+test_backup_exits_non_zero_when_timestamp_is_invalid
 test_backup_exits_non_zero_when_projects_root_is_not_directory
 test_backup_exits_non_zero_when_archive_verification_fails
+test_verify_restore_exits_non_zero_when_archive_members_are_unsafe
 test_backup_dry_run_reports_actions_without_writing_files
 test_restore_and_verify_use_latest_snapshot_metadata
 test_restore_dry_run_reports_actions_without_creating_temp_dir

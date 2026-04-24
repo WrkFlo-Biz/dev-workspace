@@ -139,6 +139,23 @@ validate_relative_archive_path() {
   esac
 }
 
+validate_timestamp_value() {
+  local value="$1"
+  case "$value" in
+    [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z) ;;
+    *) die "timestamp must match YYYYMMDDTHHMMSSZ: ${value}" ;;
+  esac
+}
+
+validate_path_within_root() {
+  local path="$1" root="${2%/}" label="$3"
+
+  case "$path" in
+    "${root}"|"${root}/"*) ;;
+    *) die "${label} path must stay under ${root}: ${path}" ;;
+  esac
+}
+
 validate_optional_source_dir_path() {
   local path="$1" label="$2"
 
@@ -568,6 +585,41 @@ verify_staged_backup_contents() {
   done <"$manifest"
 }
 
+validate_archive_member_paths() {
+  local listing expected_root="" member normalized root
+
+  listing=$(tar -tzf "$ARCHIVE_PATH") || return 1
+
+  while IFS= read -r member; do
+    [ -n "${member:-}" ] || continue
+    normalized=${member#./}
+    normalized=${normalized%/}
+    [ -n "${normalized:-}" ] || continue
+
+    validate_relative_archive_path "$normalized" "archive member"
+    root=${normalized%%/*}
+    case "$root" in
+      ""|"."|".."|/*)
+        die "archive has unsafe root path: ${member}"
+        ;;
+    esac
+
+    if [ -z "$expected_root" ]; then
+      expected_root="$root"
+      continue
+    fi
+
+    if [ "$root" != "$expected_root" ]; then
+      die "archive contains unexpected root path: ${member}"
+    fi
+  done <<EOF
+$listing
+EOF
+
+  [ -n "$expected_root" ] || die "archive is empty: ${ARCHIVE_PATH}"
+  printf '%s\n' "$expected_root"
+}
+
 create_archive() {
   local stage_archive_root
 
@@ -587,21 +639,10 @@ create_archive() {
 }
 
 archive_root_from_tar() {
-  local first root
-
   validate_nonempty_path "$ARCHIVE_PATH" "archive"
   [ -f "$ARCHIVE_PATH" ] || die "archive not found: ${ARCHIVE_PATH}"
 
-  first=$(tar -tzf "$ARCHIVE_PATH" 2>/dev/null | sed -n '1p') || return 1
-  first=${first#./}
-  [ -n "$first" ] || return 1
-  root=${first%%/*}
-  case "$root" in
-    ""|"."|".."|/*)
-      return 1
-      ;;
-  esac
-  printf '%s\n' "$root"
+  validate_archive_member_paths
 }
 
 extract_archive_to() {
@@ -749,6 +790,11 @@ run_backup() {
   SNAPSHOT_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
   ARCHIVE_PATH="${BACKUP_ROOT}/$(archive_basename_for_timestamp "$TIMESTAMP")"
   ARCHIVE_ROOT=$(archive_root_from_path "$ARCHIVE_PATH")
+  validate_safe_host_path "$SNAPSHOT_DIR" "snapshot"
+  validate_safe_host_path "$ARCHIVE_PATH" "archive"
+  validate_path_within_root "$SNAPSHOT_DIR" "$BACKUP_ROOT" "snapshot"
+  validate_path_within_root "$ARCHIVE_PATH" "$BACKUP_ROOT" "archive"
+  validate_relative_archive_path "$ARCHIVE_ROOT" "archive root"
   MANIFEST_LINES=""
   REPO_MANIFEST_LINES=""
   REPO_COUNT=0
@@ -926,6 +972,7 @@ validate_nonempty_path "$BACKUP_ROOT" "backup root"
 validate_nonempty_path "$VERIFY_ROOT" "verify root"
 validate_safe_host_path "$VERIFY_ROOT" "verify root"
 validate_nonempty_path "$TIMESTAMP" "timestamp"
+validate_timestamp_value "$TIMESTAMP"
 case "$KEEP_VERIFY_DIR" in
   0|1) ;;
   *) die "DWS_VERIFY_RESTORE_KEEP must be 0 or 1" ;;

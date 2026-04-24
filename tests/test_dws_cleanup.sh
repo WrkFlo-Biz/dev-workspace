@@ -91,6 +91,7 @@ test_cleanup_dry_run_reports_actions_without_mutating() {
   assert_contains "${output}" "would remove temp"
   assert_contains "${output}" "would clean pip-cache"
   assert_contains "${output}" "would clean apt-cache"
+  assert_contains "${output}" "would write stamp"
   assert_contains "${output}" "Summary (dry-run)"
 
   [ -f "${DWS_TMPDIR}/dws-health.log" ] || fail "expected dry-run to keep source log"
