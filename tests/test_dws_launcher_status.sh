@@ -38,6 +38,13 @@ assert_contains() {
   printf '%s\n' "$haystack" | grep -F -- "$needle" >/dev/null || fail "missing output: $needle"
 }
 
+assert_not_contains() {
+  local haystack="${1:-}" needle="${2:-}"
+  if printf '%s\n' "$haystack" | grep -F -- "$needle" >/dev/null; then
+    fail "unexpected output: $needle"
+  fi
+}
+
 strip_ansi() {
   sed -E 's/\x1B\[[0-9;]*m//g'
 }
@@ -125,5 +132,26 @@ assert_contains "$plain_output" "usage:    disk=41% used"
 assert_contains "$plain_output" "queue:    pending=1  in_progress=2  completed=1  total=4"
 assert_contains "$plain_output" "active sessions"
 assert_contains "$plain_output" "wrkflo-orchestrator"
+
+write_fake_command tailscale 'exit 1'
+
+write_fake_command df 'exit 1'
+
+fallback_output=$(
+  HOME="${FIXTURE_ROOT}/home" \
+  PATH="${FAKE_BIN}:${ORIG_PATH}" \
+  DWS_STATUS_TOOL="${FIXTURE_ROOT}/missing-status.sh" \
+  DWS_STATUS_TOOL_REPO="${FIXTURE_ROOT}/missing-status-repo.sh" \
+  DWS_TASK_QUEUE_PATH="$QUEUE_PATH" \
+  bash "$SCRIPT" status 2>&1
+)
+
+fallback_plain_output=$(printf '%s\n' "$fallback_output" | strip_ansi)
+
+assert_contains "$fallback_plain_output" "sessions: 2 active"
+assert_contains "$fallback_plain_output" "tailnet:  100.64.0.10"
+assert_contains "$fallback_plain_output" "usage:    disk=41% used"
+assert_not_contains "$fallback_plain_output" "tailnet:  unavailable"
+assert_not_contains "$fallback_plain_output" "usage:    disk=unavailable used"
 
 printf 'PASS: dws launcher status header\n'

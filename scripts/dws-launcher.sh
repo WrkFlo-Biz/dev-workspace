@@ -72,12 +72,26 @@ active_session_summary() {
   fi
 }
 
+tailscale_ip_from_payload() {
+  local payload="${1:-}"
+
+  [ -n "$payload" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  jq -r '.tailscale.ip // ""' <<<"$payload" 2>/dev/null || true
+}
+
 tailscale_ip_value() {
-  if ! command -v tailscale >/dev/null 2>&1; then
-    return 0
+  local payload="${1:-}" ip=""
+
+  if command -v tailscale >/dev/null 2>&1; then
+    ip=$(tailscale ip -4 2>/dev/null | sed -n '1p' || true)
   fi
 
-  tailscale ip -4 2>/dev/null | sed -n '1p'
+  if [ -z "$ip" ]; then
+    ip=$(tailscale_ip_from_payload "$payload")
+  fi
+
+  printf '%s\n' "$ip"
 }
 
 tailscale_ip_badge() {
@@ -176,8 +190,22 @@ latest_health_timestamp() {
   fi
 }
 
+disk_usage_percent_from_payload() {
+  local payload="${1:-}" pct
+
+  [ -n "$payload" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  pct=$(jq -r '.vm.disk_percent // empty' <<<"$payload" 2>/dev/null || true)
+  case "$pct" in
+    ''|*[!0-9]*) return 1 ;;
+    *) printf '%s\n' "$pct" ;;
+  esac
+}
+
 disk_usage_percent() {
-  df -P / 2>/dev/null | awk '
+  local payload="${1:-}" pct=""
+
+  pct=$(df -P / 2>/dev/null | awk '
     NR == 2 {
       gsub("%", "", $5)
       print $5 + 0
@@ -188,12 +216,21 @@ disk_usage_percent() {
         exit 1
       }
     }
-  '
+  ' || true)
+
+  case "$pct" in
+    ''|*[!0-9]*) pct=$(disk_usage_percent_from_payload "$payload" || true) ;;
+  esac
+
+  case "$pct" in
+    ''|*[!0-9]*) return 1 ;;
+    *) printf '%s\n' "$pct" ;;
+  esac
 }
 
 disk_usage_badge() {
-  local pct
-  pct=$(disk_usage_percent 2>/dev/null || true)
+  local payload="${1:-}" pct
+  pct=$(disk_usage_percent "$payload" 2>/dev/null || true)
   case "$pct" in
     ''|*[!0-9]*)
       printf '%s' "$(yellow "unavailable")"
@@ -361,9 +398,9 @@ EOF
 }
 
 print_status_header() {
-  local sc="${1:-0}" tailnet_ip monitor_state
+  local sc="${1:-0}" payload="${2:-}" tailnet_ip monitor_state
 
-  tailnet_ip=$(tailscale_ip_value)
+  tailnet_ip=$(tailscale_ip_value "$payload")
   monitor_state=$(user_unit_state "$MONITOR_SERVICE_NAME")
   printf '  %s · %s\n' "$(bold '⎈ dev-workspace')" "$(host_info)"
   printf '  sessions: %s\n' "$(active_session_summary "$sc")"
@@ -373,7 +410,7 @@ print_status_header() {
     "$(latest_health_timestamp)" \
     "$(latest_health_result)" \
     "$(key_status)"
-  printf '  usage:    disk=%s used\n' "$(disk_usage_badge)"
+  printf '  usage:    disk=%s used\n' "$(disk_usage_badge "$payload")"
   printf '  queue:    %s\n' "$(task_queue_header_summary)"
 }
 
@@ -549,7 +586,7 @@ status_page_orchestrator() {
   local payload="$1" count uptime disk_percent memory_percent hostname tailscale_ip
   local tailscale_connected foundry_loaded project_count
   count=$(jq -r '(.sessions // []) | length' <<<"$payload")
-  print_status_header "$count"
+  print_status_header "$count" "$payload"
   echo
   echo "  $(green "orchestrator health API")"
   printf "    source: %s\n" "$ORCHESTRATOR_HEALTH_URL"
