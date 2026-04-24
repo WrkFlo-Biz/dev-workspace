@@ -109,6 +109,7 @@ ssh_hardening_values(){
   [ -r "$path" ] || return 1
   awk '
     tolower($1) == "passwordauthentication" { pa = tolower($2) }
+    tolower($1) == "pubkeyauthentication" { pka = tolower($2) }
     tolower($1) == "kbdinteractiveauthentication" { kia = tolower($2) }
     tolower($1) == "challengeresponseauthentication" { cra = tolower($2) }
     tolower($1) == "permitrootlogin" { pr = tolower($2) }
@@ -116,14 +117,15 @@ ssh_hardening_values(){
     tolower($1) == "maxauthtries" { mat = $2 }
     tolower($1) == "clientaliveinterval" { ca = $2 }
     tolower($1) == "clientalivecountmax" { cac = $2 }
-    END { printf "%s|%s|%s|%s|%s|%s|%s|%s\n", pa, kia, cra, pr, x11, mat, ca, cac }
+    END { printf "%s|%s|%s|%s|%s|%s|%s|%s|%s\n", pa, pka, kia, cra, pr, x11, mat, ca, cac }
   ' "$path" 2>/dev/null
 }
 ssh_hardening_state(){
-  local vals pa kia cra pr x11 mat ca cac
+  local vals pa pka kia cra pr x11 mat ca cac
   vals=$(ssh_hardening_values) || { printf 'missing'; return; }
-  IFS='|' read -r pa kia cra pr x11 mat ca cac <<<"$vals"
+  IFS='|' read -r pa pka kia cra pr x11 mat ca cac <<<"$vals"
   if [ "$pa" = "no" ] &&
+     [ "$pka" = "yes" ] &&
      [ "$pr" = "no" ] &&
      [ "$x11" = "no" ] &&
      [ "$mat" = "3" ] &&
@@ -139,12 +141,12 @@ ssh_hardening_state(){
 fmt_ssh_hardening_state(){ case "$1" in ok) g "$1" ;; drift) y "$1" ;; *) r "$1" ;; esac; }
 ssh_hardening_ok(){ [ "$1" = "ok" ]; }
 ssh_hardening_detail(){
-  local vals path pa kia cra pr x11 mat ca cac
+  local vals path pa pka kia cra pr x11 mat ca cac
   path=$(resolved_ssh_hardening_conf)
   vals=$(ssh_hardening_values) || { printf '%s' "$path"; return; }
-  IFS='|' read -r pa kia cra pr x11 mat ca cac <<<"$vals"
-  printf '%s (pass=%s kbd=%s challenge=%s root=%s x11=%s maxauth=%s alive=%s/%s)' \
-    "$path" "${pa:-unset}" "${kia:-unset}" "${cra:-unset}" "${pr:-unset}" \
+  IFS='|' read -r pa pka kia cra pr x11 mat ca cac <<<"$vals"
+  printf '%s (pass=%s pubkey=%s kbd=%s challenge=%s root=%s x11=%s maxauth=%s alive=%s/%s)' \
+    "$path" "${pa:-unset}" "${pka:-unset}" "${kia:-unset}" "${cra:-unset}" "${pr:-unset}" \
     "${x11:-unset}" "${mat:-unset}" "${ca:-unset}" "${cac:-unset}"
 }
 firewall_status(){
