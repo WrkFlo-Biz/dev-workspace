@@ -26,6 +26,10 @@ BASE_DIR=$(CDPATH='' cd -- "$BASE_DIR" && pwd)
 exec "${BASE_DIR}/../scripts/dws-status.sh" "$@"
 ```
 
+All repo wrappers should use the `BASH_SOURCE` + `BASE_DIR` contract above so
+they work from any current working directory. `tests/test_bin_wrappers.sh`
+verifies that contract for every non-standalone `bin/*.sh` wrapper.
+
 Operational rule:
 
 - edit the canonical file under `scripts/`
@@ -100,6 +104,7 @@ Standalone repo `bin/` entrypoints:
 
 ```bash
 rg --files scripts bin | sort
+bash tests/test_bin_wrappers.sh
 sed -n '1,40p' bin/dws-status.sh
 sed -n '1,80p' bin/dws-boot-verify.sh
 ```

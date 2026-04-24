@@ -1,2 +1,8 @@
 #!/usr/bin/env bash
-exec "$(dirname "$0")/../scripts/dws-summary.sh" "$@"
+set -euo pipefail
+
+# Wrapper — canonical source is scripts/dws-summary.sh
+BASE_DIR="${BASH_SOURCE[0]%/*}"
+[ "$BASE_DIR" != "${BASH_SOURCE[0]}" ] || BASE_DIR='.'
+BASE_DIR=$(CDPATH='' cd -- "$BASE_DIR" && pwd)
+exec "${BASE_DIR}/../scripts/dws-summary.sh" "$@"

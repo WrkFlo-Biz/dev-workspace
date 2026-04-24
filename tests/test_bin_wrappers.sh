@@ -9,6 +9,12 @@ fail() {
   exit 1
 }
 
+assert_exact_line() {
+  local file="$1" expected="$2"
+
+  grep -Fqx -- "$expected" "$file" || fail "missing line in ${file}: ${expected}"
+}
+
 is_standalone_bin_program() {
   case "${1:-}" in
     dws-boot-verify.sh|dws-systemd-user-setup.sh) return 0 ;;
@@ -17,10 +23,12 @@ is_standalone_bin_program() {
 }
 
 test_bin_wrappers_exec_matching_scripts() {
-  local wrapper name expected exec_lines
+  local wrapper_rel wrapper name expected exec_lines
 
-  while IFS= read -r wrapper; do
-    name=$(basename "$wrapper")
+  while IFS= read -r wrapper_rel; do
+    [ -n "$wrapper_rel" ] || continue
+    wrapper="${REPO_ROOT}/${wrapper_rel}"
+    name=$(basename "$wrapper_rel")
 
     if is_standalone_bin_program "$name"; then
       continue
@@ -35,9 +43,34 @@ test_bin_wrappers_exec_matching_scripts() {
 
     printf '%s\n' "$exec_lines" | grep -F "../scripts/${name}" >/dev/null 2>&1 || \
       fail "wrapper does not exec scripts/${name}: ${wrapper}"
-  done < <(find "${REPO_ROOT}/bin" -maxdepth 1 -type f -name '*.sh' | sort)
+  done < <(git -C "${REPO_ROOT}" ls-files 'bin/*.sh' | sort)
+}
+
+test_bin_wrappers_use_consistent_base_dir_contract() {
+  local wrapper_rel wrapper name expected_comment_line expected_exec_line
+
+  while IFS= read -r wrapper_rel; do
+    [ -n "$wrapper_rel" ] || continue
+    wrapper="${REPO_ROOT}/${wrapper_rel}"
+    name=$(basename "$wrapper_rel")
+
+    if is_standalone_bin_program "$name"; then
+      continue
+    fi
+
+    assert_exact_line "$wrapper" 'set -euo pipefail'
+    expected_comment_line=$(printf '# Wrapper — canonical source is scripts/%s' "$name")
+    assert_exact_line "$wrapper" "$expected_comment_line"
+    assert_exact_line "$wrapper" 'BASE_DIR="${BASH_SOURCE[0]%/*}"'
+    assert_exact_line "$wrapper" '[ "$BASE_DIR" != "${BASH_SOURCE[0]}" ] || BASE_DIR='\''.'\'''
+    assert_exact_line "$wrapper" 'BASE_DIR=$(CDPATH='\'''\'' cd -- "$BASE_DIR" && pwd)'
+
+    expected_exec_line=$(printf 'exec "${BASE_DIR}/../scripts/%s" "$@"' "$name")
+    assert_exact_line "$wrapper" "$expected_exec_line"
+  done < <(git -C "${REPO_ROOT}" ls-files 'bin/*.sh' | sort)
 }
 
 test_bin_wrappers_exec_matching_scripts
+test_bin_wrappers_use_consistent_base_dir_contract
 
 printf 'PASS: %s\n' "$(basename "$0")"

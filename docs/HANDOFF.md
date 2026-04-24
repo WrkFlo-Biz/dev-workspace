@@ -1,89 +1,70 @@
-# Dev Workspace Handoff — 2026-04-24 05:05 UTC
+# Dev Workspace Handoff — 2026-04-24 UTC
 
-## What Was Built
+This handoff reflects the checked-in `dev-workspace` repo and the current
+operator model. It intentionally avoids sibling-repo implementation details
+that this repo does not provision.
 
-### Infrastructure (dev-workspace repo — 164+ commits)
-- **53 scripts** in `bin/` and `scripts/` — ops, health, monitoring, security, sync
-- **24 tests** — all passing on VM, CI green (last 5+ runs)
-- **25 docs** — runbooks, architecture, security, incident response
-- **Firewall** — UFW deny-by-default, Tailscale-only SSH (100.64.0.0/10), all dev ports restricted
-- **SSH hardening** — pubkey-only, no root, max 3 tries, Tailscale-only
-- **3 cron jobs** — health check (15min), log rotation (daily 2:30AM), cleanup (daily 4AM)
-- **Reboot recovery** — all services auto-recover, tested with full reboot drill
-- **Rate-aware dispatch** — global throttle + per-worker exponential backoff
-- **Safe mode** — `dws-safe-mode.sh on/off/status` stops workers while keeping SSH/health
-- **Incident tools** — `dws-pause-dispatch.sh`, `dws-incident-export.sh` (diagnostic tarball)
-- **Structured worker runner** — `dws-worker-exec.sh` (JSON task protocol)
-- **Orchestrator boot script** — `scripts/dws-orchestrator-boot.sh` (one-command startup)
+## Current Repo Truth
 
-### Services (systemd user)
-- `dws-phone-server.service` — active, port 8081 (Tailscale-only)
-- `wrkflo-orchestrator-api.service` — active, port 8100
-- `dws-task-monitor.service` — DISABLED (deprecated, replaced by orchestrator)
-- `dws-sessions-init.service` — FAILED (being rewritten for on-demand model)
+- Shell verification entrypoint: `bash tests/run_all.sh`
+- `bin/` is the repo-local operator surface. Most `bin/*.sh` files are thin
+  wrappers that `exec` into `scripts/`.
+- Standalone repo `bin/` programs: `bin/dws-boot-verify.sh`,
+  `bin/dws-systemd-user-setup.sh`
+- `scripts/dws-sessions-init.sh` implements an on-demand `tmux` model. It does
+  not create a fixed worker pool at boot.
+- Repo-managed user services: `dws-sessions-init.service`,
+  `dws-task-monitor.service`
+- The live monitor service still executes the host-local
+  `~/bin/task-monitor.sh`; the repo copy under `scripts/` is a source snapshot,
+  not the installed runtime entrypoint.
+- Authoritative runtime surfaces are
+  `~/projects/dev-workspace/.state/task-queue.json` and
+  `/var/log/dws/monitor.log`.
 
-### wrkflo-orchestrator repo
-- `codex_subprocess.py` — short-lived codex subprocess worker (DONE, tested, pushed)
-  - Spawns codex as subprocess per task, captures output, kills on timeout
-  - JSONL audit logging, state-store integration
-  - Branch: `codex-subprocess-worker-clean` at commit `09bfe6b`
-- Worker registry updated, __init__.py exports added
-- 123 tests passing (full suite), 7 targeted subprocess tests
-- Dashboard API with task history endpoints
+## Session And Service Model
 
-### global-sentinel repo
-- Fixed 11 failing trade_approval tests (table schema migration)
-- State DB expansion, approval hardening
-- All tests passing
+- SSH login normally lands in `~/bin/dws-launcher.sh`, then into `tmux`, then
+  into Codex or Claude for the selected repo/profile.
+- `tmux` session names are runtime state, not a repo-guaranteed boot contract.
+  Expect ad hoc names like `dws-5-4`, `gs-claude`, or `orch-codex`; older
+  `dws-a` and `worker-*` snapshots are historical only.
+- `dws-sessions-init.service` performs lightweight boot prep for the on-demand
+  model.
+- `dws-task-monitor.service` runs independently of interactive shells and
+  manages the live queue and host-defined worker/orchestrator state.
 
-### Network (Tailscale mesh — 4 devices)
-| Device | IP | Status |
-|--------|-----|--------|
-| dev-workspace-vm | 100.117.16.63 | Online |
-| mosess-macbook-air-3 | 100.78.207.22 | Active |
-| iphone-15-pro-max | 100.88.249.22 | Online |
-| openclaw-gateway-vm | 100.126.194.98 | Online |
+## Operator Surface
 
-### Access Paths (all verified)
-- Mac → VM: SSH key over Tailscale
-- Phone → VM: SSH key via Termius over Tailscale
-- Phone → Mac: Password auth via Termius over Tailscale
-- VM → GitHub: gh CLI with workflow scope
-- VM → Azure: az CLI, subscription active
+- `~/projects/dev-workspace/bin/dws-status.sh`
+- `~/projects/dev-workspace/bin/dws-sessions.sh list`
+- `~/projects/dev-workspace/bin/dws-summary.sh`
+- `~/projects/dev-workspace/bin/dws-service-map.sh`
+- `~/projects/dev-workspace/bin/dws-boot-verify.sh`
+- `systemctl --user status dws-sessions-init.service dws-task-monitor.service --no-pager`
+- `tail -n 40 /var/log/dws/monitor.log`
 
-### CLI Tools (all authenticated on VM)
-az, gh, codex, tailscale, ufw, elevenlabs
+## Drift Rules
 
-## What Was Deprecated
-- **10-session tmux worker pool** — replaced by on-demand codex subprocesses
-- **dws-task-monitor.service** — disabled, bash monitor replaced by Python orchestrator
-- **dws-sessions-init.service** — being rewritten for single-orchestrator model
-- **task-queue.json** — 299 tasks (286 completed, 13 cancelled), queue is clean
+- If repo docs and live behavior disagree, trust active user-service state, the
+  installed `~/bin` entrypoints, `/var/log/dws/monitor.log`, and the repo
+  `.state` queue first.
+- `~/bin/` can drift from checked-in `bin/` and `scripts/`; redeploy before
+  assuming the host matches the repo.
+- Host-local services such as `dws-phone-server.service` or
+  `wrkflo-orchestrator-api.service` can exist on the VM, but they are not
+  installed by this repo.
 
-## What Still Needs Work
-1. **Wire codex_subprocess.py into orchestrator control plane** — module exists, needs integration with task dispatch
-2. **Session-init rewrite** — remove worker pool loop, keep orchestrator-only startup
-3. **CI workflow consolidation** — ci.yml and test.yml both exist, merge into one
-4. **Disk at 53%** — up from 39%, needs cleanup pass
-5. **Phone → Mac SSH key auth** — script exists (`dws-termius-mac-fix.sh`), not yet run
-6. **SQLite state layer** — still using JSON files for task queue
+## Resume Checklist
 
-## The Plan Going Forward
-One orchestrator session on the VM. SSH in → run `dws-orchestrator-boot.sh` → it monitors and dispatches.
-The orchestrator spawns short-lived codex subprocesses per task via `codex_subprocess.py`.
-No persistent worker pool. No Mac-side terminals coordinating. One entry point.
+1. `git -C ~/projects/dev-workspace status --short`
+2. `bash ~/projects/dev-workspace/tests/run_all.sh`
+3. `systemctl --user status dws-sessions-init.service dws-task-monitor.service --no-pager`
+4. `~/projects/dev-workspace/bin/dws-boot-verify.sh`
+5. `~/projects/dev-workspace/bin/dws-sessions.sh list`
 
-## How to Resume
-```bash
-ssh moses@100.117.16.63
-dws-orchestrator-boot.sh 2    # orchestrator + 2 workers
-tmux attach -t orchestrator   # watch it work
-```
+Primary reference docs:
 
-## Git State (all repos clean, all pushed)
-- dev-workspace: `9ed0d50` — fix: shellcheck warnings in scripts
-- wrkflo-orchestrator: `8afad7c` — feat: add task history CLI, service endpoints
-- global-sentinel: `a2d49c7` — feat: openclaw state DB expansion
-- wrkflo-voice-agents-ops: `59c4dda` — docs: add CLAUDE.md project context
-- openclaw-prod: `6a3d2bb` — docs: add CLAUDE.md project context
-- global-sentinel-azure-quantum: `37b5ce2` — docs: add CLAUDE.md project context
+- `docs/architecture.md`
+- `docs/runtime-boot-truth.md`
+- `docs/runbook.md`

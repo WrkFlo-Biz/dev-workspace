@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Wrapper - canonical source is scripts/dws-safe-mode.sh
 set -euo pipefail
 
+# Wrapper — canonical source is scripts/dws-safe-mode.sh
 BASE_DIR="${BASH_SOURCE[0]%/*}"
 [ "$BASE_DIR" != "${BASH_SOURCE[0]}" ] || BASE_DIR='.'
 BASE_DIR=$(CDPATH='' cd -- "$BASE_DIR" && pwd)

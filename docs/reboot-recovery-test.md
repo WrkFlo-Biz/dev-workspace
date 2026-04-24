@@ -51,7 +51,7 @@ ssh moses@dev-workspace-vm '
 Pass: baseline directory created with all files non-empty.
 Fail: any capture errored out → investigate *before* rebooting (a failed capture often signals the stack is already sick).
 
-Announce the reboot window to any other Claude/codex agents by appending to `/tmp/task-coordination.md` and dropping a notice in `/tmp/claude-wid39818-inbox`. Wait 60 s for active workers to checkpoint.
+Announce the reboot window to any other Claude/codex agents by appending to `/tmp/agent-coordination.md`. Wait 60 s for active workers to checkpoint.
 
 Verify Foundry key and recent backup:
 
@@ -91,7 +91,7 @@ Run the canonical check first, then work through the supplementary checks below.
 ssh moses@dev-workspace-vm '~/projects/dev-workspace/bin/dws-boot-verify.sh'
 ```
 
-Pass: `STATUS: READY` in the final line, `0 failed`.
+Pass: the final summary line is `overall: PASS (...)` and the failure count is `0`.
 Fail: any `FAIL` line → note which component and continue to the targeted section below.
 
 ### 3.1 Tailscale
@@ -255,7 +255,7 @@ Fail: any script exits non-zero → section-specific recovery above, then rerun 
 
 The drill is green when **all** of the following hold:
 
-- `~/projects/dev-workspace/bin/dws-boot-verify.sh` reports `STATUS: READY`, `0 failed`.
+- `~/projects/dev-workspace/bin/dws-boot-verify.sh` reports `overall: PASS` and `0 failed`.
 - Sections 3.1 – 3.5 and 3.8 – 3.11 each show their pass criterion.
 - Sections 3.6 and 3.7 either pass or are explicitly skipped because the
   optional service is not installed on that host.
@@ -281,7 +281,7 @@ ssh moses@dev-workspace-vm 'echo "SIGNOFF $(date -u +%Y-%m-%dT%H:%M:%SZ) green" 
 | Tailscale down, SSH via public IP only | `sudo systemctl restart tailscaled`; if key expired, re-auth via the URL printed by `sudo tailscale up --ssh --operator=moses` | If tailnet unreachable org-wide, verify account billing status |
 | `/var/log/dws/` missing or not writable | `sudo mkdir -p /var/log/dws && sudo chown moses:moses /var/log/dws` | Fold this into `vm-bootstrap.sh` so fresh provisions have it |
 
-**Never skip a failed check.** A silent partial-boot is the class of failure this drill exists to catch. If any section fails and cannot be recovered in-place within 10 min, take the drill result as a **blocking** incident: stop dispatching new work to the VM, announce via `/tmp/task-coordination.md`, and page the operator.
+**Never skip a failed check.** A silent partial-boot is the class of failure this drill exists to catch. If any section fails and cannot be recovered in-place within 10 min, take the drill result as a **blocking** incident: stop dispatching new work to the VM, announce via `/tmp/agent-coordination.md`, and page the operator.
 
 ## References
 
@@ -289,4 +289,4 @@ ssh moses@dev-workspace-vm 'echo "SIGNOFF $(date -u +%Y-%m-%dT%H:%M:%SZ) green" 
 - `~/projects/dev-workspace/docs/runbook.md` — standard operator procedures
 - `~/projects/dev-workspace/docs/architecture.md` — component diagram
 - `~/projects/dev-workspace/docs/risk-register-dev-workspace.md` — known failure modes
-- `/tmp/task-coordination.md` — live claim/release ledger across agents
+- `/tmp/agent-coordination.md` — live claim/release ledger across agents

@@ -108,7 +108,7 @@ TASK BACKLOG (assign to idle workers, one repo per worker):
 RULES:
 - Never assign same file to two workers
 - One repo per worker at a time
-- Always press Enter after sending text to a session
+- ALWAYS use ~/bin/tmux-send to dispatch tasks (never raw tmux send-keys). It auto-presses Enter and verifies.
 - Read /tmp/agent-coordination.md for file boundaries
 
 PREVIOUS SESSION HANDOFF (read this first — it tells you what was built and what still needs work):
@@ -126,18 +126,9 @@ tmux new-session -d -s "$SESSION_NAME" \
 green "Orchestrator session created"
 sleep 6
 
-# Send prompt
-tmux load-buffer -b orchprompt "$PROMPT_FILE"
-tmux paste-buffer -b orchprompt -t "$SESSION_NAME"
-sleep 2
-tmux send-keys -t "$SESSION_NAME" Enter
-sleep 5
-
-if tmux capture-pane -t "$SESSION_NAME" -p | grep -q "Working"; then
-    green "Orchestrator is RUNNING"
-else
-    yellow "Prompt submitted — verify: tmux attach -t orchestrator"
-fi
+# Send prompt using tmux-send (auto-Enter + verify)
+PROMPT_TEXT=$(cat "$PROMPT_FILE")
+tmux-send "$SESSION_NAME" "$PROMPT_TEXT" && green "Orchestrator is RUNNING" || yellow "Prompt submitted — verify: tmux attach -t orchestrator"
 
 echo ""
 green "=== Boot complete ==="

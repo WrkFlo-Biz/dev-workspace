@@ -1,5 +1,7 @@
 [Unit]
-Description=Dev Workspace On-Demand Session Init
+Description=Dev Workspace On-Demand Session Bootstrap
+After=network-online.target
+Wants=network-online.target
 ConditionPathExists=%h/bin/dws-sessions-init.sh
 
 [Service]

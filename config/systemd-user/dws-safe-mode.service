@@ -2,8 +2,8 @@
 Description=Dev Workspace Safe Mode Profile
 After=network-online.target
 Wants=network-online.target
-Before=dws-sessions-init.service dws-task-monitor.service
-Conflicts=dws-sessions-init.service dws-task-monitor.service
+Before=dws-sessions-init.service wrkflo-orchestrator-api.service dws-task-monitor.service
+Conflicts=dws-sessions-init.service wrkflo-orchestrator-api.service dws-task-monitor.service
 ConditionPathExists=%h/projects/dev-workspace/bin/dws-safe-mode.sh
 
 [Service]

@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-UNITS=(
+REPO_UNITS=(
   dws-sessions-init.service
+  dws-safe-mode.service
+)
+OPTIONAL_UNITS=(
+  wrkflo-orchestrator-api.service
   dws-task-monitor.service
 )
+UNITS=()
 
 usage() {
   cat <<'EOF'
@@ -12,7 +17,10 @@ usage: dws-service-map.sh
 
 Show the current user-systemd boot order, dependency tree, and runtime state for:
   - dws-sessions-init.service
-  - dws-task-monitor.service
+  - dws-safe-mode.service
+
+Optional host-local units such as `wrkflo-orchestrator-api.service` and the
+legacy `dws-task-monitor.service` are included when installed.
 EOF
 }
 
@@ -96,13 +104,34 @@ require_user_systemd() {
   systemctl --user show default.target >/dev/null 2>&1 || die 'systemctl --user is unavailable'
 }
 
-print_boot_order_summary() {
-  local sessions_before monitor_after sessions_wanted_by monitor_wanted_by
+unit_exists() {
+  local load_state
 
-  sessions_before=$(unit_value dws-sessions-init.service Before)
-  monitor_after=$(unit_value dws-task-monitor.service After)
+  load_state=$(unit_value "$1" LoadState)
+  case "$load_state" in
+    ''|not-found) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+build_unit_list() {
+  local unit
+
+  UNITS=("${REPO_UNITS[@]}")
+
+  for unit in "${OPTIONAL_UNITS[@]}"; do
+    if unit_exists "$unit"; then
+      UNITS+=("$unit")
+    fi
+  done
+}
+
+print_boot_order_summary() {
+  local sessions_wanted_by safe_mode_wanted_by safe_mode_conflicts
+
   sessions_wanted_by=$(unit_value dws-sessions-init.service WantedBy)
-  monitor_wanted_by=$(unit_value dws-task-monitor.service WantedBy)
+  safe_mode_wanted_by=$(unit_value dws-safe-mode.service WantedBy)
+  safe_mode_conflicts=$(unit_value dws-safe-mode.service Conflicts)
 
   say 'Boot Order Summary'
   if has_word "$sessions_wanted_by" default.target; then
@@ -111,16 +140,28 @@ print_boot_order_summary() {
     say '  default.target does not currently want dws-sessions-init.service'
   fi
 
-  if has_word "$monitor_wanted_by" default.target; then
-    say '  default.target wants dws-task-monitor.service'
+  if has_word "$safe_mode_wanted_by" default.target; then
+    say '  default.target wants dws-safe-mode.service'
   else
-    say '  default.target does not currently want dws-task-monitor.service'
+    say '  default.target does not currently want dws-safe-mode.service'
   fi
 
-  if has_word "$sessions_before" dws-task-monitor.service || has_word "$monitor_after" dws-sessions-init.service; then
-    say '  ordering edge: dws-sessions-init.service -> dws-task-monitor.service'
+  if has_word "$safe_mode_conflicts" dws-sessions-init.service; then
+    say '  conflict edge: dws-safe-mode.service <-> dws-sessions-init.service'
   else
-    say '  ordering edge: no direct dws-sessions-init.service -> dws-task-monitor.service relation detected'
+    say '  conflict edge: no direct dws-safe-mode.service <-> dws-sessions-init.service relation detected'
+  fi
+
+  if unit_exists wrkflo-orchestrator-api.service; then
+    say '  optional control plane: wrkflo-orchestrator-api.service installed'
+  else
+    say '  optional control plane: wrkflo-orchestrator-api.service not installed'
+  fi
+
+  if unit_exists dws-task-monitor.service; then
+    say '  legacy monitor: dws-task-monitor.service still present on this host'
+  else
+    say '  legacy monitor: no repo-managed dws-task-monitor.service present'
   fi
 }
 
@@ -174,6 +215,7 @@ main() {
   esac
 
   require_user_systemd
+  build_unit_list
 
   say 'DWS Service Map'
   say "host: $(hostname -s 2>/dev/null || hostname)"

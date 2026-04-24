@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Wrapper — canonical source is scripts/dws-sessions.sh
-SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
-[ "$SCRIPT_DIR" != "${BASH_SOURCE[0]}" ] || SCRIPT_DIR='.'
-SCRIPT_DIR=$(CDPATH='' cd -- "$SCRIPT_DIR" && pwd)
-exec "${SCRIPT_DIR}/../scripts/dws-sessions.sh" "$@"
+BASE_DIR="${BASH_SOURCE[0]%/*}"
+[ "$BASE_DIR" != "${BASH_SOURCE[0]}" ] || BASE_DIR='.'
+BASE_DIR=$(CDPATH='' cd -- "$BASE_DIR" && pwd)
+exec "${BASE_DIR}/../scripts/dws-sessions.sh" "$@"

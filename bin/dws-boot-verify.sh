@@ -5,7 +5,7 @@ SSH_HOST="${DWS_BOOT_VERIFY_SSH_HOST:-127.0.0.1}"
 SSH_PORT="${DWS_BOOT_VERIFY_SSH_PORT:-22}"
 SSH_TIMEOUT_SECONDS="${DWS_BOOT_VERIFY_SSH_TIMEOUT_SECONDS:-5}"
 LOG_DIR="${DWS_BOOT_VERIFY_LOG_DIR:-/var/log/dws}"
-TASK_MONITOR_UNIT="${DWS_BOOT_VERIFY_TASK_MONITOR_UNIT:-dws-task-monitor.service}"
+SESSIONS_INIT_UNIT="${DWS_BOOT_VERIFY_SESSIONS_INIT_UNIT:-${DWS_BOOT_VERIFY_TASK_MONITOR_UNIT:-dws-sessions-init.service}}"
 PASS_COUNT=0
 FAIL_COUNT=0
 
@@ -46,7 +46,7 @@ Verify post-reboot dev-workspace readiness:
   - tmux is installed and active sessions are readable
   - cron is active and a crontab is loaded
   - /var/log/dws exists
-  - the configured task-monitor service is active
+  - the configured sessions-init service is active
 
 Exits non-zero when one or more checks fail.
 EOF
@@ -133,23 +133,23 @@ active_cron_unit() {
   return 1
 }
 
-active_task_monitor_unit() {
-  local bare_unit="${TASK_MONITOR_UNIT%.service}"
+active_sessions_init_unit() {
+  local bare_unit="${SESSIONS_INIT_UNIT%.service}"
 
   if have systemctl; then
-    if systemctl --user is-active --quiet "$TASK_MONITOR_UNIT" 2>/dev/null; then
-      printf 'user %s\n' "$TASK_MONITOR_UNIT"
+    if systemctl --user is-active --quiet "$SESSIONS_INIT_UNIT" 2>/dev/null; then
+      printf 'user %s\n' "$SESSIONS_INIT_UNIT"
       return 0
     fi
-    if [ "$bare_unit" != "$TASK_MONITOR_UNIT" ] && systemctl --user is-active --quiet "$bare_unit" 2>/dev/null; then
+    if [ "$bare_unit" != "$SESSIONS_INIT_UNIT" ] && systemctl --user is-active --quiet "$bare_unit" 2>/dev/null; then
       printf 'user %s\n' "$bare_unit"
       return 0
     fi
-    if systemctl is-active --quiet "$TASK_MONITOR_UNIT" 2>/dev/null; then
-      printf 'system %s\n' "$TASK_MONITOR_UNIT"
+    if systemctl is-active --quiet "$SESSIONS_INIT_UNIT" 2>/dev/null; then
+      printf 'system %s\n' "$SESSIONS_INIT_UNIT"
       return 0
     fi
-    if [ "$bare_unit" != "$TASK_MONITOR_UNIT" ] && systemctl is-active --quiet "$bare_unit" 2>/dev/null; then
+    if [ "$bare_unit" != "$SESSIONS_INIT_UNIT" ] && systemctl is-active --quiet "$bare_unit" 2>/dev/null; then
       printf 'system %s\n' "$bare_unit"
       return 0
     fi
@@ -330,14 +330,14 @@ check_log_dir() {
   pass "log directory present (${LOG_DIR}; ${entries} entries)"
 }
 
-check_task_monitor() {
+check_sessions_init() {
   local unit
 
-  unit=$(active_task_monitor_unit || true)
+  unit=$(active_sessions_init_unit || true)
   if [ -n "$unit" ]; then
-    pass "task-monitor service active (${unit})"
+    pass "sessions-init service active (${unit})"
   else
-    fail "task-monitor service not active (${TASK_MONITOR_UNIT})"
+    fail "sessions-init service not active (${SESSIONS_INIT_UNIT})"
   fi
 }
 
@@ -367,7 +367,7 @@ main() {
   check_tmux
   check_cron
   check_log_dir
-  check_task_monitor
+  check_sessions_init
 
   if [ "$FAIL_COUNT" -eq 0 ]; then
     printf '\noverall: PASS (%d passed, %d failed)\n' "$PASS_COUNT" "$FAIL_COUNT"

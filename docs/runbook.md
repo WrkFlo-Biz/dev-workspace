@@ -27,7 +27,7 @@ Operational procedures for the `dev-workspace-vm` multi-agent environment.
 | `dws-incident-export.sh` | `~/projects/dev-workspace/bin/dws-incident-export.sh` |
 | `dws-worker-exec.sh` | `~/projects/dev-workspace/scripts/dws-worker-exec.sh` |
 | `dws-termius-mac-fix.sh` | `~/projects/dev-workspace/bin/dws-termius-mac-fix.sh` |
-| `dws-safe-mode.sh` | `~/projects/dev-workspace/scripts/dws-safe-mode.sh` |
+| `dws-safe-mode.sh` | `~/projects/dev-workspace/bin/dws-safe-mode.sh` |
 | SSH hardening (live) | `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` |
 | SSH baseline (repo) | `~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf` |
 | Foundry env | `~/.config/wrkflo/foundry.env` |
@@ -159,7 +159,7 @@ manual incident.
 | `~/projects/dev-workspace/bin/dws-incident-export.sh` | Capture an incident bundle under `/tmp/dws-incident-TIMESTAMP.tar.gz` with monitor, queue, tmux, service, network, disk, memory, and uptime snapshots. |
 | `~/projects/dev-workspace/scripts/dws-worker-exec.sh` | Execute a single queued task JSON, write `.state/results/<task-id>.log` and `.json`, and mark the queue item `completed` or `failed`. |
 | `~/projects/dev-workspace/bin/dws-termius-mac-fix.sh` | Repair macOS SSH pubkey settings and file permissions when Termius key auth breaks on the Mac side. |
-| `~/projects/dev-workspace/scripts/dws-safe-mode.sh` | Stop worker dispatch and session management while leaving SSH, Tailscale, health checks, and log rotation available. |
+| `~/projects/dev-workspace/bin/dws-safe-mode.sh` | Stop worker dispatch and session management while leaving SSH, Tailscale, health checks, and log rotation available. |
 | `~/projects/dev-workspace/bin/dws-worker-utilization.sh` | Parse `/var/log/dws/monitor.log` into per-worker completions, rate-limit hits, idle percentage, and average task duration. |
 | `~/projects/dev-workspace/bin/dws-termius-verify.sh` | Validate the phone access path before relying on Termius during recovery drills or off-Mac operations. |
 
@@ -213,9 +213,13 @@ writes `.state/results/<task-id>.log` and `.json`, and updates
 
 ```bash
 tmux list-sessions
-tmux attach-session -t dws-a
-tmux capture-pane -t worker-c -p | tail -10
+tmux attach-session -t <session>
+tmux capture-pane -t <session> -p | tail -10
 ```
+
+Replace `<session>` with a live name from `tmux list-sessions` or
+`~/projects/dev-workspace/bin/dws-sessions.sh list`; the repo no longer
+guarantees fixed `dws-a` or `worker-*` session names.
 
 Detach with `Ctrl-a d`.
 
@@ -366,7 +370,7 @@ DWS_CRON_LOG_DIR=/var/log/dws ~/projects/dev-workspace/bin/dws-cron-setup.sh
 
 ```text
 Layer 3: Tailscale + SSH reconnect         -> operator reconnects to an existing session
-Layer 2: dws-task-monitor.service          -> relaunches crashed or compacted workers
+Layer 2: dws-task-monitor.service          -> manages the live queue and recreates host-defined managed sessions
 Layer 1: dws-sessions-init.service         -> boot-time prep for the on-demand session model
 ```
 
@@ -407,11 +411,11 @@ response, or debugging.
 
 ```bash
 # Enter safe mode
-~/projects/dev-workspace/scripts/dws-safe-mode.sh on
+~/projects/dev-workspace/bin/dws-safe-mode.sh on
 
 # Check status
-~/projects/dev-workspace/scripts/dws-safe-mode.sh status
+~/projects/dev-workspace/bin/dws-safe-mode.sh status
 
 # Exit safe mode
-~/projects/dev-workspace/scripts/dws-safe-mode.sh off
+~/projects/dev-workspace/bin/dws-safe-mode.sh off
 ```

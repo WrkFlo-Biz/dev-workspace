@@ -220,8 +220,35 @@ exit 1
   trap - EXIT
 }
 
+test_boot_verify_reports_ad_hoc_session_names_verbatim() {
+  local output
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  write_fake_command tmux '
+if [ "${1:-}" = "list-sessions" ]; then
+  cat <<'\''EOF'\''
+dws-5-4
+gs-claude
+orch-codex
+EOF
+  exit 0
+fi
+exit 1
+'
+
+  output=$("${SCRIPT}" 2>&1)
+  assert_contains "${output}" "PASS tmux available (3 sessions: dws-5-4, gs-claude, orch-codex)"
+  assert_contains "${output}" "overall: PASS (6 passed, 0 failed)"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
 test_boot_verify_passes_when_all_checks_are_ready
 test_boot_verify_fails_when_task_monitor_is_inactive
 test_boot_verify_passes_when_no_tmux_sessions_are_active
+test_boot_verify_reports_ad_hoc_session_names_verbatim
 
 printf 'PASS: %s\n' "$(basename "$0")"
