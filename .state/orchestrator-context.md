@@ -24,36 +24,45 @@ Label source of truth: ~/projects/dev-workspace/.state/worker-labels.json
 ### Session Model Tiers
 
 Managed `tmux` sessions created by `scripts/dws-sessions-init.sh` launch Codex
-with approvals bypassed (`--dangerously-bypass-approvals-and-sandbox`).
+with approvals bypassed via
+`--dangerously-bypass-approvals-and-sandbox`.
 
-Use this model map when routing work:
+- `orchestrator`, `worker-c`, `worker-d`: `foundry-5_4` / `5-4` for
+  orchestration and heavier reasoning.
+- `worker-f`, `worker-h`: `foundry-5_2` / `5-2` for bulk or lightweight work.
+- Other generic workers currently stay on `foundry-5_4`.
 
-| Session | Profile | Model tier | Preferred work |
-|------|------|---------|---------|
-| orchestrator | `foundry-5_4` | `5-4` | orchestration, planning, cross-repo coordination |
-| worker-c | `foundry-5_4` | `5-4` | heavier test/debug work |
-| worker-d | `foundry-5_4` | `5-4` | heavier docs/analysis work |
-| worker-f | `foundry-5_2` | `5-2` | bulk tasks that do not need the heaviest tier |
-| worker-h | `foundry-5_2` | `5-2` | lightweight edits and smaller follow-ups |
+### Dispatch and Runner Protocol
 
-All other generic workers currently stay on `foundry-5_4`.
+- Route by labels first, then by idle capacity and non-overlapping file scope.
+- Prefer `foundry-5_4` sessions for broad scans, planning, or cross-cutting
+  work; keep `worker-f` and `worker-h` for lower-cost tasks when possible.
+- For queued or structured execution, use
+  `scripts/dws-worker-exec.sh TASK_ID` instead of free-form pane text.
+- The runner reads `.state/tasks/TASK_ID.json`
+  (`id`, `repo`, `command`, `model`, `timeout`), runs the command in the repo
+  directory, writes `.state/results/TASK_ID.log` and
+  `.state/results/TASK_ID.json`, and updates `.state/task-queue.json` to
+  `completed` or `failed`.
 
-### Dispatch
+### Incident Controls
 
-To dispatch a task to a worker:
-```bash
-tmux send-keys -t WORKER_NAME "cd ~/projects/REPO_NAME && TASK_DESCRIPTION" Enter
-```
+- `bin/dws-pause-dispatch.sh on|off|status` toggles
+  `/tmp/dws-dispatch-paused`; the monitor stops new dispatch while the flag
+  exists.
+- `bin/dws-incident-export.sh` writes
+  `/tmp/dws-incident-TIMESTAMP.tar.gz` with monitor tail, queue, tmux,
+  `systemctl --user status`, `tailscale status`, `ufw status`, disk, memory,
+  and uptime snapshots.
+- `bin/dws-safe-mode.sh on|off|status` stops `dws-task-monitor` and
+  `dws-sessions-init`; SSH, Tailscale, health checks, and log rotation stay up.
 
-Use label-based routing before dispatching:
-1. Read ~/projects/dev-workspace/.state/worker-labels.json and look up the idle workers for the needed task type.
-2. Prefer workers whose labels match the task, especially when the task clearly maps to infra, docs, test, or sync work.
-3. Use foundry-heavy when the task will likely need broad repo scans, long-context reasoning, or heavier model work.
-   Prefer the sessions on `foundry-5_4`; keep `worker-f` and `worker-h` for
-   bulk or lightweight work unless capacity is constrained.
-4. If multiple idle workers match, pick any idle match with a non-overlapping file scope.
-5. If no labeled worker is idle, fall back to any idle worker rather than blocking the queue.
-6. Treat labels as routing hints only; availability and non-overlapping ownership still take priority.
+### Network Posture
+
+- SSH is intended to be Tailscale-only. `scripts/dws-firewall.sh --verify`
+  fails if `tcp/22` is public.
+- Expected allowlist: `tcp/22` and dev ports only from `100.64.0.0/10`;
+  `udp/41641` remains public for Tailscale peer traffic.
 
 ## WORKER_LABELS
 
@@ -94,3 +103,7 @@ Log: /var/log/dws/monitor.log
 Check all workers: for s in dws-a dws-b worker-c worker-d worker-e worker-f worker-g worker-h worker-i; do echo "$s:"; tmux capture-pane -t $s -p | tail -3; done
 Check queue: python3 -c "import json; d=json.load(open('$HOME/projects/dev-workspace/.state/task-queue.json')); print(f'pending={sum(1 for t in d[\"tasks\"] if t[\"status\"]==\"pending\")} in_progress={sum(1 for t in d[\"tasks\"] if t[\"status\"]==\"in_progress\")} completed={sum(1 for t in d[\"tasks\"] if t[\"status\"]==\"completed\")}')"
 Check monitor: tail -10 /var/log/dws/monitor.log
+Pause dispatch: ~/projects/dev-workspace/bin/dws-pause-dispatch.sh status
+Export incident: ~/projects/dev-workspace/bin/dws-incident-export.sh
+Safe mode: ~/projects/dev-workspace/bin/dws-safe-mode.sh status
+Verify Tailscale-only SSH: ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --verify
