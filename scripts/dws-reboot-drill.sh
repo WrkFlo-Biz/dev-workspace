@@ -422,7 +422,7 @@ unit_exists() {
 
 unit_active_ok() {
   case "${1:-}" in
-    active|active\ (*) return 0 ;;
+    active|"active ("*) return 0 ;;
     *) return 1 ;;
   esac
 }

@@ -26,7 +26,7 @@ check() {
 }
 
 echo "Termius / Phone Connectivity Verification"
-echo "time: $(date -u "+%Y-%m-%d %H:%M:%S UTC"
+echo "time: $(date -u "+%Y-%m-%d %H:%M:%S UTC")"
 echo ""
 
 # 1. Tailscale sees phone peer
