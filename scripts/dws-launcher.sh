@@ -228,7 +228,7 @@ foundry_key_hint() {
 show_openai_profile_warning() {
   yellow "  OpenAI profiles unavailable"; echo
   dim "  $(foundry_key_hint)"; echo
-  dim "  choose Claude or plain shell until the key is restored"; echo
+  dim "  choose Claude Code CLI or plain shell until the key is restored"; echo
   sleep 1
 }
 
@@ -276,6 +276,101 @@ tailscale_ip_badge() {
   else
     printf '%s' "$(yellow "unavailable")"
   fi
+}
+
+tailscale_state_from_payload() {
+  local payload="${1:-}" connected=""
+
+  [ -n "$payload" ] || return 1
+  have_cmd jq || return 1
+  connected=$(jq -r '.tailscale.connected // empty' <<<"$payload" 2>/dev/null || true)
+  case "$connected" in
+    true) printf '%s\n' "connected" ;;
+    false) printf '%s\n' "down" ;;
+    *) return 1 ;;
+  esac
+}
+
+tailscale_connection_state() {
+  local payload="${1:-}" state=""
+
+  state=$(tailscale_state_from_payload "$payload" || true)
+  if [ -n "$state" ]; then
+    printf '%s\n' "$state"
+    return 0
+  fi
+
+  if ! have_cmd tailscale; then
+    printf '%s\n' "unavailable"
+    return 0
+  fi
+
+  if tailscale status >/dev/null 2>&1; then
+    printf '%s\n' "connected"
+  else
+    printf '%s\n' "down"
+  fi
+}
+
+tailscale_header_badge() {
+  local payload="${1:-}" state ip
+
+  state=$(tailscale_connection_state "$payload")
+  ip=$(tailscale_ip_value "$payload")
+
+  case "$state" in
+    connected)
+      if [ -n "$ip" ]; then
+        printf '%s' "$(green "$ip")"
+      else
+        printf '%s' "$(green "connected")"
+      fi
+      ;;
+    down)
+      printf '%s' "$(red "down")"
+      ;;
+    *)
+      printf '%s' "$(yellow "unavailable")"
+      ;;
+  esac
+}
+
+tailscale_fallback_hint() {
+  local payload="${1:-}" state
+
+  state=$(tailscale_connection_state "$payload")
+  case "$state" in
+    down)
+      printf '%s' "local sessions still work, but Mac and phone bridge features are unavailable"
+      ;;
+    unavailable)
+      printf '%s' "tailscale CLI is unavailable; local sessions still work, but tailnet status is unknown"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+show_empty_session_note() {
+  local indent="${1:-}"
+  printf '%s%s\n' "$indent" "$(dim "no tmux sessions yet; pick a project below to start one")"
+}
+
+show_tailscale_note() {
+  local indent="${1:-}" payload="${2:-}" hint
+
+  hint=$(tailscale_fallback_hint "$payload" || true)
+  [ -n "$hint" ] || return 0
+  printf '%s%s\n' "$indent" "$(dim "$hint")"
+}
+
+show_foundry_note() {
+  local indent="${1:-}"
+
+  foundry_key_ready && return 0
+  printf '%s%s\n' "$indent" "$(dim "OpenAI profiles unavailable: $(foundry_key_hint)")"
+  printf '%s%s\n' "$indent" "$(dim "fallback: Claude Code CLI or plain shell")"
 }
 
 unit_name() {
@@ -572,13 +667,12 @@ EOF
 }
 
 print_status_header() {
-  local sc="${1:-0}" payload="${2:-}" tailnet_ip monitor_state
+  local sc="${1:-0}" payload="${2:-}" monitor_state
 
-  tailnet_ip=$(tailscale_ip_value "$payload")
   monitor_state=$(user_unit_state "$MONITOR_SERVICE_NAME")
   printf '  %s · %s\n' "$(bold '⎈ dev-workspace')" "$(host_info)"
   printf '  sessions: %s\n' "$(active_session_summary "$sc")"
-  printf '  tailnet:  %s\n' "$(tailscale_ip_badge "$tailnet_ip")"
+  printf '  tailnet:  %s\n' "$(tailscale_header_badge "$payload")"
   printf '  monitor:  %s\n' "$(monitor_service_badge "$monitor_state")"
   printf '  health:   check=%s  result=%s  key=%s\n' \
     "$(latest_health_timestamp)" \

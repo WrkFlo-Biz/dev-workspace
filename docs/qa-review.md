@@ -1,6 +1,6 @@
 # QA Review
 
-Reviewed the current `feat/dws-boot-verify` working tree on 2026-04-23 UTC.
+Reviewed the current `dev-workspace` working tree on 2026-04-24 UTC.
 
 ## Scope
 
@@ -31,16 +31,17 @@ Impact:
 
 - A correctly installed system can fail the repo's own boot smoke test unless `DWS_BOOT_VERIFY_TASK_MONITOR_UNIT` is overridden.
 
-### High: queue-path docs point at `.state/task-queue.json`, but repo consumers still read `/tmp/task-queue.json`
+### Medium: legacy queue-path defaults still exist in some repo tools
 
 Evidence:
 
 - Docs call `~/projects/dev-workspace/.state/task-queue.json` authoritative in `docs/architecture.md:233-260`, `docs/runbook.md:10`, `docs/runbook.md:114-127`, and `docs/troubleshooting.md:21-24`, `docs/troubleshooting.md:202-208`.
-- Current repo consumers still default to `/tmp/task-queue.json` in `scripts/dws-launcher.sh:34-38`, `scripts/dws-status.sh:6-9`, and `scripts/dws-motd.sh:4-6`.
+- `scripts/dws-launcher.sh:424-443` and `scripts/dws-status.sh:270-289` now probe the repo `.state` queue before falling back to `/tmp/task-queue.json`.
+- `scripts/dws-motd.sh:1-6` still defaults directly to `/tmp/task-queue.json` unless `DWS_TASK_QUEUE_PATH` is set.
 
 Impact:
 
-- Operators following the runbook or troubleshooting guide can inspect or edit a different queue file than the one the launcher, status view, and MOTD are actually using.
+- Launcher and status are closer to the runbook now, but MOTD output can still point at a stale queue file on hosts that use the `.state` queue.
 
 ### Medium: monitor-log docs point at `/var/log/dws/monitor.log`, but repo readers still default to `/tmp/monitor-log.txt`
 
@@ -54,25 +55,13 @@ Impact:
 
 - Triage instructions and repo tooling can disagree about which monitor log is authoritative.
 
-### Medium: `docs/script-layout.md` is stale and no longer describes the current repo
-
-Evidence:
-
-- `docs/script-layout.md:5-16` says `bin/` contains thin wrappers and that every file follows one wrapper pattern.
-- That is no longer true: `bin/dws-boot-verify.sh:1-20` and `bin/dws-systemd-user-setup.sh:1-20` are standalone repo-owned entrypoints, not thin wrappers.
-- The "Current inventory" in `docs/script-layout.md:27-53` omits many current repo scripts, including `apply-codex-profiles.sh`, `dws-env.sh`, `dws-log-viewer.sh`, `dws-log.sh`, `dws-notify.sh`, `dws-phone-server.py`, `dws-quick.sh`, `dws-rotate-logs.sh`, `dws-update.sh`, `sync-mac-to-vm.sh`, and `sync-vm-to-mac.sh`.
-
-Impact:
-
-- New contributors get the wrong mental model for how `bin/` works and miss a large part of the current script surface.
-
 ### Medium: phone-control docs assume install paths and services that this repo does not provision
 
 Evidence:
 
 - `docs/phone-control.md:29-34` says the VM side is `~/bin/dws-phone-server.py` plus `~/bin/push-phone`.
 - `docs/phone-control.md:46-64` and `docs/phone-control.md:101-118` instruct the operator to run `push-phone`, but there is no tracked `push-phone` script in this repo.
-- The repo does contain `scripts/dws-phone-server.py:1-39`, but there is no tracked `bin/` wrapper for it and no tracked `dws-phone-server.service` unit.
+- The repo does contain `scripts/dws-phone-server.py:1-39`, but there is no tracked phone-server wrapper under repo `bin/` and no tracked `dws-phone-server.service` unit.
 - The repo installers only deploy launcher/health/notifier-related files: `scripts/vm-setup.sh:811-815` and `scripts/dws-update.sh:6-10`.
 - Reboot docs also assume the missing service exists, for example `docs/reboot-recovery-test.md:18`, `docs/reboot-recovery-test.md:121`, and `docs/reboot-recovery-test.md:144-151`.
 
@@ -88,6 +77,5 @@ Impact:
 ## Recommendation Order
 
 1. Fix `bin/dws-boot-verify.sh` to default to `dws-task-monitor.service`.
-2. Choose one authoritative queue path and one authoritative monitor-log path, then align the docs and the repo readers to that choice.
-3. Update `docs/script-layout.md` to reflect the current `bin/` model and current inventory.
-4. Either add repo-managed provisioning for the phone-control entrypoints or rewrite the phone docs to state clearly that they are host-local, operator-managed dependencies.
+2. Finish aligning the remaining legacy queue and monitor-log readers with the documented runtime surfaces.
+3. Either add repo-managed provisioning for the phone-control entrypoints or rewrite the phone docs to state clearly that they are host-local, operator-managed dependencies.

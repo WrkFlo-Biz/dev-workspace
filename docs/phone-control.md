@@ -26,12 +26,14 @@ The closest thing iOS permits to "control my phone from the terminal":
 
 ### VM
 
-- `~/bin/dws-phone-server.py` — tiny stdlib HTTP server on port `8081` with
+- `~/bin/dws-phone-server.py` — live VM install path for the repo-tracked
+  `scripts/dws-phone-server.py`; tiny stdlib HTTP server on port `8081` with
   a command queue and a results log. Runs as systemd user unit
   `dws-phone-server.service`.
-- `~/bin/push-phone` — shell helper. Sends an ntfy.sh notification and, if
-  `--action` is passed, queues the action on the phone server and sets the
-  notification's tap URL to `shortcuts://run-shortcut?name=dws-action`.
+- `~/bin/push-phone` — host-local shell helper that is not tracked in this
+  repo. It sends an ntfy.sh notification and, if `--action` is passed, queues
+  the action on the phone server and sets the notification's tap URL to
+  `shortcuts://run-shortcut?name=dws-action`.
 
 ### iPhone
 

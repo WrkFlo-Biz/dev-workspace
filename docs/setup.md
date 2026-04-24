@@ -261,7 +261,8 @@ The repo script convention is:
 Important rule: do **not** symlink the thin-wrapper subset from repo `bin/`
 into `~/bin`. Those wrappers resolve `../scripts` relative to their invocation
 path and can break when called through a `~/bin` symlink. For `~/bin`, either
-install a real copy or symlink directly to `~/projects/dev-workspace/scripts/...`.
+install a real copy or symlink directly to the matching file under
+`~/projects/dev-workspace/scripts/`.
 
 `vm-setup.sh` already copies these into `~/bin`:
 
@@ -293,7 +294,7 @@ ln -sf ~/projects/dev-workspace/scripts/dws-termius-setup.sh ~/bin/dws-termius-s
 currently refresh `~/bin/dws-launcher.sh`, so reinstall that file manually or
 rerun `vm-setup.sh` after launcher changes. For the symlinked helpers above,
 repo updates are picked up automatically because the symlink already points at
-`scripts/...`.
+the matching file under `scripts/`.
 
 ## 8. Install and Verify Services
 
