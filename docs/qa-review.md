@@ -21,18 +21,18 @@ live-path guidance, prefer `docs/logging.md` and `docs/runtime-boot-truth.md`.
 
 ## Findings
 
-### High: `dws-boot-verify.sh` checks the wrong task-monitor unit name
+### Resolved Since This Review: `dws-boot-verify.sh` now uses the repo-managed task-monitor unit
 
 Evidence:
 
-- `bin/dws-boot-verify.sh:8` defaults `TASK_MONITOR_UNIT` to `task-monitor.service`.
-- `bin/dws-boot-verify.sh:44-50` documents `task-monitor.service` as the required service.
+- The current `bin/dws-boot-verify.sh:8` defaults `TASK_MONITOR_UNIT` to `dws-task-monitor.service`.
+- The current `bin/dws-boot-verify.sh:44-53` describes the check as “the configured task-monitor service”.
 - `config/systemd-user/dws-task-monitor.service:1-17` defines the repo-managed unit as `dws-task-monitor.service`.
 - The operator docs also use `dws-task-monitor.service`, for example `docs/runbook.md:14`, `docs/runbook.md:39-47`, and `docs/reboot-recovery-test.md:17`, `docs/reboot-recovery-test.md:135-142`.
 
 Impact:
 
-- A correctly installed system can fail the repo's own boot smoke test unless `DWS_BOOT_VERIFY_TASK_MONITOR_UNIT` is overridden.
+- This specific mismatch no longer applies on the current tree; keep the note only as historical context when comparing older snapshots or hosts with drifted `~/bin` copies.
 
 ### Medium: legacy queue-path defaults still exist in some repo tools
 
@@ -79,6 +79,5 @@ Impact:
 
 ## Recommendation Order
 
-1. Fix `bin/dws-boot-verify.sh` to default to `dws-task-monitor.service`.
-2. Finish aligning the remaining legacy queue and monitor-log readers with the documented runtime surfaces.
-3. Either add repo-managed provisioning for the phone-control entrypoints or rewrite the phone docs to state clearly that they are host-local, operator-managed dependencies.
+1. Finish aligning the remaining legacy queue and monitor-log readers with the documented runtime surfaces.
+2. Either add repo-managed provisioning for the phone-control entrypoints or rewrite the phone docs to state clearly that they are host-local, operator-managed dependencies.
