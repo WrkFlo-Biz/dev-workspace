@@ -15,19 +15,25 @@ FOUNDRY_ENV="$HOME/.config/wrkflo/foundry.env"
 PROJECTS_DIR="$HOME/projects"
 LOG="/tmp/orchestrator-log.txt"
 PROMPT_FILE="/tmp/orchestrator-prompt.txt"
+PROJECT_LIST=$(find "$PROJECTS_DIR" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort || true)
 
 green() { printf "\033[32m%s\033[0m\n" "$1"; }
 yellow() { printf "\033[33m%s\033[0m\n" "$1"; }
 
 green "=== Dev Workspace Orchestrator Boot ==="
-echo "Workers: $WORKER_COUNT | Projects: $(ls "$PROJECTS_DIR" | wc -l | tr -d ' ')"
+echo "Workers: $WORKER_COUNT | Projects: $(printf '%s\n' "$PROJECT_LIST" | sed '/^$/d' | wc -l | tr -d ' ')"
 
-[ -f "$FOUNDRY_ENV" ] && source "$FOUNDRY_ENV" && green "Foundry config loaded"
+if [ -f "$FOUNDRY_ENV" ]; then
+    # shellcheck source=/dev/null
+    source "$FOUNDRY_ENV"
+    green "Foundry config loaded"
+fi
 
 TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "unknown")
 DISK_PCT=$(df / --output=pcent 2>/dev/null | tail -1 | tr -d ' %')
 MEM_AVAIL=$(free -h 2>/dev/null | awk '/Mem:/{print $7}' || echo "unknown")
-REPOS=$(ls "$PROJECTS_DIR" | tr '\n' ', ' | sed 's/,$//')
+REPOS=$(printf '%s\n' "$PROJECT_LIST" | awk 'NF { if (count++) printf ", "; printf "%s", $0 } END { if (count) print "" }')
+[ -n "$REPOS" ] || REPOS="none"
 SERVICES=$(systemctl --user list-units --type=service --state=active 2>/dev/null | grep -cE 'dws|wrkflo' || echo 0)
 CRON_JOBS=$(crontab -l 2>/dev/null | grep -c 'dws-' || echo 0)
 

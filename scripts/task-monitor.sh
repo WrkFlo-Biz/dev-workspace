@@ -5,11 +5,13 @@
 # Auto-completes tasks when workers go idle after being in_progress.
 # Auto-refills queue from phase templates when pending runs low.
 
-set -o pipefail
+set -euo pipefail
 
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LOGFILE="/var/log/dws/monitor.log"
 TASK_QUEUE="/home/moses/projects/dev-workspace/.state/task-queue.json"
 INTERVAL=30
+SYNC_STATUS_SCRIPT="${DWS_SYNC_STATUS_SCRIPT:-${SCRIPT_DIR}/sync-status.py}"
 
 # Workers are generic — repo comes from the task queue, not hardcoded mapping.
 # Default repo used when auto-refilling or when a task has no repo field.
@@ -69,7 +71,7 @@ clear_rate_limit_recovery() {
 classify_worker() {
   local session="$1"
   local output
-  output=$(tmux capture-pane -t "$session" -p 2>/dev/null | tail -15)
+  output=$(tmux capture-pane -t "$session" -p 2>/dev/null | tail -15 || true)
   [ -z "$output" ] && { echo "DEAD"; return; }
   echo "$output" | grep -qE 'compact task|high demand' && { echo "COMPACTED"; return; }
   echo "$output" | grep -qE 'Conversation interrupted|Session ended' && { echo "CRASHED"; return; }
@@ -165,7 +167,11 @@ print(sum(1 for t in data['tasks'] if t['status'] == 'pending'))
 # Auto-refill queue when pending < 3
 refill_queue() {
   local pending
-  pending=$(count_pending)
+  pending=$(count_pending || true)
+  if [ -z "${pending:-}" ]; then
+    log "queue low check failed"
+    return 0
+  fi
   if [ "${pending:-0}" -lt 3 ]; then
     log "queue low ($pending pending), auto-refilling..."
     python3 << 'REFILL_PY'
@@ -268,7 +274,8 @@ dispatch_task() {
   tmux send-keys -t "$session" Enter
   sleep 5
   local check
-  check=$(tmux capture-pane -t "$session" -p 2>/dev/null | grep -c "Working")
+  check=$(tmux capture-pane -t "$session" -p 2>/dev/null | grep -c "Working" || true)
+  check=${check:-0}
   if [ "$check" -gt 0 ]; then
     log "$session: confirmed Working"
     return 0
@@ -276,7 +283,8 @@ dispatch_task() {
     log "$session: WARNING — not Working, retrying Enter"
     tmux send-keys -t "$session" Enter
     sleep 3
-    check=$(tmux capture-pane -t "$session" -p 2>/dev/null | grep -c "Working")
+    check=$(tmux capture-pane -t "$session" -p 2>/dev/null | grep -c "Working" || true)
+    check=${check:-0}
     if [ "$check" -gt 0 ]; then
       log "$session: confirmed Working on retry"
       return 0
@@ -343,7 +351,7 @@ retry_rate_limited_task() {
     return 10
   fi
 
-  result=$(get_assigned_task "$session")
+  result=$(get_assigned_task "$session" || true)
   if [ -z "$result" ]; then
     log_rate_limit "$session" "recovery expired with no in-progress task; clearing throttle state"
     clear_rate_limit_recovery "$session"
@@ -371,13 +379,13 @@ retry_rate_limited_task() {
 relaunch_session() {
   local session="$1" repo="$DEFAULT_REPO"
   log "relaunching $session (repo: $repo)"
-  tmux kill-session -t "$session" 2>/dev/null
+  tmux kill-session -t "$session" 2>/dev/null || true
   sleep 1
   tmux new-session -d -s "$session" \
     "bash --norc -c \"source ~/.config/wrkflo/foundry.env 2>/dev/null; cd ~/projects/$repo; exec codex --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox\""
   sleep 8
   local check
-  check=$(tmux capture-pane -t "$session" -p 2>/dev/null | tail -5)
+  check=$(tmux capture-pane -t "$session" -p 2>/dev/null | tail -5 || true)
   if echo "$check" | grep -qE 'gpt-|›'; then
     log "$session: relaunched ok"
   else
@@ -388,7 +396,7 @@ relaunch_session() {
 check_stuck() {
   local session="$1"
   local timer
-  timer=$(tmux capture-pane -t "$session" -p 2>/dev/null | grep -oE 'Working \([0-9]+m [0-9]+s' | tail -1)
+  timer=$(tmux capture-pane -t "$session" -p 2>/dev/null | grep -oE 'Working \([0-9]+m [0-9]+s' | tail -1 || true)
   if [ -n "$timer" ] && [ "${LAST_TIMER[$session]:-}" = "$timer" ]; then
     log "$session: STUCK — same timer '$timer' for 2 checks"
     return 0
@@ -399,10 +407,10 @@ check_stuck() {
 
 assign_idle_worker() {
   local session="$1" repo="$DEFAULT_REPO"
-  local result task_id task_repo task_desc
+  local result task_id task_repo task_desc retry_rc
   local completed
 
-  completed=$(mark_completed "$session")
+  completed=$(mark_completed "$session" || true)
   if [ "$completed" = "completed" ]; then
     log "$session: marked previous task completed"
   fi
@@ -412,9 +420,13 @@ assign_idle_worker() {
   fi
 
   if [ "${RATE_LIMIT_RECOVERY_PENDING[$session]:-0}" -eq 1 ]; then
-    retry_rate_limited_task "$session"
-    case $? in
-      10|11) return $? ;;
+    if retry_rate_limited_task "$session"; then
+      retry_rc=0
+    else
+      retry_rc=$?
+    fi
+    case "$retry_rc" in
+      10|11) return "$retry_rc" ;;
     esac
   else
     clear_rate_limit_recovery "$session"
@@ -427,10 +439,10 @@ assign_idle_worker() {
   fi
 
   # Try preferred repo first
-  result=$(get_next_task "$repo")
+  result=$(get_next_task "$repo" || true)
   if [ -z "$result" ]; then
     for try_repo in dev-workspace wrkflo-orchestrator global-sentinel; do
-      result=$(get_next_task "$try_repo")
+      result=$(get_next_task "$try_repo" || true)
       [ -n "$result" ] && break
     done
   fi
@@ -460,7 +472,7 @@ while true; do
   log "--- check cycle $(date '+%H:%M:%S') ---"
 
   # Auto-refill queue if running low
-  refill_queue
+  refill_queue || log "queue refill check failed"
   dispatch_paused || true
 
   for session in "${WORKERS[@]}"; do
@@ -473,17 +485,32 @@ while true; do
           clear_rate_limit_recovery "$session"
         fi
         if check_stuck "$session"; then
+          assign_rc=0
           relaunch_session "$session"
-          assign_idle_worker "$session"
+          if assign_idle_worker "$session"; then
+            assign_rc=0
+          else
+            assign_rc=$?
+          fi
+          case "$assign_rc" in
+            10) LAST_STATUS[$session]="BACKOFF" ;;
+            11) LAST_STATUS[$session]="RETRYING" ;;
+            12) LAST_STATUS[$session]="PAUSED" ;;
+            *) LAST_STATUS[$session]="RELAUNCHED" ;;
+          esac
         else
           log "$session: working (ok)"
+          LAST_STATUS[$session]="WORKING"
         fi
-        LAST_STATUS[$session]="WORKING"
         ;;
       IDLE)
         log "$session: idle"
-        assign_idle_worker "$session"
-        case $? in
+        if assign_idle_worker "$session"; then
+          assign_rc=0
+        else
+          assign_rc=$?
+        fi
+        case "$assign_rc" in
           10) LAST_STATUS[$session]="BACKOFF" ;;
           11) LAST_STATUS[$session]="RETRYING" ;;
           12) LAST_STATUS[$session]="PAUSED" ;;
@@ -494,8 +521,12 @@ while true; do
       COMPACTED|CRASHED)
         log "$session: $status — relaunching"
         relaunch_session "$session"
-        assign_idle_worker "$session"
-        case $? in
+        if assign_idle_worker "$session"; then
+          assign_rc=0
+        else
+          assign_rc=$?
+        fi
+        case "$assign_rc" in
           10) LAST_STATUS[$session]="BACKOFF" ;;
           11) LAST_STATUS[$session]="RETRYING" ;;
           12) LAST_STATUS[$session]="PAUSED" ;;
@@ -530,7 +561,7 @@ while true; do
         ;;
       COMPACTED|CRASHED)
         log "orchestrator: $orch_status — relaunching immediately"
-        tmux kill-session -t orchestrator 2>/dev/null
+        tmux kill-session -t orchestrator 2>/dev/null || true
         sleep 1
         tmux new-session -d -s orchestrator "bash --norc -c \"source ~/.config/wrkflo/foundry.env 2>/dev/null; cd ~/projects/wrkflo-orchestrator; exec codex --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox\""
         sleep 8
@@ -558,8 +589,9 @@ while true; do
   for s in "${WORKERS[@]}"; do
     [ "${LAST_STATUS[$s]:-}" = "WORKING" ] && working=$((working+1))
   done
-  pending=$(count_pending)
+  pending=$(count_pending || true)
+  pending=${pending:-unknown}
   log "--- cycle done: $working working, $pending pending tasks ---"
-  python3 /home/moses/bin/sync-status.py >> "$LOGFILE" 2>&1
+  python3 "$SYNC_STATUS_SCRIPT" >> "$LOGFILE" 2>&1 || log "sync-status refresh failed"
   sleep "$INTERVAL"
 done
