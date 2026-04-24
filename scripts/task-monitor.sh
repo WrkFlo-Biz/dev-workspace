@@ -15,7 +15,7 @@ INTERVAL=30
 # Default repo used when auto-refilling or when a task has no repo field.
 DEFAULT_REPO="dev-workspace"
 
-WORKERS=(dws-a dws-b worker-c worker-d worker-e worker-f worker-g worker-h worker-i)
+WORKERS=(worker-c worker-d worker-f worker-h)
 
 declare -A LAST_TIMER
 declare -A LAST_STATUS
@@ -24,6 +24,13 @@ declare -A RATE_LIMIT_STREAK
 declare -A RATE_LIMIT_BACKOFF_UNTIL
 declare -A RATE_LIMIT_PAUSE_UNTIL
 declare -A RATE_LIMIT_RECOVERY_PENDING
+
+# Global rate-aware dispatch state
+GLOBAL_RATE_LIMIT_COUNT=0
+GLOBAL_RATE_LIMIT_WINDOW_START=0
+GLOBAL_DISPATCH_STAGGER=3
+GLOBAL_THROTTLE_ACTIVE=0
+GLOBAL_THROTTLE_UNTIL=0
 
 log() { printf "%s [monitor] %s\n" "$(date "+%H:%M:%S")" "$*" >> "$LOGFILE"; }
 
@@ -183,6 +190,53 @@ REFILL_PY
   fi
 }
 
+# Global rate-aware dispatch gate
+should_dispatch() {
+  local now
+  now=$(now_epoch)
+
+  # If global throttle is active, check if it expired
+  if [ "$GLOBAL_THROTTLE_ACTIVE" -eq 1 ]; then
+    if [ "$now" -ge "$GLOBAL_THROTTLE_UNTIL" ]; then
+      GLOBAL_THROTTLE_ACTIVE=0
+      GLOBAL_RATE_LIMIT_COUNT=0
+      GLOBAL_RATE_LIMIT_WINDOW_START=$now
+      log "global throttle expired, resuming normal dispatch"
+    else
+      local remaining=$((GLOBAL_THROTTLE_UNTIL - now))
+      log "global throttle active, ${remaining}s remaining — skipping dispatch"
+      return 1
+    fi
+  fi
+
+  # Reset window every 5 minutes
+  local window_age=$((now - GLOBAL_RATE_LIMIT_WINDOW_START))
+  if [ "$window_age" -gt 300 ]; then
+    GLOBAL_RATE_LIMIT_COUNT=0
+    GLOBAL_RATE_LIMIT_WINDOW_START=$now
+  fi
+
+  # If 3+ workers hit rate limits in same window, throttle all dispatch for 120s
+  if [ "$GLOBAL_RATE_LIMIT_COUNT" -ge 3 ]; then
+    GLOBAL_THROTTLE_ACTIVE=1
+    GLOBAL_THROTTLE_UNTIL=$((now + 120))
+    log "global rate limit threshold reached ($GLOBAL_RATE_LIMIT_COUNT hits in window) — throttling all dispatch for 120s"
+    return 1
+  fi
+
+  return 0
+}
+
+record_global_rate_limit() {
+  local now
+  now=$(now_epoch)
+  GLOBAL_RATE_LIMIT_COUNT=$((GLOBAL_RATE_LIMIT_COUNT + 1))
+  if [ "$GLOBAL_RATE_LIMIT_WINDOW_START" -eq 0 ]; then
+    GLOBAL_RATE_LIMIT_WINDOW_START=$now
+  fi
+  log "global rate limit count: $GLOBAL_RATE_LIMIT_COUNT in current window"
+}
+
 dispatch_task() {
   local session="$1" task_repo="$2" task_text="$3"
   # Validate repo exists
@@ -249,6 +303,8 @@ handle_rate_limit() {
     RATE_LIMIT_PAUSE_UNTIL[$session]=0
     log_rate_limit "$session" "hit=$hits streak=$streak, backoff=${delay}s until $(format_until "$retry_at")"
   fi
+
+  record_global_rate_limit
 }
 
 retry_rate_limited_task() {
@@ -295,7 +351,7 @@ retry_rate_limited_task() {
 }
 
 relaunch_session() {
-  local session="$1" repo="${WORKER_REPO[$1]}"
+  local session="$1" repo="$DEFAULT_REPO"
   log "relaunching $session (repo: $repo)"
   tmux kill-session -t "$session" 2>/dev/null
   sleep 1
@@ -324,7 +380,7 @@ check_stuck() {
 }
 
 assign_idle_worker() {
-  local session="$1" repo="${WORKER_REPO[$1]}"
+  local session="$1" repo="$DEFAULT_REPO"
   local result task_id task_repo task_desc
 
   if [ "${RATE_LIMIT_RECOVERY_PENDING[$session]:-0}" -eq 1 ]; then
@@ -334,6 +390,12 @@ assign_idle_worker() {
     esac
   else
     clear_rate_limit_recovery "$session"
+  fi
+
+  # Check global rate limit before dispatching
+  if ! should_dispatch; then
+    log "$session: dispatch deferred by global throttle"
+    return 10
   fi
 
   # First mark any in_progress tasks as completed (worker finished)
@@ -404,6 +466,7 @@ while true; do
           11) LAST_STATUS[$session]="RETRYING" ;;
           *) LAST_STATUS[$session]="IDLE" ;;
         esac
+        sleep "$GLOBAL_DISPATCH_STAGGER"
         ;;
       COMPACTED|CRASHED)
         log "$session: $status — relaunching"

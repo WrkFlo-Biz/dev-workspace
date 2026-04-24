@@ -316,3 +316,32 @@ Layer 3: Tailscale + SSH reconnect         -> operator reconnects to an existing
 Layer 2: dws-task-monitor.service          -> relaunches crashed or compacted workers
 Layer 1: dws-sessions-init.service         -> recreates the managed tmux pool after boot
 ```
+
+## Mac Reconnect Agent
+
+The `com.wrkflo.terminal-reconnect` LaunchAgent on the Mac auto-reopens SSH terminal
+windows when they close. It is **intentionally optional** — load it only when you want
+unattended terminal persistence:
+
+```bash
+# Enable (auto-relaunch terminals on disconnect)
+launchctl load ~/Library/LaunchAgents/com.wrkflo.terminal-reconnect.plist
+
+# Disable (manual terminal management)
+launchctl unload ~/Library/LaunchAgents/com.wrkflo.terminal-reconnect.plist
+```
+
+Default: **disabled**. The VM-side systemd services (`dws-sessions-init`, `dws-task-monitor`)
+handle worker lifecycle independently. The Mac agent is only needed when you want the Mac
+to maintain persistent SSH windows for visual monitoring.
+
+## Rate-Aware Dispatch
+
+The task monitor includes global rate-limit awareness:
+
+- **Per-worker**: exponential backoff (30s → 60s → 120s) on rate limit detection
+- **Global throttle**: if 3+ workers hit rate limits within a 5-minute window, all
+  dispatch pauses for 120s to let the API recover
+- **Staggered dispatch**: 3s delay between consecutive worker dispatches in the same cycle
+
+To check throttle state: `tail -20 /var/log/dws/monitor.log | grep -i rate`
