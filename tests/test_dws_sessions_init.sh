@@ -26,6 +26,13 @@ assert_contains() {
   printf '%s\n' "$haystack" | grep -F -- "$needle" >/dev/null || fail "missing output: $needle"
 }
 
+assert_not_contains() {
+  local haystack="${1:-}" needle="${2:-}"
+  if printf '%s\n' "$haystack" | grep -F -- "$needle" >/dev/null; then
+    fail "unexpected output: $needle"
+  fi
+}
+
 assert_equals() {
   local expected="${1:-}" actual="${2:-}" label="${3:-value}"
   [ "$expected" = "$actual" ] || fail "${label}: expected '${expected}', got '${actual}'"
@@ -80,30 +87,33 @@ chmod +x "${HOME}/bin/task-monitor.sh"
 output=$(bash "$SCRIPT")
 assert_contains "$output" "created dws-a (codex)"
 assert_contains "$output" "created orchestrator (codex)"
-assert_contains "$output" "created monitor (monitor)"
+assert_contains "$output" "created worker-i (codex)"
 assert_contains "$output" "verified dws-a (sleep)"
-assert_contains "$output" "verified monitor (sleep)"
+assert_contains "$output" "verified worker-i (sleep)"
+assert_not_contains "$output" "created monitor"
 
 session_count=$(tmux -L "$SOCKET" list-sessions -F '#{session_name}' | wc -l | tr -d ' ')
 assert_equals "10" "$session_count" "session count"
 
 assert_equals "${HOME}/projects/dev-workspace" "$(pane_path dws-a)" "dws-a cwd"
 assert_equals "${HOME}/projects/wrkflo-orchestrator" "$(pane_path orchestrator)" "orchestrator cwd"
-assert_equals "${HOME}/projects/dev-workspace" "$(pane_path monitor)" "monitor cwd"
+assert_equals "${HOME}/projects/dev-workspace" "$(pane_path worker-i)" "worker-i cwd"
 
 assert_contains "$(pane_start_command dws-a)" "cd '${HOME}/projects/dev-workspace'; exec codex --profile 'foundry-5_4'"
 assert_contains "$(pane_start_command orchestrator)" "cd '${HOME}/projects/wrkflo-orchestrator'; exec codex --profile 'foundry-5_4'"
-assert_contains "$(pane_start_command monitor)" "exec '${HOME}/bin/task-monitor.sh'"
+assert_contains "$(pane_start_command worker-i)" "cd '${HOME}/projects/dev-workspace'; exec codex --profile 'foundry-5_4'"
 
 assert_equals "dev-workspace" "$(session_option dws-a @dws_project)" "dws-a project metadata"
 assert_equals "5-4" "$(session_option dws-a @dws_model)" "dws-a model metadata"
 assert_equals "foundry-5_4" "$(session_option dws-a @dws_profile)" "dws-a profile metadata"
 assert_equals "wrkflo-orchestrator" "$(session_option orchestrator @dws_project)" "orchestrator project metadata"
+assert_equals "dev-workspace" "$(session_option worker-i @dws_project)" "worker-i project metadata"
 
 rerun_output=$(bash "$SCRIPT")
 assert_contains "$rerun_output" "reused dws-a (codex)"
 assert_contains "$rerun_output" "reused orchestrator (codex)"
-assert_contains "$rerun_output" "reused monitor (monitor)"
+assert_contains "$rerun_output" "reused worker-i (codex)"
+assert_not_contains "$rerun_output" "reused monitor"
 
 session_count_after=$(tmux -L "$SOCKET" list-sessions -F '#{session_name}' | wc -l | tr -d ' ')
 assert_equals "10" "$session_count_after" "session count after rerun"
