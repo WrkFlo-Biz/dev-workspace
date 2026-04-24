@@ -54,16 +54,15 @@ jobs:
               if [ -n "${summary_file}" ]; then
                 printf '| `%s` | PASS |\n' "${test_file}" >>"${summary_file}"
               fi
-              continue
-            fi
+            else
+              status=$?
+              printf 'FAIL %s (exit %s)\n' "${test_file}" "${status}" >&2
+              failed_tests+=("${test_file} (exit ${status})")
+              failures=$((failures + 1))
 
-            status=$?
-            printf 'FAIL %s (exit %s)\n' "${test_file}" "${status}" >&2
-            failed_tests+=("${test_file} (exit ${status})")
-            failures=$((failures + 1))
-
-            if [ -n "${summary_file}" ]; then
-              printf '| `%s` | FAIL (exit %s) |\n' "${test_file}" "${status}" >>"${summary_file}"
+              if [ -n "${summary_file}" ]; then
+                printf '| `%s` | FAIL (exit %s) |\n' "${test_file}" "${status}" >>"${summary_file}"
+              fi
             fi
           done
 
