@@ -26,10 +26,11 @@ The closest thing iOS permits to "control my phone from the terminal":
 
 ### VM
 
-- `~/bin/dws-phone-server.py` — live VM install path for the repo-tracked
-  `scripts/dws-phone-server.py`; tiny stdlib HTTP server on port `8081` with
-  a command queue and a results log. Runs as systemd user unit
-  `dws-phone-server.service`.
+- `~/bin/dws-phone-server.py` — live VM install path for a host-local copy of
+  the repo-tracked `scripts/dws-phone-server.py`; tiny stdlib HTTP server on
+  port `8081` with a command queue and a results log. This repo does not
+  currently ship a `bin/` wrapper or a tracked `dws-phone-server.service`
+  unit.
 - `~/bin/push-phone` — host-local shell helper that is not tracked in this
   repo. It sends an ntfy.sh notification and, if `--action` is passed, queues
   the action on the phone server and sets the notification's tap URL to
@@ -67,7 +68,8 @@ push-phone --priority 5 --title "ALERT" "prod 500s"
 ```
 
 Each `--action …` enqueues one JSON blob on the VM. The Shortcut pops the
-next blob off the queue when you tap.
+next blob off the queue when you tap. These examples assume the host-local
+`push-phone` helper is already installed on the VM.
 
 ## Building the `dws-action` Shortcut (one-time, on the phone)
 
@@ -75,7 +77,8 @@ Open **Shortcuts** on the iPhone → bottom right **+** → name it **`dws-actio
 Add these actions in order:
 
 1. **Get Contents of URL**
-   - URL: `http://100.117.16.63:8081/pending`
+   - URL: `http://dev-workspace-vm:8081/pending` (or the current Tailscale IP
+     if MagicDNS is unavailable)
    - Method: `GET`
 2. **Get Dictionary Value**
    - Get: `Value`

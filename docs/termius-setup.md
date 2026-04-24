@@ -7,9 +7,11 @@ the current host values or the recommended SSH key path:
 ~/projects/dev-workspace/bin/dws-termius-setup.sh
 ```
 
-The helper prints the exact VM settings:
+Use the helper output as the source of truth for the current VM settings:
 
-- Hostname: `100.117.16.63`
+- Hostname: the helper-reported current host value. If you are entering it
+  manually, prefer `dev-workspace-vm` when MagicDNS is working; otherwise use
+  the current Tailscale IP it reports.
 - Port: `22`
 - Username: `moses`
 - Authentication: SSH key
@@ -28,7 +30,8 @@ The helper prints the exact VM settings:
 
 1. Open Termius and create a new host.
 2. Set **Label** to `Dev Workspace VM`.
-3. Set **Address / Hostname** to `100.117.16.63`.
+3. Set **Address / Hostname** to `dev-workspace-vm` or the current Tailscale
+   IP reported by `bin/dws-termius-setup.sh`.
 4. Set **Port** to `22`.
 5. Set **Username** to `moses`.
 6. Set **Authentication** to **Key**.
@@ -55,7 +58,8 @@ The helper prints the exact VM settings:
 5. In Termius, open **Keys**, tap **+**, then import the private key file.
 6. Open **Hosts**, tap **+**, then create a new host with:
    - **Label**: `Dev Workspace VM`
-   - **Address / Hostname**: `100.117.16.63`
+   - **Address / Hostname**: `dev-workspace-vm` or the current Tailscale IP
+     reported by `bin/dws-termius-setup.sh`
    - **Port**: `22`
    - **Username**: `moses`
    - **Authentication**: the imported SSH key

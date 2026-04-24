@@ -17,7 +17,7 @@ a MagicDNS name like `dev-workspace-vm.<tailnet>.ts.net`.
 ### VM (already done)
 
 ```bash
-ssh moses@20.230.203.79
+ssh moses@<public-ip>
 sudo tailscale up --ssh --operator=moses --hostname=dev-workspace-vm
 # click the URL that gets printed, log in with @wrkflo.biz
 ```
@@ -41,8 +41,10 @@ open -a Tailscale           # log in via the menu bar
      user `moses`; key `termius_20260415`.
    - **Mac**: host `<mac-hostname>` (MagicDNS); user `mosestut`;
      key `termius_20260415` (after running `authorize-vm.sh` so that key works on Mac too).
-3. Optional: Termius "Startup command" on VM host →
-   `cd ~/global-sentinel && exec codex --profile foundry-codex`
+3. Optional: if you intentionally want to bypass the launcher, set Termius
+   "Startup command" on the VM host to
+   `cd ~/projects/dev-workspace && exec codex --profile foundry-codex`.
+   Otherwise leave the startup command blank.
 
 ## Troubleshooting
 

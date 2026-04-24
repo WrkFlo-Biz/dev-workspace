@@ -25,9 +25,9 @@ now expects more of the centralized logging story to land here.
 | --- | --- | --- | --- |
 | `/var/log/dws/` | `bin/dws-systemd-user-setup.sh install` | yes | Created with owner `$USER:$(id -gn)` and mode `0775`. `bin/dws-boot-verify.sh` treats it as required boot-time state. |
 | `/var/log/dws/monitor.log` | `~/bin/task-monitor.sh` via `dws-task-monitor.service` | yes | Authoritative cycle log for the live task monitor. |
-| `/var/log/dws/dws-health-check.cron.log` | `scripts/dws-cron-setup.sh` managed cron block | not currently | The tracked installer defaults this cron capture log into `/var/log/dws`, but the currently installed crontab on this VM still writes to `/tmp/dws-health-check.cron.log`. |
-| `/var/log/dws/dws-log-rotate.cron.log` | `scripts/dws-cron-setup.sh` managed cron block | not currently | Same drift as above. The tracked installer would prefer `scripts/dws-rotate-logs.sh`, but the live crontab still logs a fallback `dws-cleanup.sh` job to `/tmp/dws-log-rotate.cron.log`. |
-| `/var/log/dws/dws-session-cleanup.cron.log` | `scripts/dws-cron-setup.sh` managed cron block | not currently | Same drift as above; the live crontab still writes to `/tmp/dws-session-cleanup.cron.log`. |
+| `/var/log/dws/health-check.log` | `scripts/dws-cron-setup.sh` managed cron block | not currently | The tracked installer now defaults this cron capture log into `/var/log/dws`, but the currently installed crontab on this VM still writes to `/tmp/dws-health-check.cron.log`. |
+| `/var/log/dws/log-rotate.log` | `scripts/dws-cron-setup.sh` managed cron block | not currently | Same drift as above. The tracked installer would prefer `scripts/dws-rotate-logs.sh`, but the live crontab still logs a fallback `dws-cleanup.sh` job to `/tmp/dws-log-rotate.cron.log`. |
+| `/var/log/dws/session-cleanup.log` | `scripts/dws-cron-setup.sh` managed cron block | not currently | Same drift as above; the live crontab still writes to `/tmp/dws-session-cleanup.cron.log`. |
 | `/var/log/dws/*.YYYYMMDDTHHMMSSZ.gz` | `scripts/dws-rotate-logs.sh` | none present now | Timestamped gzip archives created when the rotate script runs. The script keeps the four most recent archives per active log by default. |
 
 ## Current VM Log Sources
@@ -115,8 +115,9 @@ orchestrator API units also leave stdout/stderr in the user journal.
 ls -lah /var/log/dws
 tail -n 50 /var/log/dws/monitor.log
 crontab -l | sed -n '/# >>> dev-workspace managed cron >>>/,/# <<< dev-workspace managed cron <<</p'
+tail -n 40 /var/log/dws/health-check.log /var/log/dws/log-rotate.log /var/log/dws/session-cleanup.log 2>/dev/null || true
 tail -n 40 /tmp/dws-health.log /tmp/dws-health-alerts.log
-tail -n 40 /tmp/dws-health-check.cron.log /tmp/dws-log-rotate.cron.log /tmp/dws-session-cleanup.cron.log
+tail -n 40 /tmp/dws-health-check.cron.log /tmp/dws-log-rotate.cron.log /tmp/dws-session-cleanup.cron.log 2>/dev/null || true
 sed -n '1,120p' ~/projects/dev-workspace/.state/task-queue.json
 journalctl --user -u dws-task-monitor.service -u dws-phone-server.service -u wrkflo-orchestrator-api.service -n 50 --no-pager
 ```

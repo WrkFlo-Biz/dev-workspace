@@ -233,7 +233,9 @@ ssh dev-workspace-vm '~/projects/dev-workspace/bin/dws-boot-verify.sh'
 ## Phone / Termius Access
 
 1. Install Termius on the iPhone.
-2. Add host: IP `100.117.16.63`, port `22`, user `moses`.
+2. Add host: hostname `dev-workspace-vm` (preferred) or the current Tailscale
+   IP shown by `~/projects/dev-workspace/bin/dws-termius-setup.sh`, port `22`,
+   user `moses`.
 3. Import the SSH key shown by `~/projects/dev-workspace/bin/dws-termius-setup.sh`.
 4. Connect with Tailscale enabled on the phone.
 5. Reconnect to work with `~/projects/dev-workspace/bin/dws-sessions.sh reconnect`.
@@ -272,8 +274,9 @@ with:
 ~/projects/dev-workspace/bin/dws-cron-setup.sh
 ```
 
-Cron logs still default to `/tmp`. If you want them centralized under
-`/var/log/dws`, reinstall the block with:
+The tracked installer now defaults managed cron logs to `/var/log/dws`. If this
+VM is still writing the older `/tmp/dws-*.cron.log` files, rerun the installer
+to converge the live crontab:
 
 ```bash
 DWS_CRON_LOG_DIR=/var/log/dws ~/projects/dev-workspace/bin/dws-cron-setup.sh
