@@ -57,3 +57,23 @@ Save these as snippets for quick access:
 - Ctrl-a is the tmux prefix, not Ctrl-b (easier on phone keyboards).
 - If the launcher doesn't appear, you may already be inside tmux. Press Ctrl-a d to detach first.
 - To skip the launcher entirely: set SKIP_LAUNCHER=1 in Termius host environment variables.
+
+## Mac Pubkey Repair
+
+If Termius fails against the Mac even though the key is already in
+`~/.ssh/authorized_keys`, run the repo helper on the Mac itself:
+
+```bash
+~/projects/dev-workspace/bin/dws-termius-mac-fix.sh
+```
+
+It prepends `PubkeyAuthentication yes` to `/etc/ssh/sshd_config`, forces
+`~/.ssh` to `700`, forces `~/.ssh/authorized_keys` to `600`, removes
+group/world write bits from the home directory, and validates the resulting
+config with `sshd -t -f /etc/ssh/sshd_config`.
+
+If the config check passes but the Mac is already running `sshd`, reload it:
+
+```bash
+sudo launchctl kickstart -k system/com.openssh.sshd
+```
