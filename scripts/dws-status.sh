@@ -267,15 +267,77 @@ disk_usage_badge() {
   esac
 }
 
-planner_queue_header_summary() {
-  local counts pending in_progress completed total last_reconciled
+resolved_task_queue_path() {
+  local candidate
 
-  if counts=$(planner_queue_counts "$TASK_QUEUE_PATH"); then
+  if [ -n "${DWS_TASK_QUEUE_PATH:-}" ]; then
+    printf '%s\n' "$TASK_QUEUE_PATH"
+    return 0
+  fi
+
+  for candidate in \
+    "${REPO_ROOT}/.state/task-queue.json" \
+    "$HOME/projects/dev-workspace/.state/task-queue.json" \
+    "/tmp/task-queue.json"
+  do
+    if [ -e "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "${REPO_ROOT}/.state/task-queue.json"
+}
+
+queue_count_badge() {
+  local label="${1:-}" count="${2:-0}"
+
+  case "$label" in
+    pending)
+      if [ "$count" -eq 0 ]; then
+        printf '%s' "$(green 'pending=0')"
+      else
+        printf '%s' "$(cyan "pending=${count}")"
+      fi
+      ;;
+    in_progress)
+      if [ "$count" -eq 0 ]; then
+        printf '%s' "$(dim 'in_progress=0')"
+      else
+        printf '%s' "$(yellow "in_progress=${count}")"
+      fi
+      ;;
+    completed)
+      printf '%s' "$(dim "completed=${count}")"
+      ;;
+    other)
+      if [ "$count" -eq 0 ]; then
+        printf '%s' ''
+      else
+        printf '%s' "$(yellow "other=${count}")"
+      fi
+      ;;
+    total)
+      printf '%s' "$(dim "total=${count}")"
+      ;;
+  esac
+}
+
+planner_queue_header_summary() {
+  local path counts pending in_progress completed total last_reconciled other
+
+  path=$(resolved_task_queue_path)
+
+  if counts=$(planner_queue_counts "$path"); then
     IFS=$'\t' read -r pending in_progress completed total last_reconciled <<<"$counts"
-    if [ "$pending" -eq 0 ]; then
-      printf '%s' "$(green 'pending=0')"
-    else
-      printf '%s' "$(cyan "pending=${pending}")"
+    other=$((total - pending - in_progress - completed))
+    printf '%s  %s  %s  %s' \
+      "$(queue_count_badge pending "$pending")" \
+      "$(queue_count_badge in_progress "$in_progress")" \
+      "$(queue_count_badge completed "$completed")" \
+      "$(queue_count_badge total "$total")"
+    if [ "$other" -gt 0 ]; then
+      printf '  %s' "$(queue_count_badge other "$other")"
     fi
     return 0
   fi
@@ -398,7 +460,11 @@ planner_artifact_status() {
 }
 
 planner_queue_counts() {
-  local path="${1:-$TASK_QUEUE_PATH}"
+  local path="${1:-}"
+
+  if [ -z "$path" ]; then
+    path=$(resolved_task_queue_path)
+  fi
 
   need_cmd jq || return 5
   [ -e "$path" ] || return 2
@@ -416,10 +482,11 @@ planner_queue_counts() {
 }
 
 planner_queue_motd() {
-  local counts pending in_progress completed total last_reconciled state
+  local path counts pending in_progress completed total last_reconciled state
 
-  state=$(planner_artifact_state "$TASK_QUEUE_PATH" "$PLANNER_STALE_SECONDS")
-  if counts=$(planner_queue_counts "$TASK_QUEUE_PATH"); then
+  path=$(resolved_task_queue_path)
+  state=$(planner_artifact_state "$path" "$PLANNER_STALE_SECONDS")
+  if counts=$(planner_queue_counts "$path"); then
     IFS=$'\t' read -r pending in_progress completed total last_reconciled <<<"$counts"
     if [ "$state" = "stale" ]; then
       printf 'queue=stale,pending=%s,in_progress=%s,completed=%s' "$pending" "$in_progress" "$completed"
@@ -439,12 +506,13 @@ planner_queue_motd() {
 }
 
 render_planner() {
-  local queue_counts queue_status queue_error
+  local path queue_counts queue_status queue_error
   local pending in_progress completed total last_reconciled
 
+  path=$(resolved_task_queue_path)
   bold "  planner"; echo
-  queue_status=$(planner_artifact_status "$TASK_QUEUE_PATH" "$PLANNER_STALE_SECONDS")
-  if queue_counts=$(planner_queue_counts "$TASK_QUEUE_PATH"); then
+  queue_status=$(planner_artifact_status "$path" "$PLANNER_STALE_SECONDS")
+  if queue_counts=$(planner_queue_counts "$path"); then
     IFS=$'\t' read -r pending in_progress completed total last_reconciled <<<"$queue_counts"
     printf '    queue:  pending=%s  in_progress=%s  completed=%s  total=%s  %s\n' \
       "$pending" "$in_progress" "$completed" "$total" "$queue_status"
