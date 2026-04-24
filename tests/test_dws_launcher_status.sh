@@ -140,7 +140,8 @@ assert_contains "$queue_line" "total=4"
 assert_contains "$plain_output" "active sessions"
 assert_contains "$plain_output" "wrkflo-orchestrator"
 assert_contains "$plain_output" "OpenAI profiles unavailable: missing"
-assert_contains "$plain_output" "fallback: Claude Code CLI or plain shell"
+assert_contains "$plain_output" "OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored"
+assert_contains "$plain_output" "fallback: Claude models 7-9, Claude Code CLI, or plain shell"
 
 missing_env_output=$(
   HOME="${FIXTURE_ROOT}/home" \
@@ -160,7 +161,8 @@ assert_contains "$missing_env_plain_output" "sessions: 2 active"
 assert_contains "$missing_env_plain_output" "tailnet:  100.64.0.10"
 assert_contains "$missing_env_plain_output" "wrkflo-orchestrator"
 assert_contains "$missing_env_plain_output" "OpenAI profiles unavailable: missing"
-assert_contains "$missing_env_plain_output" "fallback: Claude Code CLI or plain shell"
+assert_contains "$missing_env_plain_output" "OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored"
+assert_contains "$missing_env_plain_output" "fallback: Claude models 7-9, Claude Code CLI, or plain shell"
 
 write_fake_command tailscale 'exit 1'
 
@@ -204,7 +206,7 @@ payload_down_plain_output=$(printf '%s\n' "$payload_down_output" | strip_ansi)
 
 assert_contains "$payload_down_plain_output" "tailnet:  down"
 assert_contains "$payload_down_plain_output" "connected: no"
-assert_contains "$payload_down_plain_output" "local sessions still work, but Mac and phone bridge features are unavailable"
+assert_contains "$payload_down_plain_output" "local-only mode: tmux sessions still work, but Mac and phone bridge features are unavailable"
 # skipped: tmux mock unreliable when real tmux running
 
 write_fake_command curl 'exit 1'
@@ -253,10 +255,12 @@ assert_contains "$shell_fallback_plain_output" "tailnet:  down"
 assert_contains "$shell_fallback_plain_output" "(tailscale status unavailable)"
 assert_contains "$shell_fallback_plain_output" "disk:   unavailable"
 assert_contains "$shell_fallback_plain_output" "(none)"
+assert_contains "$shell_fallback_plain_output" "no tmux sessions yet; start one from the project list below or use Plain shell (7)"
 # skipped: tmux mock unreliable when real tmux running
 assert_contains "$shell_fallback_plain_output" "OpenAI profiles unavailable: missing"
-assert_contains "$shell_fallback_plain_output" "fallback: Claude Code CLI or plain shell"
-assert_contains "$shell_fallback_plain_output" "local sessions still work, but Mac and phone bridge features are unavailable"
+assert_contains "$shell_fallback_plain_output" "OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored"
+assert_contains "$shell_fallback_plain_output" "fallback: Claude models 7-9, Claude Code CLI, or plain shell"
+assert_contains "$shell_fallback_plain_output" "local-only mode: tmux sessions still work, but Mac and phone bridge features are unavailable"
 
 write_fake_command curl 'cat <<'\''EOF'\''
 {"vm":{"hostname":"dev-workspace-vm","uptime":"up 1 hour","disk_percent":41,"memory_percent":37},"tailscale":{"connected":true,"ip":"100.64.0.10"},"sessions":["gs-5-4","orch-codex"],"projects":[{"name":"global-sentinel","branch":"main","dirty":false},{"name":"wrkflo-orchestrator","branch":"feature/queue","dirty":true}],"foundry_key":{"loaded":true}}

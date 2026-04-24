@@ -228,7 +228,8 @@ foundry_key_hint() {
 show_openai_profile_warning() {
   yellow "  OpenAI profiles unavailable"; echo
   dim "  $(foundry_key_hint)"; echo
-  dim "  choose Claude Code CLI or plain shell until the key is restored"; echo
+  dim "  OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored"; echo
+  dim "  choose Claude models 7-9, Claude Code CLI, or plain shell until then"; echo
   sleep 1
 }
 
@@ -341,10 +342,10 @@ tailscale_fallback_hint() {
   state=$(tailscale_connection_state "$payload")
   case "$state" in
     down)
-      printf '%s' "local sessions still work, but Mac and phone bridge features are unavailable"
+      printf '%s' "local-only mode: tmux sessions still work, but Mac and phone bridge features are unavailable"
       ;;
     unavailable)
-      printf '%s' "tailscale CLI is unavailable; local sessions still work, but tailnet status is unknown"
+      printf '%s' "local-only mode: tailscale CLI is unavailable, so local sessions still work but tailnet status is unknown"
       ;;
     *)
       return 1
@@ -354,7 +355,7 @@ tailscale_fallback_hint() {
 
 show_empty_session_note() {
   local indent="${1:-}"
-  printf '%s%s\n' "$indent" "$(dim "no tmux sessions yet; pick a project below to start one")"
+  printf '%s%s\n' "$indent" "$(dim "no tmux sessions yet; start one from the project list below or use Plain shell (7)")"
 }
 
 show_tailscale_note() {
@@ -370,7 +371,8 @@ show_foundry_note() {
 
   foundry_key_ready && return 0
   printf '%s%s\n' "$indent" "$(dim "OpenAI profiles unavailable: $(foundry_key_hint)")"
-  printf '%s%s\n' "$indent" "$(dim "fallback: Claude Code CLI or plain shell")"
+  printf '%s%s\n' "$indent" "$(dim "OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored")"
+  printf '%s%s\n' "$indent" "$(dim "fallback: Claude models 7-9, Claude Code CLI, or plain shell")"
 }
 
 unit_name() {
@@ -1002,35 +1004,42 @@ status_page_orchestrator() {
 
 # ── tmux session management ──
 
-list_sessions() {
+session_rows() {
   local rows
+
   if [ -x "$SESSIONS_TOOL" ]; then
     rows=$("$SESSIONS_TOOL" list 2>/dev/null || true)
-    case "$rows" in
-      ''|'no tmux sessions') return 0 ;;
-    esac
-    printf '%s\n' "$rows"
+  elif tmux_available; then
+    rows=$(tmux ls -F '#{session_name} #{?session_attached,attached,detached}' 2>/dev/null || true)
+  else
     return 0
   fi
 
-  if tmux_available; then
-    tmux ls -F '#{session_name} #{?session_attached,attached,detached}' 2>/dev/null || true
-  fi
+  case "$rows" in
+    ''|'no tmux sessions'|'failed to connect to server'*) return 0 ;;
+  esac
+
+  printf '%s\n' "$rows" | sed '/^[[:space:]]*$/d'
+}
+
+list_sessions() {
+  session_rows
 }
 
 session_count() {
-  if ! tmux_available; then
+  local rows
+
+  rows=$(session_rows)
+  if [ -z "$rows" ]; then
     printf '0\n'
     return 0
   fi
 
-  tmux ls -F '#{session_name}' 2>/dev/null | wc -l | tr -d ' '
+  printf '%s\n' "$rows" | wc -l | tr -d ' '
 }
 
 session_names() {
-  if tmux_available; then
-    tmux ls -F '#{session_name}' 2>/dev/null || true
-  fi
+  session_rows | sed 's/[[:space:]].*$//'
 }
 
 resolve_session_pick() {
