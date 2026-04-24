@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Wrapper — on-demand session bootstrap lives in scripts/dws-sessions-init.sh
 BASE_DIR="${BASH_SOURCE[0]%/*}"
 [ "$BASE_DIR" != "${BASH_SOURCE[0]}" ] || BASE_DIR='.'
 BASE_DIR=$(CDPATH='' cd -- "$BASE_DIR" && pwd)

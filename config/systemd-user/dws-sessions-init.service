@@ -1,8 +1,5 @@
 [Unit]
-Description=Dev Workspace tmux Sessions Init
-After=network-online.target
-Wants=network-online.target
-Before=dws-task-monitor.service
+Description=Dev Workspace On-Demand Session Init
 ConditionPathExists=%h/bin/dws-sessions-init.sh
 
 [Service]
