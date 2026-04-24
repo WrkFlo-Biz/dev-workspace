@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1090,SC2012
 set -euo pipefail
 
 # dws-orchestrator-boot.sh — One-command bootstrap for the dev workspace.
