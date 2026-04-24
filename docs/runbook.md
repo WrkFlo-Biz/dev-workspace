@@ -37,6 +37,17 @@ copy/paste ready on the VM.
 | iPhone | `100.88.249.22` |
 | openclaw-gateway | `100.126.194.98` |
 
+## Live Runtime Paths
+
+Use these exact exports in any shell where you want repo readers to follow the
+live queue and live monitor log instead of legacy `/tmp/*` defaults:
+
+```bash
+export DWS_TASK_QUEUE_PATH="$HOME/projects/dev-workspace/.state/task-queue.json"
+export DWS_MONITOR_LOG="/var/log/dws/monitor.log"
+export DWS_MONITOR_LOG_PATH="/var/log/dws/monitor.log"
+```
+
 ## Start
 
 ### Start the managed runtime
@@ -48,9 +59,13 @@ systemctl --user start dws-phone-server.service 2>/dev/null || true
 systemctl --user status dws-sessions-init.service --no-pager
 systemctl --user status dws-task-monitor.service --no-pager
 systemctl --user status dws-phone-server.service --no-pager || true
-~/projects/dev-workspace/bin/dws-sessions.sh list
-~/projects/dev-workspace/bin/dws-status.sh
-~/projects/dev-workspace/bin/dws-doctor.sh
+DWS_MONITOR_LOG=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-sessions.sh list
+DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
+  ~/projects/dev-workspace/bin/dws-status.sh
+DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
+DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-doctor.sh
 ~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```
 
@@ -70,10 +85,14 @@ systemctl --user status dws-task-monitor.service --no-pager
 ### Reattach after a disconnect
 
 ```bash
-~/projects/dev-workspace/bin/dws-sessions.sh list
+DWS_MONITOR_LOG=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-sessions.sh list
 ~/projects/dev-workspace/bin/dws-sessions.sh reconnect
-~/projects/dev-workspace/bin/dws-sessions.sh show <session>
-~/projects/dev-workspace/bin/dws-sessions.sh reconnect <session>
+SESSION=$(tmux list-sessions -F '#{session_name}' | sed -n '1p')
+DWS_MONITOR_LOG=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-sessions.sh show "$SESSION"
+DWS_MONITOR_LOG=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-sessions.sh reconnect "$SESSION"
 ```
 
 ### Launcher recovery if SSH lands at a plain shell
@@ -107,7 +126,8 @@ tmux list-sessions 2>/dev/null || echo "no tmux sessions"
 ```bash
 systemctl --user start dws-sessions-init.service
 systemctl --user start dws-task-monitor.service
-~/projects/dev-workspace/bin/dws-sessions.sh list
+DWS_MONITOR_LOG=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-sessions.sh list
 ```
 
 ## Backup
@@ -168,9 +188,13 @@ mkdir -p ~/.ssh && chmod 700 ~/.ssh && cp -a "$RESTORE_ROOT/home/.ssh/." ~/.ssh/
 systemctl --user restart dws-sessions-init.service
 systemctl --user restart dws-task-monitor.service
 systemctl --user restart dws-phone-server.service 2>/dev/null || true
-~/projects/dev-workspace/bin/dws-status.sh
-~/projects/dev-workspace/bin/dws-doctor.sh
-~/projects/dev-workspace/bin/dws-sessions.sh list
+DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
+  ~/projects/dev-workspace/bin/dws-status.sh
+DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
+DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-doctor.sh
+DWS_MONITOR_LOG=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-sessions.sh list
 ~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```
 
@@ -195,8 +219,11 @@ systemctl --user restart dws-phone-server.service 2>/dev/null || true
 systemctl --user status dws-sessions-init.service --no-pager
 systemctl --user status dws-task-monitor.service --no-pager
 systemctl --user status dws-phone-server.service --no-pager || true
-~/projects/dev-workspace/bin/dws-status.sh
-~/projects/dev-workspace/bin/dws-doctor.sh
+DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
+  ~/projects/dev-workspace/bin/dws-status.sh
+DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
+DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-doctor.sh
 ~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```
 
@@ -237,8 +264,11 @@ ssh moses@dev-workspace-vm '~/projects/dev-workspace/scripts/dws-launcher.sh sta
 sudo reboot
 # reconnect after 60-90s
 ~/projects/dev-workspace/bin/dws-boot-verify.sh
-~/projects/dev-workspace/bin/dws-status.sh
-~/projects/dev-workspace/bin/dws-doctor.sh
+DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
+  ~/projects/dev-workspace/bin/dws-status.sh
+DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
+DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-doctor.sh
 ```
 
 ### Post-reboot service checks
@@ -346,10 +376,14 @@ ssh -i "$DWS_TERMIUS_KEY" -o BatchMode=yes -o ConnectTimeout=5 moses@dev-workspa
 ### Termius reconnect path after a phone sleep or network drop
 
 ```bash
-~/projects/dev-workspace/bin/dws-sessions.sh list
+DWS_MONITOR_LOG=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-sessions.sh list
 ~/projects/dev-workspace/bin/dws-sessions.sh reconnect
-~/projects/dev-workspace/bin/dws-sessions.sh show <session>
-~/projects/dev-workspace/bin/dws-sessions.sh reconnect <session>
+SESSION=$(tmux list-sessions -F '#{session_name}' | sed -n '1p')
+DWS_MONITOR_LOG=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-sessions.sh show "$SESSION"
+DWS_MONITOR_LOG=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-sessions.sh reconnect "$SESSION"
 ~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```
 
@@ -361,6 +395,7 @@ journalctl --user -u dws-phone-server.service -n 40 --no-pager
 curl -sS http://127.0.0.1:8081/health
 curl -sS http://127.0.0.1:8081/results
 systemctl --user restart dws-phone-server.service
+curl -sS http://127.0.0.1:8081/health
 ```
 
 ### Queue a phone action from the VM with exact HTTP calls
@@ -403,8 +438,11 @@ journalctl --user -u dws-task-monitor.service -n 40 --no-pager
 tail -n 40 /var/log/dws/monitor.log
 ~/projects/dev-workspace/bin/dws-log-viewer.sh --since '30 minutes ago' --grep 'FAIL|ERROR|ALERT'
 sed -n '1,220p' ~/projects/dev-workspace/.state/task-queue.json
-~/projects/dev-workspace/bin/dws-status.sh
-~/projects/dev-workspace/bin/dws-doctor.sh
+DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
+  ~/projects/dev-workspace/bin/dws-status.sh
+DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
+DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-doctor.sh
 ~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```
 
@@ -421,9 +459,13 @@ systemctl --user restart dws-task-monitor.service
 ```bash
 systemctl --user restart dws-sessions-init.service
 systemctl --user restart dws-task-monitor.service
-~/projects/dev-workspace/bin/dws-sessions.sh list
-~/projects/dev-workspace/bin/dws-status.sh
-~/projects/dev-workspace/bin/dws-doctor.sh
+DWS_MONITOR_LOG=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-sessions.sh list
+DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
+  ~/projects/dev-workspace/bin/dws-status.sh
+DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
+DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-doctor.sh
 ```
 
 ### Follow the monitor log live
