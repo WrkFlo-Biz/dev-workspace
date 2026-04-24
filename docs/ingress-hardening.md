@@ -102,7 +102,8 @@ Flag behavior:
   is the first `INPUT` jump and that the live managed chain still matches the
   repo policy in order
 - `--rollback` restores the most recent pre-apply snapshot saved under
-  `/var/lib/dws/firewall/`
+  `/var/lib/dws/firewall/`; combine it with `--dry-run` to preview the exact
+  recovery steps before changing the host
 
 The intended repo-managed policy is:
 

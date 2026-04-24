@@ -253,6 +253,7 @@ EOF
   assert_contains "${output}" 'verification passed: tcp/9222 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/3000 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: all other inbound IPv4 traffic drops at the end of DWS_FIREWALL_INPUT'
+  assert_contains "${output}" 'verification passed: DWS_FIREWALL_INPUT rule set matches the repo policy'
   assert_contains "${output}" 'firewall verification complete'
 }
 

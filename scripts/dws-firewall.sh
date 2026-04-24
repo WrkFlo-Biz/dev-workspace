@@ -548,20 +548,6 @@ verify_ufw() {
   done
 }
 
-iptables_has_rule() {
-  local lines="$1"
-  shift
-  local line
-
-  while IFS= read -r line; do
-    if iptables_line_matches "$line" "$@"; then
-      return 0
-    fi
-  done <<<"$lines"
-
-  return 1
-}
-
 iptables_line_matches() {
   local line="$1"
   shift
