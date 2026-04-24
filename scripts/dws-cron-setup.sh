@@ -21,6 +21,7 @@ BLOCK_END="# <<< dev-workspace managed cron <<<"
 
 PASS_COUNT=0
 FAIL_COUNT=0
+DRY_RUN=0
 HEALTH_SCRIPT=""
 ROTATE_SCRIPT=""
 ROTATE_JOB=""
@@ -56,7 +57,7 @@ is_int() {
 
 usage() {
   cat <<'EOF'
-usage: dws-cron-setup.sh [--check|--remove|--show|--help]
+usage: dws-cron-setup.sh [--check|--remove|--show] [--dry-run] [--help]
 
 Installs a managed crontab block for dev-workspace health checks, log
 rotation for /var/log/dws, and stale session cleanup. Re-running the installer
@@ -88,7 +89,11 @@ resolve_script() {
 }
 
 ensure_log_dir() {
-  [ -d "$LOG_DIR" ] || mkdir -p "$LOG_DIR"
+  if [ -d "$LOG_DIR" ] || [ "$DRY_RUN" -eq 1 ]; then
+    return 0
+  fi
+
+  mkdir -p "$LOG_DIR"
 }
 
 current_crontab() {
@@ -188,6 +193,8 @@ validate_targets() {
 
   if [ -d "$LOG_DIR" ] && [ -w "$LOG_DIR" ]; then
     pass "cron log dir ready: ${LOG_DIR}"
+  elif [ ! -e "$LOG_DIR" ] && [ "$DRY_RUN" -eq 1 ]; then
+    pass "dry-run: would create cron log dir: ${LOG_DIR}"
   elif [ -d "$LOG_DIR" ]; then
     fail "cron log dir is not writable: ${LOG_DIR}"
   else
@@ -225,6 +232,11 @@ install_jobs() {
   desired="${desired}${BLOCK_START}"$'\n'
   desired="${desired}$(printf '%s\n' "${JOBS[@]}")"$'\n'
   desired="${desired}${BLOCK_END}"
+  if [ "$DRY_RUN" -eq 1 ]; then
+    pass "dry-run: would install managed dev-workspace cron block"
+    printf '%s\n' "$desired"
+    return 0
+  fi
   write_crontab "$desired"
   pass "installed managed dev-workspace cron block"
 }
@@ -233,6 +245,13 @@ remove_jobs() {
   local current cleaned
   current=$(current_crontab)
   cleaned=$(printf '%s\n' "$current" | strip_managed_block | strip_legacy_jobs)
+  if [ "$DRY_RUN" -eq 1 ]; then
+    pass "dry-run: would remove managed dev-workspace cron entries"
+    if [ -n "$cleaned" ]; then
+      printf '%s\n' "$cleaned"
+    fi
+    return 0
+  fi
   write_crontab "$cleaned"
   pass "removed managed dev-workspace cron entries"
 }
