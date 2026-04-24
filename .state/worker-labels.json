@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "workers": {
+    "dws-a": [
+      "infra",
+      "foundry-heavy"
+    ],
+    "dws-b": [
+      "sync",
+      "foundry-heavy"
+    ],
+    "worker-c": [
+      "test",
+      "foundry-heavy"
+    ],
+    "worker-d": [
+      "docs",
+      "foundry-heavy"
+    ],
+    "worker-e": [
+      "infra",
+      "foundry-heavy"
+    ],
+    "worker-f": [
+      "test",
+      "foundry-heavy"
+    ],
+    "worker-g": [
+      "docs",
+      "foundry-heavy"
+    ],
+    "worker-h": [
+      "sync",
+      "foundry-heavy"
+    ],
+    "worker-i": [
+      "infra",
+      "foundry-heavy"
+    ]
+  }
+}

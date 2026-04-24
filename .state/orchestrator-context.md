@@ -18,11 +18,37 @@ You have full read/write access to all projects and can dispatch work to any wor
 
 Generic workers available: dws-a, dws-b, worker-c, worker-d, worker-e, worker-f, worker-g, worker-h, worker-i
 
-Workers are generic — assign any worker to any project as needed.
+Workers are generic, but optional specialization labels can be used for smart routing.
+Label source of truth: ~/projects/dev-workspace/.state/worker-labels.json
+
+### Dispatch
+
 To dispatch a task to a worker:
 ```bash
 tmux send-keys -t WORKER_NAME "cd ~/projects/REPO_NAME && TASK_DESCRIPTION" Enter
 ```
+
+Use label-based routing before dispatching:
+1. Read ~/projects/dev-workspace/.state/worker-labels.json and look up the idle workers for the needed task type.
+2. Prefer workers whose labels match the task, especially when the task clearly maps to infra, docs, test, or sync work.
+3. Use foundry-heavy when the task will likely need broad repo scans, long-context reasoning, or heavier model work.
+4. If multiple idle workers match, pick any idle match with a non-overlapping file scope.
+5. If no labeled worker is idle, fall back to any idle worker rather than blocking the queue.
+6. Treat labels as routing hints only; availability and non-overlapping ownership still take priority.
+
+## WORKER_LABELS
+
+Location: ~/projects/dev-workspace/.state/worker-labels.json
+Format: {"version": 1, "workers": {"WORKER_NAME": ["label", "..."]}}
+
+Supported labels:
+- infra: VM, tmux, systemd, shell scripts, runtime operations, deployment plumbing
+- docs: runbooks, README/docs updates, architecture notes, operator instructions
+- test: test authoring, test execution, regression reproduction, CI-style verification
+- sync: merge/rebase/cherry-pick work, conflict cleanup, branch hygiene, staging coordination
+- foundry-heavy: tasks that benefit from the managed foundry-5_4 profile, larger repo context, or heavier reasoning
+
+Labels are optional defaults. They should improve first-pass worker selection, but they do not override repo access, file ownership, or current worker availability.
 
 ## Task Queue
 
