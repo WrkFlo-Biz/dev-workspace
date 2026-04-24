@@ -50,6 +50,7 @@ make_fixture() {
   export DWS_HEALTH_CHECK_SCRIPT="${REPO_ROOT}/scripts/dws-health-check.sh"
   export DWS_CLEANUP_SCRIPT="${REPO_ROOT}/scripts/dws-cleanup.sh"
   export DWS_LOG_ROTATE_SCRIPT="${FIXTURE_ROOT}/dws-rotate-logs.sh"
+  export DWS_LOG_RETENTION_WEEKS=4
 
   mkdir -p "${FAKE_BIN}" "${HOME}"
   : >"${DWS_TEST_CRONTAB_PATH}"
@@ -83,7 +84,7 @@ exit 1
 cleanup_fixture() {
   export PATH="${ORIG_PATH}"
   export HOME="${ORIG_HOME}"
-  unset DWS_TEST_CRONTAB_PATH DWS_CRON_LOG_DIR DWS_HEALTH_CHECK_SCRIPT DWS_LOG_ROTATE_SCRIPT DWS_CLEANUP_SCRIPT
+  unset DWS_TEST_CRONTAB_PATH DWS_CRON_LOG_DIR DWS_HEALTH_CHECK_SCRIPT DWS_LOG_ROTATE_SCRIPT DWS_CLEANUP_SCRIPT DWS_LOG_RETENTION_WEEKS
 
   if [ -n "${FIXTURE_ROOT:-}" ] && [ -d "${FIXTURE_ROOT}" ]; then
     rm -rf -- "${FIXTURE_ROOT}"
@@ -100,7 +101,7 @@ test_show_defaults_to_var_log_dws() {
   output=$(bash "${SCRIPT}" --show 2>&1)
   assert_contains "${output}" "# >>> dev-workspace managed cron >>>"
   assert_contains "${output}" "*/15 * * * * \"${REPO_ROOT}/scripts/dws-health-check.sh\" >>\"/var/log/dws/health-check.log\" 2>&1 # dws-health-check"
-  assert_contains "${output}" "30 2 * * 0 \"${DWS_LOG_ROTATE_SCRIPT}\" >>\"/var/log/dws/log-rotate.log\" 2>&1 # dws-log-rotate"
+  assert_contains "${output}" "30 2 * * 0 \"${DWS_LOG_ROTATE_SCRIPT}\" --keep-weeks 4 >>\"/var/log/dws/log-rotate.log\" 2>&1 # dws-log-rotate"
   assert_not_contains "${output}" "/tmp/dws-health-check.cron.log"
   assert_not_contains "${output}" "dws-health-check.cron.log"
   assert_contains "${output}" "Summary: 0 pass, 0 fail"
@@ -117,7 +118,7 @@ test_show_uses_repo_rotate_helper_when_env_is_unset() {
 
   unset DWS_CRON_LOG_DIR DWS_LOG_ROTATE_SCRIPT
   output=$(bash "${SCRIPT}" --show 2>&1)
-  assert_contains "${output}" "30 2 * * 0 \"${REPO_ROOT}/scripts/dws-rotate-logs.sh\" >>\"/var/log/dws/log-rotate.log\" 2>&1 # dws-log-rotate"
+  assert_contains "${output}" "30 2 * * 0 \"${REPO_ROOT}/scripts/dws-rotate-logs.sh\" --keep-weeks 4 >>\"/var/log/dws/log-rotate.log\" 2>&1 # dws-log-rotate"
 
   cleanup_fixture
   trap - EXIT
@@ -146,7 +147,7 @@ EOF
   assert_contains "${crontab_after}" "5 * * * * echo keep-me"
   assert_contains "${crontab_after}" "# >>> dev-workspace managed cron >>>"
   assert_contains "${crontab_after}" "*/15 * * * * \"${REPO_ROOT}/scripts/dws-health-check.sh\" >>\"${DWS_CRON_LOG_DIR}/health-check.log\" 2>&1 # dws-health-check"
-  assert_contains "${crontab_after}" "30 2 * * 0 \"${DWS_LOG_ROTATE_SCRIPT}\" >>\"${DWS_CRON_LOG_DIR}/log-rotate.log\" 2>&1 # dws-log-rotate"
+  assert_contains "${crontab_after}" "30 2 * * 0 \"${DWS_LOG_ROTATE_SCRIPT}\" --keep-weeks 4 >>\"${DWS_CRON_LOG_DIR}/log-rotate.log\" 2>&1 # dws-log-rotate"
   assert_not_contains "${crontab_after}" "/tmp/dws-health-check.cron.log"
   assert_not_contains "${crontab_after}" "dws-log-rotate.cron.log"
   assert_not_contains "${crontab_after}" "# >>> dev-workspace health check >>>"
