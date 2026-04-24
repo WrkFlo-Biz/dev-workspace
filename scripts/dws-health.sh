@@ -8,6 +8,7 @@ set -u
 : "${MAC_CDP_URL:=http://${MAC_TAILNET_IP}:9222}"
 ORCHESTRATOR_HEALTH_URL="${DWS_ORCHESTRATOR_HEALTH_URL:-http://127.0.0.1:8100/v1/workspace/health}"
 SSH_HARDENING_CONF="${DWS_SSH_HARDENING_CONF:-/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf}"
+SSH_HARDENING_CANDIDATES="${DWS_SSH_HARDENING_CANDIDATES:-/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf:/etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf:/etc/ssh/sshd_config.d/zz-dws-hardening.conf}"
 
 c(){ printf '\033[%sm%s\033[0m' "$1" "$2"; }
 g(){ c 32 "$1"; }
@@ -82,20 +83,54 @@ user_unit_state(){
 }
 fmt_user_unit_state(){ case "$1" in active*) g "$1" ;; activating*|reloading*) y "$1" ;; *) r "$1" ;; esac; }
 user_unit_ok(){ case "$1" in active*) return 0 ;; *) return 1 ;; esac; }
+resolved_ssh_hardening_conf(){
+  local candidate
+
+  if [ -n "${DWS_SSH_HARDENING_CONF:-}" ] && [ -r "$SSH_HARDENING_CONF" ]; then
+    printf '%s' "$SSH_HARDENING_CONF"
+    return 0
+  fi
+
+  OLDIFS=$IFS
+  IFS=:
+  for candidate in $SSH_HARDENING_CANDIDATES; do
+    [ -r "$candidate" ] || continue
+    printf '%s' "$candidate"
+    IFS=$OLDIFS
+    return 0
+  done
+  IFS=$OLDIFS
+
+  printf '%s' "$SSH_HARDENING_CONF"
+}
 ssh_hardening_values(){
-  [ -r "$SSH_HARDENING_CONF" ] || return 1
+  local path
+  path=$(resolved_ssh_hardening_conf)
+  [ -r "$path" ] || return 1
   awk '
     tolower($1) == "passwordauthentication" { pa = tolower($2) }
+    tolower($1) == "kbdinteractiveauthentication" { kia = tolower($2) }
+    tolower($1) == "challengeresponseauthentication" { cra = tolower($2) }
     tolower($1) == "permitrootlogin" { pr = tolower($2) }
+    tolower($1) == "x11forwarding" { x11 = tolower($2) }
+    tolower($1) == "maxauthtries" { mat = $2 }
     tolower($1) == "clientaliveinterval" { ca = $2 }
-    END { printf "%s|%s|%s\n", pa, pr, ca }
-  ' "$SSH_HARDENING_CONF" 2>/dev/null
+    tolower($1) == "clientalivecountmax" { cac = $2 }
+    END { printf "%s|%s|%s|%s|%s|%s|%s|%s\n", pa, kia, cra, pr, x11, mat, ca, cac }
+  ' "$path" 2>/dev/null
 }
 ssh_hardening_state(){
-  local vals pa pr ca
+  local vals pa kia cra pr x11 mat ca cac
   vals=$(ssh_hardening_values) || { printf 'missing'; return; }
-  IFS='|' read -r pa pr ca <<<"$vals"
-  if [ "$pa" = "no" ] && [ "$pr" = "no" ] && [ "$ca" = "30" ]; then
+  IFS='|' read -r pa kia cra pr x11 mat ca cac <<<"$vals"
+  if [ "$pa" = "no" ] &&
+     [ "$pr" = "no" ] &&
+     [ "$x11" = "no" ] &&
+     [ "$mat" = "3" ] &&
+     [ "$ca" = "30" ] &&
+     [ "$cac" = "3" ] &&
+     { [ -z "$kia" ] || [ "$kia" = "no" ]; } &&
+     { [ -z "$cra" ] || [ "$cra" = "no" ]; }; then
     printf 'ok'
   else
     printf 'drift'
@@ -104,11 +139,13 @@ ssh_hardening_state(){
 fmt_ssh_hardening_state(){ case "$1" in ok) g "$1" ;; drift) y "$1" ;; *) r "$1" ;; esac; }
 ssh_hardening_ok(){ [ "$1" = "ok" ]; }
 ssh_hardening_detail(){
-  local vals pa pr ca
-  vals=$(ssh_hardening_values) || { printf '%s' "$SSH_HARDENING_CONF"; return; }
-  IFS='|' read -r pa pr ca <<<"$vals"
-  printf '%s (pass=%s root=%s alive=%s)' \
-    "$SSH_HARDENING_CONF" "${pa:-unset}" "${pr:-unset}" "${ca:-unset}"
+  local vals path pa kia cra pr x11 mat ca cac
+  path=$(resolved_ssh_hardening_conf)
+  vals=$(ssh_hardening_values) || { printf '%s' "$path"; return; }
+  IFS='|' read -r pa kia cra pr x11 mat ca cac <<<"$vals"
+  printf '%s (pass=%s kbd=%s challenge=%s root=%s x11=%s maxauth=%s alive=%s/%s)' \
+    "$path" "${pa:-unset}" "${kia:-unset}" "${cra:-unset}" "${pr:-unset}" \
+    "${x11:-unset}" "${mat:-unset}" "${ca:-unset}" "${cac:-unset}"
 }
 firewall_status(){
   local out
@@ -219,7 +256,7 @@ case "${1:-}" in
     printf '  "services":{"orchestrator_api":{"url":"%s","http_code":"%s","reachable":%s},"dws_task_monitor":{"state":"%s","healthy":%s},"dws_sessions_init":{"state":"%s","healthy":%s}},\n' \
       "$(jesc "$ORCHESTRATOR_HEALTH_URL")" "$(jesc "$orch_code")" "$orch_ok" "$(jesc "$task_state")" "$task_ok" "$(jesc "$sessions_state")" "$sessions_ok"
     printf '  "security":{"ssh_hardening":{"path":"%s","state":"%s","healthy":%s},"firewall":{"backend":"%s","state":"%s","detail":"%s","healthy":%s}},\n' \
-      "$(jesc "$SSH_HARDENING_CONF")" "$(jesc "$ssh_state")" "$ssh_ok" "$(jesc "$fw_backend")" "$(jesc "$fw_state")" "$(jesc "$fw_detail")" "$fw_ok"
+      "$(jesc "$(resolved_ssh_hardening_conf)")" "$(jesc "$ssh_state")" "$ssh_ok" "$(jesc "$fw_backend")" "$(jesc "$fw_state")" "$(jesc "$fw_detail")" "$fw_ok"
     printf '  "tailnet":{"connected":%s,"peers":{"mac":{"ip":"%s","state":"%s","latency":"%s","reachable":%s},"phone":{"ip":"%s","state":"%s","latency":"%s","reachable":%s},"gateway":{"ip":"%s","state":"%s","latency":"%s","reachable":%s}}},\n' \
       "$tailnet_ok" \
       "$(jesc "$MAC_TAILNET_IP")" "$(jesc "$mac_state")" "$(jesc "$mac_lat")" "$mac_ok" \
