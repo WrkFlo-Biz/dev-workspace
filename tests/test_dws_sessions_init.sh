@@ -21,6 +21,11 @@ fail() {
   exit 1
 }
 
+skip() {
+  printf 'SKIP: %s\n' "$*"
+  exit 0
+}
+
 assert_contains() {
   local haystack="${1:-}" needle="${2:-}"
   printf '%s\n' "$haystack" | grep -F -- "$needle" >/dev/null || fail "missing output: $needle"
@@ -52,7 +57,7 @@ session_option() {
 
 trap cleanup EXIT
 
-command -v tmux >/dev/null 2>&1 || fail "tmux is required"
+command -v tmux >/dev/null 2>&1 || skip "tmux unavailable"
 [ -x "$SCRIPT" ] || fail "missing init script: $SCRIPT"
 
 export HOME="${FIXTURE_ROOT}/home"

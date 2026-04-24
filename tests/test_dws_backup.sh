@@ -355,8 +355,7 @@ exit 1
     fail "expected verify-restore to fail when archive members are unsafe"
   fi
 
-  assert_contains "${output}" "unsafe archive path for archive member: ../escape.txt"
-  assert_contains "${output}" "verify failed: archive extraction failed: ${archive}"
+  assert_contains "${output}" "verify failed: archive contains unsafe or inconsistent member paths: ${archive}"
 
   cleanup_fixture
   trap - EXIT

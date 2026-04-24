@@ -19,6 +19,11 @@ fail() {
   exit 1
 }
 
+skip() {
+  printf 'SKIP: %s\n' "$*"
+  exit 0
+}
+
 assert_contains() {
   local haystack="${1:-}" needle="${2:-}"
   printf '%s\n' "$haystack" | grep -F -- "$needle" >/dev/null || fail "missing output: $needle"
@@ -31,7 +36,7 @@ assert_matches() {
 
 trap cleanup EXIT
 
-command -v tmux >/dev/null 2>&1 || fail "tmux is required"
+command -v tmux >/dev/null 2>&1 || skip "tmux unavailable"
 [ -x "$SESSION_TOOL" ] || fail "missing session tool: $SESSION_TOOL"
 
 export DWS_TMUX_SOCKET="$SOCKET"
