@@ -49,9 +49,10 @@ make_fixture() {
   export GATEWAY_TAILNET_IP="100.126.194.98"
   export MAC_GUI_URL="http://100.78.207.22:9223"
   export MAC_CDP_URL="http://100.78.207.22:9222"
-  export DWS_SSH_HARDENING_CONF="${FIXTURE_ROOT}/01-wrkflo-hardening.conf"
+  export DWS_SSH_HARDENING_CONF="${FIXTURE_ROOT}/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf"
 
-  mkdir -p "${FAKE_BIN}" "${HOME}"
+  export DWS_SSH_HARDENING_CANDIDATES="${DWS_SSH_HARDENING_CONF}"
+  mkdir -p "${FAKE_BIN}" "${HOME}" "$(dirname "${DWS_SSH_HARDENING_CONF}")"
   cat >"${DWS_SSH_HARDENING_CONF}" <<'EOF'
 PasswordAuthentication no
 PubkeyAuthentication yes
@@ -232,7 +233,7 @@ cleanup_fixture() {
   export PATH="${ORIG_PATH}"
   export HOME="${ORIG_HOME}"
   unset NO_COLOR AZURE_OPENAI_API_KEY MAC_TAILNET_IP PHONE_TAILNET_IP GATEWAY_TAILNET_IP \
-    MAC_GUI_URL MAC_CDP_URL DWS_SSH_HARDENING_CONF
+    MAC_GUI_URL MAC_CDP_URL DWS_SSH_HARDENING_CONF DWS_SSH_HARDENING_CANDIDATES
 
   if [ -n "${FIXTURE_ROOT:-}" ] && [ -d "${FIXTURE_ROOT}" ]; then
     rm -rf -- "${FIXTURE_ROOT}"
