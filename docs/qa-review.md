@@ -2,6 +2,9 @@
 
 Reviewed the current `dev-workspace` working tree on 2026-04-24 UTC.
 
+Treat this file as a dated review snapshot. For current runtime surfaces and
+live-path guidance, prefer `docs/logging.md` and `docs/runtime-boot-truth.md`.
+
 ## Scope
 
 - `README.md`

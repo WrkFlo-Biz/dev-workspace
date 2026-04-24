@@ -916,6 +916,7 @@ status_page_shell() {
     list_sessions | sed 's/^/    /'
   else
     dim "    (none)"; echo
+    show_empty_session_note "    "
   fi
   echo
   bold "  projects"; echo
@@ -926,15 +927,17 @@ status_page_shell() {
   printf "    disk:   %s\n" "$(shell_disk_usage_value)"
   printf "    mem:    %s\n" "$(shell_memory_usage_value)"
   printf "    key:    %s\n" "$(key_status)"
+  show_foundry_note "    "
   echo
   bold "  tailnet"; echo
   shell_tailnet_preview
+  show_tailscale_note "    "
   status_page_health_logs
 }
 
 status_page_orchestrator() {
   local payload="$1" count uptime disk_percent memory_percent hostname tailscale_ip
-  local tailscale_connected foundry_loaded project_count
+  local tailscale_connected project_count
   count=$(jq -r '(.sessions // []) | length' <<<"$payload")
   print_status_header "$count" "$payload"
   echo
@@ -946,6 +949,7 @@ status_page_orchestrator() {
     jq -r '.sessions[]?' <<<"$payload" | sed 's/^/    /'
   else
     dim "    (none)"; echo
+    show_empty_session_note "    "
   fi
   echo
   bold "  projects"; echo
@@ -967,7 +971,6 @@ status_page_orchestrator() {
   uptime=$(jq -r '.vm.uptime // "-"' <<<"$payload")
   disk_percent=$(jq -r '.vm.disk_percent // 0' <<<"$payload")
   memory_percent=$(jq -r '.vm.memory_percent // 0' <<<"$payload")
-  foundry_loaded=$(jq -r '.foundry_key.loaded // false' <<<"$payload")
   tailscale_connected=$(jq -r '.tailscale.connected // false' <<<"$payload")
   tailscale_ip=$(jq -r '.tailscale.ip // ""' <<<"$payload")
   bold "  system"; echo
@@ -975,11 +978,12 @@ status_page_orchestrator() {
   printf "    uptime: %s\n" "$uptime"
   printf "    disk:   %s%% used\n" "$disk_percent"
   printf "    mem:    %s%% used\n" "$memory_percent"
-  if [ "$foundry_loaded" = "true" ]; then
+  if foundry_key_ready; then
     printf "    key:    %s\n" "$(green "ok")"
   else
     printf "    key:    %s\n" "$(red "missing")"
   fi
+  show_foundry_note "    "
   echo
   bold "  tailnet"; echo
   if [ "$tailscale_connected" = "true" ]; then
@@ -991,6 +995,7 @@ status_page_orchestrator() {
   else
     printf "    connected: %s\n" "$(red "no")"
   fi
+  show_tailscale_note "    " "$payload"
   status_page_health_logs
 }
 
@@ -1186,12 +1191,36 @@ fi
 # ── Main loop ──
 
 while :; do
+  notice_count=0
+  tailnet_state=""
   refresh_health_status
   sc=$(session_count)
+  tailnet_state=$(tailscale_connection_state)
   clear 2>/dev/null || true
   echo
   print_status_header "$sc"
   hr
+
+  if [ "$sc" -eq 0 ]; then
+    show_empty_session_note "  "
+    notice_count=1
+  fi
+
+  case "$tailnet_state" in
+    down|unavailable)
+      show_tailscale_note "  "
+      notice_count=1
+      ;;
+  esac
+
+  if ! foundry_key_ready; then
+    show_foundry_note "  "
+    notice_count=1
+  fi
+
+  if [ "$notice_count" -eq 1 ]; then
+    hr
+  fi
 
   # Show active sessions if any exist
   if [ "$sc" -gt 0 ]; then
@@ -1229,7 +1258,9 @@ MENU
   case "$proj_choice" in
     r|R)
       if [ "$sc" -eq 0 ]; then
-        yellow "  no active sessions"; echo; sleep 0.6
+        yellow "  no tmux sessions yet"; echo
+        dim "  pick a project below to start one"; echo
+        sleep 0.8
       elif [ "$sc" -eq 1 ]; then
         attach_named_session "$(session_names | sed -n '1p')"
       else
@@ -1251,7 +1282,9 @@ MENU
       ;;
     k|K)
       if [ "$sc" -eq 0 ]; then
-        yellow "  no active sessions"; echo; sleep 0.6
+        yellow "  no tmux sessions yet"; echo
+        dim "  nothing to kill until you start a session"; echo
+        sleep 0.8
       else
         echo
         bold "  Kill session:"; echo
@@ -1274,7 +1307,9 @@ MENU
       ;;
     x|X)
       if [ "$sc" -eq 0 ]; then
-        yellow "  no active sessions"; echo; sleep 0.6
+        yellow "  no tmux sessions yet"; echo
+        dim "  cleanup is skipped until a session exists"; echo
+        sleep 0.8
       elif [ -x "$SESSIONS_TOOL" ]; then
         "$SESSIONS_TOOL" cleanup
         read -rp "  press enter "
@@ -1306,6 +1341,10 @@ MENU
     echo
     bold "  ⎈ $proj · select model"; echo
     hr
+    if ! foundry_key_ready; then
+      show_foundry_note "  "
+      hr
+    fi
     cat <<MENU
 
   $(bold "── OpenAI ──")

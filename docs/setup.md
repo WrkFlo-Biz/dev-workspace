@@ -274,6 +274,9 @@ install a real copy or symlink directly to the matching file under
 
 Install the additional live symlinks you want for day-2 operations:
 
+These `~/bin` targets are optional conveniences. On a fresh VM they can be
+missing until you create them with the commands below.
+
 ```bash
 mkdir -p ~/bin
 
