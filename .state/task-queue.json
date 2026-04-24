@@ -1686,7 +1686,7 @@
       "repo": "dev-workspace",
       "description": "Audit docs/ for broken internal links and outdated references. Check that every script mentioned in docs actually exists. Fix any broken references. Stage, commit, push.",
       "assigned": "worker-g",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "refill-9rj3r8",
@@ -1694,10 +1694,58 @@
       "repo": "dev-workspace",
       "description": "Review scripts/dws-launcher.sh for edge cases: what happens when no tmux sessions exist, when Tailscale is down, when foundry.env is missing. Add graceful fallbacks for each. Stage, commit, push.",
       "assigned": "dws-a",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "refill-5xxf6b",
+      "phase": 8,
+      "repo": "dev-workspace",
+      "description": "Add a --dry-run flag to scripts/dws-cron-setup.sh, scripts/dws-backup.sh, and scripts/dws-cleanup.sh if they don't already have one. Dry run should show what would happen without making changes. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "completed"
+    },
+    {
+      "id": "refill-1b8vf7",
+      "phase": 8,
+      "repo": "dev-workspace",
+      "description": "Review and harden scripts/dws-backup.sh: ensure it validates paths before tar, handles missing directories gracefully, and exits non-zero on failure. Add backup verification step. Stage, commit, push.",
+      "assigned": "dws-a",
+      "status": "in_progress"
+    },
+    {
+      "id": "refill-dixydm",
+      "phase": 8,
+      "repo": "dev-workspace",
+      "description": "Run shellcheck on all scripts in scripts/ and bin/. Fix any warnings or errors found. Run: for f in scripts/*.sh bin/*.sh; do echo $f; shellcheck $f 2>&1 | head -5; done. Fix issues. Stage, commit, push.",
+      "assigned": "worker-f",
+      "status": "in_progress"
+    },
+    {
+      "id": "refill-pjy3kg",
+      "phase": 8,
+      "repo": "dev-workspace",
+      "description": "Run the full test suite: for f in tests/test_*.sh; do echo --- $f ---; bash $f 2>&1 | tail -5; done. Fix any test failures. Stage, commit, push.",
+      "assigned": "worker-g",
+      "status": "in_progress"
+    },
+    {
+      "id": "refill-jz1qa5",
+      "phase": 8,
+      "repo": "dev-workspace",
+      "description": "Audit docs/ for broken internal links and outdated references. Check that every script mentioned in docs actually exists. Fix any broken references. Stage, commit, push.",
+      "assigned": null,
+      "status": "pending"
+    },
+    {
+      "id": "refill-2iplni",
+      "phase": 8,
+      "repo": "dev-workspace",
+      "description": "Review scripts/dws-launcher.sh for edge cases: what happens when no tmux sessions exist, when Tailscale is down, when foundry.env is missing. Add graceful fallbacks for each. Stage, commit, push.",
+      "assigned": null,
+      "status": "pending"
+    },
+    {
+      "id": "refill-ejkva7",
       "phase": 8,
       "repo": "dev-workspace",
       "description": "Add a --dry-run flag to scripts/dws-cron-setup.sh, scripts/dws-backup.sh, and scripts/dws-cleanup.sh if they don't already have one. Dry run should show what would happen without making changes. Stage, commit, push.",
@@ -1705,7 +1753,7 @@
       "status": "pending"
     },
     {
-      "id": "refill-1b8vf7",
+      "id": "refill-b5csiw",
       "phase": 8,
       "repo": "dev-workspace",
       "description": "Review and harden scripts/dws-backup.sh: ensure it validates paths before tar, handles missing directories gracefully, and exits non-zero on failure. Add backup verification step. Stage, commit, push.",

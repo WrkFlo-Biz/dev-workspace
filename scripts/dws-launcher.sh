@@ -654,7 +654,7 @@ status_motd_orchestrator() {
 shell_tailnet_preview() {
   local out=""
 
-  if ! command -v tailscale >/dev/null 2>&1; then
+  if ! have_cmd tailscale; then
     dim "    (tailscale CLI unavailable)"; echo
     return 0
   fi
@@ -669,6 +669,39 @@ shell_tailnet_preview() {
     printf '%s\n' "$out" | sed 's/^/    /'
   else
     dim "    (tailscale status unavailable)"; echo
+  fi
+}
+
+shell_uptime_value() {
+  local value
+
+  value=$(uptime -p 2>/dev/null || uptime 2>/dev/null || true)
+  if [ -n "$value" ]; then
+    printf '%s\n' "$value"
+  else
+    printf '%s\n' "$(yellow "unavailable")"
+  fi
+}
+
+shell_disk_usage_value() {
+  local value
+
+  value=$(df -h / 2>/dev/null | awk 'NR==2{print $3"/"$2" ("$5" used)"}' || true)
+  if [ -n "$value" ]; then
+    printf '%s\n' "$value"
+  else
+    printf '%s\n' "$(yellow "unavailable")"
+  fi
+}
+
+shell_memory_usage_value() {
+  local value
+
+  value=$(free -h 2>/dev/null | awk 'NR==2{print $3"/"$2" ("int($3/$2*100)"% used)"}' || true)
+  if [ -n "$value" ]; then
+    printf '%s\n' "$value"
+  else
+    printf '%s\n' "$(yellow "unavailable")"
   fi
 }
 
@@ -753,8 +786,16 @@ show_health_tail() {
 show_health_alerts() {
   local cut alerts
   [ -f "$HEALTH_ALERT_LOG" ] || { dim "    (no alerts in last 24h)"; echo; return; }
-  cut=$(date -d '24 hours ago' '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -v-24H '+%Y-%m-%d %H:%M:%S')
-  alerts=$(awk -v cut="$cut" 'index($0, "ALERT") && substr($0, 1, 19) >= cut' "$HEALTH_ALERT_LOG")
+  if ! have_cmd date || ! have_cmd awk; then
+    dim "    (alert scan unavailable)"; echo
+    return 0
+  fi
+  cut=$(date -d '24 hours ago' '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -v-24H '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)
+  if [ -z "$cut" ]; then
+    dim "    (alert scan unavailable)"; echo
+    return 0
+  fi
+  alerts=$(awk -v cut="$cut" 'index($0, "ALERT") && substr($0, 1, 19) >= cut' "$HEALTH_ALERT_LOG" 2>/dev/null || true)
   if [ -n "$alerts" ]; then
     printf '%s\n' "$alerts" | sed 's/^/    /'
   else
@@ -787,9 +828,9 @@ status_page_shell() {
   show_local_projects
   echo
   bold "  system"; echo
-  printf "    uptime: %s\n" "$(uptime -p 2>/dev/null || uptime)"
-  printf "    disk:   %s\n" "$(df -h / | awk 'NR==2{print $3"/"$2" ("$5" used)"}')"
-  printf "    mem:    %s\n" "$(free -h | awk 'NR==2{print $3"/"$2" ("int($3/$2*100)"% used)"}')"
+  printf "    uptime: %s\n" "$(shell_uptime_value)"
+  printf "    disk:   %s\n" "$(shell_disk_usage_value)"
+  printf "    mem:    %s\n" "$(shell_memory_usage_value)"
   printf "    key:    %s\n" "$(key_status)"
   echo
   bold "  tailnet"; echo
@@ -863,27 +904,45 @@ status_page_orchestrator() {
 
 list_sessions() {
   if [ -x "$SESSIONS_TOOL" ]; then
-    "$SESSIONS_TOOL" list
-  else
-    tmux ls -F '#{session_name} #{?session_attached,attached,detached}' 2>/dev/null
+    "$SESSIONS_TOOL" list 2>/dev/null || true
+    return 0
+  fi
+
+  if tmux_available; then
+    tmux ls -F '#{session_name} #{?session_attached,attached,detached}' 2>/dev/null || true
   fi
 }
 
 session_count() {
-  tmux ls 2>/dev/null | wc -l | tr -d ' '
+  local count
+
+  count=$(list_sessions | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ' || true)
+  case "$count" in
+    ''|*[!0-9]*) printf '0\n' ;;
+    *) printf '%s\n' "$count" ;;
+  esac
 }
 
 session_names() {
-  tmux ls -F '#{session_name}' 2>/dev/null
+  if [ -x "$SESSIONS_TOOL" ]; then
+    list_sessions | awk '{print $1}'
+    return 0
+  fi
+
+  if tmux_available; then
+    tmux ls -F '#{session_name}' 2>/dev/null || true
+  fi
 }
 
 resolve_session_pick() {
   local pick="${1:-}" name
   [ -n "$pick" ] || return 1
-  if tmux has-session -t "$pick" 2>/dev/null; then
+
+  if session_names | grep -Fx -- "$pick" >/dev/null 2>&1; then
     printf '%s\n' "$pick"
     return 0
   fi
+
   case "$pick" in
     ''|*[!0-9]*) return 1 ;;
     *)
@@ -896,6 +955,12 @@ resolve_session_pick() {
 
 attach_named_session() {
   local name="$1"
+
+  if ! tmux_available; then
+    yellow "  tmux unavailable"; echo
+    return 1
+  fi
+
   if [ -n "${TMUX:-}" ]; then
     tmux switch-client -t "$name"
   else
@@ -936,12 +1001,26 @@ launch_tmux() {
     return 1
   fi
 
-  local cmd
   local base_cmd
   if [ "$tool" = "claude" ]; then
     base_cmd="claude --dangerously-skip-permissions"
   else
     base_cmd="codex --profile $tool --search --dangerously-bypass-approvals-and-sandbox"
+  fi
+
+  if ! tmux_available; then
+    echo "  $(yellow "tmux unavailable") launching without session persistence..."
+    sleep 0.3
+    (
+      export AZURE_OPENAI_API_KEY="${AZURE_OPENAI_API_KEY:-}"
+      export MAC_GUI_URL="${MAC_GUI_URL:-}"
+      export MAC_CDP_URL="${MAC_CDP_URL:-}"
+      export MAC_SSH_HOST="${MAC_SSH_HOST:-}"
+      export DWS_PRIMARY_PROJECT="$proj"
+      cd "$HOME/projects/$proj" || exit 1
+      bash -lc "$base_cmd"
+    )
+    return $?
   fi
 
   # Wrap in retry loop so crashes don't kill the tmux session
