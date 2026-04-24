@@ -138,6 +138,22 @@ assert_contains "$queue_line" "total=4"
 assert_contains "$plain_output" "active sessions"
 assert_contains "$plain_output" "wrkflo-orchestrator"
 
+missing_env_output=$(
+  HOME="${FIXTURE_ROOT}/home" \
+  PATH="${FAKE_BIN}:${ORIG_PATH}" \
+  DWS_LAUNCHER_ENV_PATH="${FIXTURE_ROOT}/missing-dws-env.sh" \
+  DWS_STATUS_TOOL="${FIXTURE_ROOT}/missing-status.sh" \
+  DWS_STATUS_TOOL_REPO="${FIXTURE_ROOT}/missing-status-repo.sh" \
+  DWS_TASK_QUEUE_PATH="$QUEUE_PATH" \
+  bash "$SCRIPT" status 2>&1
+)
+
+missing_env_plain_output=$(printf '%s\n' "$missing_env_output" | strip_ansi)
+
+assert_contains "$missing_env_plain_output" "sessions: 2 active"
+assert_contains "$missing_env_plain_output" "tailnet:  100.64.0.10"
+assert_contains "$missing_env_plain_output" "wrkflo-orchestrator"
+
 write_fake_command tailscale 'exit 1'
 
 write_fake_command df 'exit 1'
@@ -202,6 +218,7 @@ assert_contains "$shell_fallback_plain_output" "active sessions"
 assert_contains "$shell_fallback_plain_output" "projects"
 assert_contains "$shell_fallback_plain_output" "tailnet:  unavailable"
 assert_contains "$shell_fallback_plain_output" "(tailscale status unavailable)"
+assert_contains "$shell_fallback_plain_output" "disk:   unavailable"
 assert_contains "$shell_fallback_plain_output" "(none)"
 
 write_fake_command curl 'cat <<'\''EOF'\''
