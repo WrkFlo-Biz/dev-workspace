@@ -15,9 +15,9 @@ SESSION_SPECS=(
   "worker-c|dev-workspace|codex|5-4|foundry-5_4"
   "worker-d|dev-workspace|codex|5-4|foundry-5_4"
   "worker-e|dev-workspace|codex|5-4|foundry-5_4"
-  "worker-f|dev-workspace|codex|5-4|foundry-5_4"
+  "worker-f|dev-workspace|codex|5-2|foundry-5_2"
   "worker-g|dev-workspace|codex|5-4|foundry-5_4"
-  "worker-h|dev-workspace|codex|5-4|foundry-5_4"
+  "worker-h|dev-workspace|codex|5-2|foundry-5_2"
   "worker-i|dev-workspace|codex|5-4|foundry-5_4"
   "orchestrator|wrkflo-orchestrator|codex|5-4|foundry-5_4"
 )

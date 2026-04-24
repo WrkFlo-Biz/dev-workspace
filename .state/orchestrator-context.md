@@ -21,6 +21,23 @@ Generic workers available: dws-a, dws-b, worker-c, worker-d, worker-e, worker-f,
 Workers are generic, but optional specialization labels can be used for smart routing.
 Label source of truth: ~/projects/dev-workspace/.state/worker-labels.json
 
+### Session Model Tiers
+
+Managed `tmux` sessions created by `scripts/dws-sessions-init.sh` launch Codex
+with approvals bypassed (`--dangerously-bypass-approvals-and-sandbox`).
+
+Use this model map when routing work:
+
+| Session | Profile | Model tier | Preferred work |
+|------|------|---------|---------|
+| orchestrator | `foundry-5_4` | `5-4` | orchestration, planning, cross-repo coordination |
+| worker-c | `foundry-5_4` | `5-4` | heavier test/debug work |
+| worker-d | `foundry-5_4` | `5-4` | heavier docs/analysis work |
+| worker-f | `foundry-5_2` | `5-2` | bulk tasks that do not need the heaviest tier |
+| worker-h | `foundry-5_2` | `5-2` | lightweight edits and smaller follow-ups |
+
+All other generic workers currently stay on `foundry-5_4`.
+
 ### Dispatch
 
 To dispatch a task to a worker:
@@ -32,6 +49,8 @@ Use label-based routing before dispatching:
 1. Read ~/projects/dev-workspace/.state/worker-labels.json and look up the idle workers for the needed task type.
 2. Prefer workers whose labels match the task, especially when the task clearly maps to infra, docs, test, or sync work.
 3. Use foundry-heavy when the task will likely need broad repo scans, long-context reasoning, or heavier model work.
+   Prefer the sessions on `foundry-5_4`; keep `worker-f` and `worker-h` for
+   bulk or lightweight work unless capacity is constrained.
 4. If multiple idle workers match, pick any idle match with a non-overlapping file scope.
 5. If no labeled worker is idle, fall back to any idle worker rather than blocking the queue.
 6. Treat labels as routing hints only; availability and non-overlapping ownership still take priority.
