@@ -1111,13 +1111,14 @@ launch_tmux() {
     echo "  $(yellow "tmux unavailable") launching without session persistence..."
     sleep 0.3
     (
-      export AZURE_OPENAI_API_KEY="${AZURE_OPENAI_API_KEY:-}"
-      export MAC_GUI_URL="${MAC_GUI_URL:-}"
-      export MAC_CDP_URL="${MAC_CDP_URL:-}"
-      export MAC_SSH_HOST="${MAC_SSH_HOST:-}"
-      export DWS_PRIMARY_PROJECT="$proj"
       cd "$HOME/projects/$proj" || exit 1
-      bash -lc "$base_cmd"
+      env \
+        AZURE_OPENAI_API_KEY="${AZURE_OPENAI_API_KEY:-}" \
+        MAC_GUI_URL="${MAC_GUI_URL:-}" \
+        MAC_CDP_URL="${MAC_CDP_URL:-}" \
+        MAC_SSH_HOST="${MAC_SSH_HOST:-}" \
+        DWS_PRIMARY_PROJECT="$proj" \
+        bash -lc "$base_cmd"
     )
     return $?
   fi
