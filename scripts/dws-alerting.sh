@@ -245,12 +245,6 @@ recent_log_match_summary() {
   ' "$path"
 }
 
-read_summary_fields() {
-  local output="$1"
-
-  printf '%s\n' "$output"
-}
-
 check_monitor_restart_loop() {
   local monitor_log summary restart_count last_line window_text
 
