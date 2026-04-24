@@ -79,7 +79,9 @@ is_uint() {
 validate_config() {
   is_uint "$SSH_PORT" || die "DWS_BOOT_VERIFY_SSH_PORT must be an integer"
   is_uint "$SSH_TIMEOUT_SECONDS" || die "DWS_BOOT_VERIFY_SSH_TIMEOUT_SECONDS must be an integer"
-  [ "$SSH_PORT" -ge 1 ] && [ "$SSH_PORT" -le 65535 ] || die "DWS_BOOT_VERIFY_SSH_PORT must be between 1 and 65535"
+  if [ "$SSH_PORT" -lt 1 ] || [ "$SSH_PORT" -gt 65535 ]; then
+    die "DWS_BOOT_VERIFY_SSH_PORT must be between 1 and 65535"
+  fi
   [ "$SSH_TIMEOUT_SECONDS" -ge 1 ] || die "DWS_BOOT_VERIFY_SSH_TIMEOUT_SECONDS must be at least 1"
 }
 
@@ -199,13 +201,13 @@ PY
 }
 
 read_ssh_banner_tcp() {
-  timeout "$SSH_TIMEOUT_SECONDS" bash -c '
-    exec 3<>"/dev/tcp/$1/$2" || exit 1
+  timeout "$SSH_TIMEOUT_SECONDS" bash -c "
+    exec 3<>\"/dev/tcp/\$1/\$2\" || exit 1
     IFS= read -r line <&3 || exit 1
-    printf "%s\n" "$line"
+    printf '%s\n' \"\$line\"
     exec 3<&-
     exec 3>&-
-  ' _ "$SSH_HOST" "$SSH_PORT"
+  " _ "$SSH_HOST" "$SSH_PORT"
 }
 
 read_ssh_banner() {

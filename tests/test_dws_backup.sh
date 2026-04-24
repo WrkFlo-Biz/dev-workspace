@@ -215,6 +215,31 @@ test_backup_exits_non_zero_when_backup_root_is_invalid() {
   trap - EXIT
 }
 
+test_backup_dry_run_reports_actions_without_writing_files() {
+  local output snapshot archive archive_root
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  snapshot="${DWS_BACKUP_ROOT}/${DWS_BACKUP_TIMESTAMP}"
+  archive="${DWS_BACKUP_ROOT}/dws-backup-${DWS_BACKUP_TIMESTAMP}.tar.gz"
+  archive_root="dws-backup-${DWS_BACKUP_TIMESTAMP}"
+
+  output=$("${SCRIPT}" backup --dry-run 2>&1)
+
+  assert_contains "${output}" "would back up wrkflo config: ${DWS_WRKFLO_CONFIG_DIR} -> ${archive_root}/home/.config/wrkflo"
+  assert_contains "${output}" "would create archive: ${archive}"
+  assert_contains "${output}" "would refresh latest symlink: ${DWS_BACKUP_ROOT}/latest -> ${snapshot}"
+  assert_contains "${output}" "Backup complete"
+
+  [ ! -e "${snapshot}" ] || fail "expected dry-run not to create snapshot dir"
+  [ ! -e "${archive}" ] || fail "expected dry-run not to create archive"
+  [ ! -L "${DWS_BACKUP_ROOT}/latest" ] || fail "expected dry-run not to create latest symlink"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
 test_restore_and_verify_use_latest_snapshot_metadata() {
   local output restore_root extracted_root
 
@@ -272,6 +297,7 @@ test_backup_prunes_to_last_five_snapshots() {
 test_backup_creates_tarball_with_expected_contents
 test_backup_skips_missing_optional_dirs_gracefully
 test_backup_exits_non_zero_when_backup_root_is_invalid
+test_backup_dry_run_reports_actions_without_writing_files
 test_restore_and_verify_use_latest_snapshot_metadata
 test_backup_prunes_to_last_five_snapshots
 printf 'ok\n'

@@ -204,4 +204,26 @@ assert_contains "$shell_fallback_plain_output" "tailnet:  unavailable"
 assert_contains "$shell_fallback_plain_output" "(tailscale status unavailable)"
 assert_contains "$shell_fallback_plain_output" "(none)"
 
+write_fake_command curl 'cat <<'\''EOF'\''
+{"vm":{"hostname":"dev-workspace-vm","uptime":"up 1 hour","disk_percent":41,"memory_percent":37},"tailscale":{"connected":true,"ip":"100.64.0.10"},"sessions":["gs-5-4","orch-codex"],"projects":[{"name":"global-sentinel","branch":"main","dirty":false},{"name":"wrkflo-orchestrator","branch":"feature/queue","dirty":true}],"foundry_key":{"loaded":true}}
+EOF'
+
+write_fake_command broken-status 'printf "%s\n" "boom" >&2
+exit 1'
+
+tool_failure_output=$(
+  HOME="${FIXTURE_ROOT}/home" \
+  PATH="${FAKE_BIN}:${ORIG_PATH}" \
+  DWS_STATUS_TOOL="${FAKE_BIN}/broken-status" \
+  DWS_STATUS_TOOL_REPO="${FIXTURE_ROOT}/missing-status-repo.sh" \
+  DWS_TASK_QUEUE_PATH="$QUEUE_PATH" \
+  bash "$SCRIPT" status 2>&1
+)
+
+tool_failure_plain_output=$(printf '%s\n' "$tool_failure_output" | strip_ansi)
+
+assert_contains "$tool_failure_plain_output" "external status tool failed; falling back"
+assert_contains "$tool_failure_plain_output" "sessions: 2 active"
+assert_contains "$tool_failure_plain_output" "wrkflo-orchestrator"
+
 printf 'PASS: dws launcher status header\n'
