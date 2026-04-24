@@ -175,6 +175,14 @@ MONITOR_SERVICE_NAME="${DWS_MONITOR_SERVICE_NAME:-dws-task-monitor}"
 
 hr() { local w; w=$(tput cols 2>/dev/null || echo 40); printf '%*s\n' "$w" '' | tr ' ' '─'; }
 
+have_cmd() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+tmux_available() {
+  have_cmd tmux
+}
+
 host_info() {
   local h who
   h=$(hostname -s 2>/dev/null || echo "?")

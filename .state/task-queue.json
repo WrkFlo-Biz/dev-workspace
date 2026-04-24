@@ -1678,7 +1678,7 @@
       "repo": "dev-workspace",
       "description": "Run the full test suite: for f in tests/test_*.sh; do echo --- $f ---; bash $f 2>&1 | tail -5; done. Fix any test failures. Stage, commit, push.",
       "assigned": "worker-f",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "id": "refill-mdol13",
@@ -1693,8 +1693,8 @@
       "phase": 8,
       "repo": "dev-workspace",
       "description": "Review scripts/dws-launcher.sh for edge cases: what happens when no tmux sessions exist, when Tailscale is down, when foundry.env is missing. Add graceful fallbacks for each. Stage, commit, push.",
-      "assigned": null,
-      "status": "pending"
+      "assigned": "dws-a",
+      "status": "in_progress"
     },
     {
       "id": "refill-5xxf6b",

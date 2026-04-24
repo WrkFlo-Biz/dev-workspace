@@ -73,8 +73,8 @@ Without these toggles, calls return `{"ok": false, "error": "..."}`.
 - `mac-setup/mac-bridges.sh` — (re)starts Chrome + Hammerspoon + socat bridges.
 - `mac-setup/chrome-cdp.sh` — Chrome CDP helper (used by mac-bridges.sh).
 - `mac-setup/com.wrkflo.mac-bridges.plist` — LaunchAgent that runs
-  mac-bridges.sh on login. Installed at
-  `~/Library/LaunchAgents/com.wrkflo.mac-bridges.plist`.
+  mac-bridges.sh on login. Install it into the Mac user's LaunchAgents
+  directory when you wire up the local service.
 - `~/.hammerspoon/init.lua` — the Hammerspoon HTTP API implementation.
 - `scripts/control-mac-chrome.js` + `.sh` — VM-side puppeteer example.
 - `scripts/control-mac-gui.py` — VM-side wrapper for the `9223` Hammerspoon API.
