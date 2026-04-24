@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t tests < <(find tests -maxdepth 1 -type f -name 'test_*.sh' | sort)
+          mapfile -t tests < <(find tests -mindepth 1 -maxdepth 1 -type f -name '*.sh' | sort)
           expected_tests=21
 
           printf 'Discovered %s test files\n' "${#tests[@]}"
@@ -37,17 +37,19 @@ jobs:
           failures=0
 
           for test_file in "${tests[@]}"; do
-            printf '==> %s\n' "$test_file"
+            printf '\n==> %s\n' "$test_file"
             if timeout 60 bash "$test_file"; then
               printf 'PASS %s\n' "$test_file"
             else
               status=$?
-              printf 'FAIL %s (exit %s)\n' "$test_file" "$status"
+              printf 'FAIL %s (exit %s)\n' "$test_file" "$status" >&2
               failures=$((failures + 1))
             fi
           done
 
           if [ "$failures" -ne 0 ]; then
-            printf '%s test file(s) failed\n' "$failures" >&2
+            printf '\n%s test file(s) failed\n' "$failures" >&2
             exit 1
           fi
+
+          printf '\nAll %s test files passed\n' "${#tests[@]}"
