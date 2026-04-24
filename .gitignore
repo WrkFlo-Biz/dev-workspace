@@ -9,3 +9,4 @@
 # Local scratch
 .scratch/
 __pycache__/
+.github/
