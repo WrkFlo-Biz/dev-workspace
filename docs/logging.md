@@ -11,9 +11,11 @@ partially migrated:
 - several health, cron, planner, and legacy artifacts still live under `/tmp`
 - some service output only exists in `journald`
 
-One important constraint: the task monitor entrypoint is `~/bin/task-monitor.sh`
-on the VM, not a tracked file in this repo. The repo wires it into systemd, and
-the live host confirms that it writes `/var/log/dws/monitor.log` and updates
+One important constraint: the live task monitor entrypoint is
+`~/bin/task-monitor.sh` on the VM. This repo now tracks a source snapshot at
+`scripts/task-monitor.sh`, but the installed `~/bin` copy is still the live
+authority. The repo wires that host-local entrypoint into systemd, and the live
+host confirms that it writes `/var/log/dws/monitor.log` and updates
 `~/projects/dev-workspace/.state/task-queue.json`.
 
 ## `/var/log/dws` Layout

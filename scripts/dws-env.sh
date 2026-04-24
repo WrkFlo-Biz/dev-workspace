@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  set -euo pipefail
+  printf 'error: %s is a source-only helper\n' "$(basename "$0")" >&2
+  exit 1
+fi
+
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 export MAC_GUI_URL="${MAC_GUI_URL:-http://100.78.207.22:9223}"
 export MAC_CDP_URL="${MAC_CDP_URL:-http://100.78.207.22:9222}"

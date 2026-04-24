@@ -7,7 +7,7 @@
 #   - press q or ^C at the prompt to drop to a plain shell
 #   - set SKIP_LAUNCHER=1 before SSH (or in Termius host env) to disable
 
-set -u
+set -euo pipefail
 
 LAUNCHER_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(CDPATH='' cd -- "$LAUNCHER_DIR/.." && pwd)
@@ -160,8 +160,9 @@ if [ "$DWS_LAUNCHER_CMD" != "status" ]; then
 fi
 
 load_foundry_env >/dev/null 2>&1 || true
-init_launcher_env_defaults
-load_launcher_env >/dev/null 2>&1 || true
+if ! load_launcher_env >/dev/null 2>&1; then
+  init_launcher_env_defaults
+fi
 SESSIONS_TOOL="$SCRIPT_DIR/dws-sessions.sh"
 QUICK_TOOL="$SCRIPT_DIR/dws-quick.sh"
 HEALTH_LOG="/tmp/dws-health.log"
@@ -431,7 +432,7 @@ monitor_service_badge() {
 latest_health_result() {
   local line ok fail text
   [ -f "$HEALTH_LOG" ] || { printf '%s' "$(dim "none")"; return; }
-  line=$(tail -1 "$HEALTH_LOG" 2>/dev/null)
+  line=$(tail -1 "$HEALTH_LOG" 2>/dev/null || true)
   [ -n "$line" ] || { printf '%s' "$(dim "none")"; return; }
   text=$(printf '%s\n' "$line" | sed -n 's/^[0-9-]\{10\} [0-9:]\{8\} //p')
   ok=$(printf '%s\n' "$line" | sed -n 's/.*health: \([0-9][0-9]*\) ok, \([0-9][0-9]*\) fail.*/\1/p')

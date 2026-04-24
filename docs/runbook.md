@@ -47,7 +47,8 @@ Operational procedures for the `dev-workspace-vm` multi-agent environment.
 
 The service-managed boot path is:
 
-1. `dws-sessions-init.service` recreates the managed `tmux` pool.
+1. `dws-sessions-init.service` performs lightweight boot-time prep for the
+   on-demand session model.
 2. `dws-task-monitor.service` starts the monitor loop after session init.
 
 Verify the stack with:
@@ -87,11 +88,12 @@ the service path itself.
 systemctl --user stop dws-task-monitor.service
 ```
 
-### Full stop (stop monitor and kill the managed pool)
+### Full stop (stop monitor and kill currently active sessions if needed)
 
 ```bash
 systemctl --user stop dws-task-monitor.service
-for s in dws-a dws-b worker-c worker-d worker-e worker-f worker-g worker-h worker-i orchestrator; do
+tmux list-sessions -F '#{session_name}' 2>/dev/null | while read -r s; do
+  [ -n "$s" ] || continue
   tmux kill-session -t "$s" 2>/dev/null || true
 done
 ```
@@ -365,7 +367,7 @@ DWS_CRON_LOG_DIR=/var/log/dws ~/projects/dev-workspace/bin/dws-cron-setup.sh
 ```text
 Layer 3: Tailscale + SSH reconnect         -> operator reconnects to an existing session
 Layer 2: dws-task-monitor.service          -> relaunches crashed or compacted workers
-Layer 1: dws-sessions-init.service         -> recreates the managed tmux pool after boot
+Layer 1: dws-sessions-init.service         -> boot-time prep for the on-demand session model
 ```
 
 ## Mac Reconnect Agent

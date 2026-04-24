@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  set -euo pipefail
+  printf 'error: %s must be sourced from a shell startup file\n' "$(basename "$0")" >&2
+  exit 1
+fi
+
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=/dev/null
 . "$SCRIPT_DIR/dws-env.sh"

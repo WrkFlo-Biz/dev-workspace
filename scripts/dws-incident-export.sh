@@ -137,7 +137,7 @@ EOF
 }
 
 parse_args() {
-  while [ "$#" -gt 0 ]; do
+  if [ "$#" -gt 0 ]; then
     case "$1" in
       -h|--help|help)
         usage
@@ -147,8 +147,7 @@ parse_args() {
         die "unknown argument: $1"
         ;;
     esac
-    shift
-  done
+  fi
 }
 
 validate_config() {

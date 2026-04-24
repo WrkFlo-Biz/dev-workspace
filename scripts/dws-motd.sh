@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -u
+set -euo pipefail
 
 TASK_QUEUE_PATH="${DWS_TASK_QUEUE_PATH:-/tmp/task-queue.json}"
 BACKUP_ROOT="${DWS_BACKUP_ROOT:-$HOME/backups/dev-workspace}"

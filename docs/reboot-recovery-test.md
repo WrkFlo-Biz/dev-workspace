@@ -13,11 +13,11 @@ The drill validates that after a clean reboot (`sudo reboot`), the following com
 | Tailscale mesh | `tailscaled.service` (system) | active, VM IP `100.117.16.63`, Mac + iPhone visible |
 | SSH | `ssh.socket` (socket-activated) | `ssh.socket` active, `ssh.service` starts on first connection |
 | systemd user services | linger + `default.target.wants/` | 2 repo-managed user services active, plus optional host-local services if installed |
-| dws-sessions-init.service | `~/bin/dws-sessions-init.sh` (oneshot) | 10 tmux sessions recreated |
+| dws-sessions-init.service | `~/bin/dws-sessions-init.sh` (oneshot) | on-demand session model boot prep completes successfully |
 | dws-task-monitor.service | `~/bin/task-monitor.sh` (simple, Restart=on-failure) | active, writing `/var/log/dws/monitor.log` |
 | dws-phone-server.service | optional host-local `~/bin/dws-phone-server.py` | if installed: active, Restart=always |
 | wrkflo-orchestrator-api.service | optional sibling-repo FastAPI on `127.0.0.1:8100` | if installed: active, `/v1/workspace/health` returns 200 |
-| tmux sessions | spawned by `dws-sessions-init` | managed set present: `dws-a dws-b worker-c worker-d worker-e worker-f worker-g worker-h worker-i orchestrator` |
+| tmux sessions | operator/runtime state | `tmux list-sessions` works; active sessions are visible for comparison before/after reboot |
 | Cron | system `cron.service` | daemon active, 3 dev-workspace entries present |
 | Launcher | `~/bin/dws-launcher.sh` | runnable on a fresh SSH login |
 | Health / status | `dws-status.sh`, `dws-doctor.sh`, `dws-health.sh` | all three exit 0 |
@@ -68,7 +68,7 @@ Pass: `FOUNDRY_OK` printed; most recent backup ≤ 24 h old.
 ssh moses@dev-workspace-vm 'sudo reboot'
 ```
 
-Expected: SSH connection drops within ~2 s. VM is unreachable for ~60–90 s (Azure Standard_DC-series cold boot typical).
+Expected: SSH connection drops within ~2 s. VM is unreachable for roughly 60–90 s during a normal reboot.
 
 Wait loop from the Mac:
 
@@ -158,13 +158,13 @@ values above are the current source of truth for reboot verification.
 
 ### 3.4 dws-sessions-init.service
 
-Runs once at boot before `dws-task-monitor.service` and spawns all expected tmux sessions.
+Runs once at boot before `dws-task-monitor.service` and should finish cleanly for the on-demand session model.
 
 ```bash
 ssh moses@dev-workspace-vm 'systemctl --user status dws-sessions-init.service --no-pager | head -15; journalctl --user -u dws-sessions-init.service -n 30 --no-pager'
 ```
 
-Pass: `Active: active (exited)`, `Main PID: ... (code=exited, status=0/SUCCESS)`; log contains `sessions init complete: 10 sessions`.
+Pass: `Active: active (exited)`, `Main PID: ... (code=exited, status=0/SUCCESS)`; log contains the on-demand completion message.
 Fail: non-zero exit → `journalctl --user -u dws-sessions-init.service -b` for root cause; rerun manually with `systemctl --user start dws-sessions-init.service`.
 
 ### 3.5 dws-task-monitor.service
@@ -209,8 +209,8 @@ Fail: inactive or non-200 → `journalctl --user -u wrkflo-orchestrator-api.serv
 ssh moses@dev-workspace-vm 'tmux list-sessions'
 ```
 
-Pass: the 10 managed sessions are present: `dws-a`, `dws-b`, `worker-c`, `worker-d`, `worker-e`, `worker-f`, `worker-g`, `worker-h`, `worker-i`, `orchestrator`. Extra ad hoc sessions are acceptable but should be noted separately.
-Fail: any managed session is missing → `systemctl --user restart dws-sessions-init.service`. If any session exists but codex is missing inside, inspect the session with `~/projects/dev-workspace/bin/dws-sessions.sh show <session>` before forcing a relaunch.
+Pass: `tmux list-sessions` succeeds and any active sessions you expect before the reboot are visible afterwards. Extra ad hoc sessions are acceptable and should be noted separately.
+Fail: `tmux` is unavailable, the server does not respond, or expected operator sessions are missing → inspect with `~/projects/dev-workspace/bin/dws-sessions.sh show <session>` before forcing a relaunch.
 
 ### 3.9 Cron
 
@@ -248,7 +248,7 @@ ssh moses@dev-workspace-vm '
 '
 ```
 
-Pass: all commands exit `0`; `dws-status.sh` shows the managed session set; `dws-doctor.sh` has no `FAIL` lines; the `dws-health.sh --json` payload reports `tailnet.connected=true`, `tools.foundry_key_loaded=true`, and both managed user services healthy.
+Pass: all commands exit `0`; `dws-doctor.sh` has no `FAIL` lines; the `dws-health.sh --json` payload reports `tailnet.connected=true`, `tools.foundry_key_loaded=true`, and both managed user services healthy.
 Fail: any script exits non-zero → section-specific recovery above, then rerun the failing script.
 
 ## Phase 4 — Sign-off
@@ -259,7 +259,7 @@ The drill is green when **all** of the following hold:
 - Sections 3.1 – 3.5 and 3.8 – 3.11 each show their pass criterion.
 - Sections 3.6 and 3.7 either pass or are explicitly skipped because the
   optional service is not installed on that host.
-- `tmux list-sessions` shows the managed 10-session pool.
+- `tmux list-sessions` responds and any required operator sessions are present.
 - `~/projects/dev-workspace/scripts/dws-health.sh --json` returns healthy service state after the reboot.
 - Monitor log advanced at least 2 cycles (1 min) since boot.
 
@@ -276,7 +276,7 @@ ssh moses@dev-workspace-vm 'echo "SIGNOFF $(date -u +%Y-%m-%dT%H:%M:%SZ) green" 
 | VM unreachable > 5 min after reboot | Azure portal → VM status; try Serial Console | Open an Azure support ticket; if prolonged, cut traffic back to `openclaw-gateway-vm` for any user-facing work |
 | `ssh.socket` inactive on boot | `sudo systemctl start ssh.socket`; check journal | If recurring, re-enable: `sudo systemctl enable --now ssh.socket` and add to `dws-boot-verify.sh` hard fail list |
 | User services not starting (linger off) | `sudo loginctl enable-linger moses` then reboot | If linger is already on but services still not starting, inspect `systemctl --user --failed` and `journalctl --user -b` |
-| tmux sessions missing after `dws-sessions-init` | `systemctl --user restart dws-sessions-init.service` | If repeated failures, check `~/.config/wrkflo/foundry.env` exists; codex needs the API key loaded |
+| required operator sessions missing after reboot | inspect with `tmux list-sessions` and `dws-sessions.sh show`; relaunch only the sessions you actually need | If repeated failures, check `~/.config/wrkflo/foundry.env`, launcher status, and the installed runtime helpers before rebuilding sessions |
 | `wrkflo-orchestrator-api` failing | `journalctl --user -u wrkflo-orchestrator-api.service -b`; ensure `~/.local/state/wrkflo-orchestrator/` exists | Fall back to direct file edits via ssh + git; the API is a convenience layer |
 | Tailscale down, SSH via public IP only | `sudo systemctl restart tailscaled`; if key expired, re-auth via the URL printed by `sudo tailscale up --ssh --operator=moses` | If tailnet unreachable org-wide, verify account billing status |
 | `/var/log/dws/` missing or not writable | `sudo mkdir -p /var/log/dws && sudo chown moses:moses /var/log/dws` | Fold this into `vm-bootstrap.sh` so fresh provisions have it |

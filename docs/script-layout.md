@@ -9,8 +9,8 @@
 - `bin/dws-boot-verify.sh` and `bin/dws-systemd-user-setup.sh` are standalone
   repo-owned entrypoints, not wrappers.
 - `~/bin/` on the VM is the live runtime install path for copied scripts,
-  direct symlinks into `scripts/`, and host-local helpers such as
-  `task-monitor.sh`.
+  direct symlinks into `scripts/`, and host-local copies of some repo-tracked
+  scripts such as `task-monitor.sh`.
 
 ## Wrapper Pattern
 
@@ -20,8 +20,10 @@ Example wrapper: `bin/dws-status.sh`
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-exec "${BASH:-/usr/bin/bash}" "${BASE_DIR}/../scripts/dws-status.sh" "$@"
+BASE_DIR="${BASH_SOURCE[0]%/*}"
+[ "$BASE_DIR" != "${BASH_SOURCE[0]}" ] || BASE_DIR='.'
+BASE_DIR=$(CDPATH='' cd -- "$BASE_DIR" && pwd)
+exec "${BASE_DIR}/../scripts/dws-status.sh" "$@"
 ```
 
 Operational rule:
@@ -35,51 +37,37 @@ Do not symlink the repo `bin/` wrappers into `~/bin`; those wrappers resolve
 `../scripts` relative to their own path and can break when invoked through a
 different directory.
 
-## Current Repo Inventory
+## Selected Repo Entry Points
 
-Canonical `scripts/` programs currently tracked here:
+This section is intentionally curated, not exhaustive. For the full tracked
+surface, use:
 
-- `apply-codex-profiles.sh`
-- `control-mac-chrome.js`
-- `control-mac-chrome.sh`
-- `control-mac-gui.py`
+```bash
+rg --files scripts bin | sort
+```
+
+High-traffic canonical scripts:
+
 - `dws-backup.sh`
-- `dws-bashrc.sh`
 - `dws-cleanup.sh`
 - `dws-connect-test.sh`
 - `dws-cron-setup.sh`
 - `dws-doctor.sh`
-- `dws-env.sh`
-- `dws-firewall.sh`
 - `dws-health-check.sh`
-- `dws-health-full.sh`
 - `dws-health.sh`
 - `dws-launcher.sh`
-- `dws-log-viewer.sh`
-- `dws-log.sh`
-- `dws-motd.sh`
 - `dws-notify.sh`
-- `dws-phone-server.py`
-- `dws-profile.sh`
-- `dws-quick.sh`
-- `dws-rotate-logs.sh`
-- `dws-session-meta.sh`
-- `dws-sessions-init.sh`
-- `dws-sessions.sh`
-- `dws-status.sh`
-- `dws-sync-all.sh`
-- `dws-sync-mac.sh`
-- `dws-tailscale-diag.sh`
-- `dws-termius-setup.sh`
-- `dws-tunnel.sh`
-- `dws-update.sh`
-- `sync-mac-to-vm.sh`
-- `sync-vm-to-mac.sh`
-- `vm-bootstrap.sh`
+- `dws-queue-inspector.sh`
+- `dws-reboot-drill.sh`
+- `dws-service-map.sh`
+- `dws-summary.sh`
+- `dws-worker-exec.sh`
+- `task-monitor.sh`
 - `vm-setup.sh`
 
-Repo `bin/` wrappers currently tracked here:
+High-traffic repo `bin/` wrappers:
 
+- `dws-alerting.sh`
 - `dws-backup.sh`
 - `dws-cleanup.sh`
 - `dws-connect-test.sh`
@@ -89,13 +77,18 @@ Repo `bin/` wrappers currently tracked here:
 - `dws-health-full.sh`
 - `dws-log-viewer.sh`
 - `dws-motd.sh`
+- `dws-queue-inspector.sh`
+- `dws-reboot-drill.sh`
 - `dws-rotate-logs.sh`
+- `dws-service-map.sh`
 - `dws-sessions-init.sh`
 - `dws-sessions.sh`
 - `dws-status.sh`
+- `dws-summary.sh`
 - `dws-sync-mac.sh`
 - `dws-tailscale-diag.sh`
 - `dws-termius-setup.sh`
+- `dws-worker-utilization.sh`
 - `vm-setup.sh`
 
 Standalone repo `bin/` entrypoints:

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-set -u
-[ -n "${AZURE_OPENAI_API_KEY:-}" ] || { [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"; }
+set -euo pipefail
+if [ -z "${AZURE_OPENAI_API_KEY:-}" ] && [ -f "$HOME/.config/wrkflo/foundry.env" ]; then
+  set +u
+  # shellcheck source=/dev/null
+  . "$HOME/.config/wrkflo/foundry.env" || true
+  set -u
+fi
 : "${MAC_TAILNET_IP:=100.78.207.22}"
 : "${PHONE_TAILNET_IP:=100.88.249.22}"
 : "${GATEWAY_TAILNET_IP:=100.126.194.98}"
@@ -197,7 +202,7 @@ tailnet_ping_result(){
     printf 'missing|\n'
     return
   fi
-  out=$(tailscale ping -c 1 "$ip" 2>/dev/null | sed -n '1p')
+  out=$(tailscale ping -c 1 "$ip" 2>/dev/null | sed -n '1p' || true)
   lat=$(printf '%s\n' "$out" | sed -n 's/.* in \([^ ]*\)$/\1/p')
   [ -n "$lat" ] && printf 'reachable|%s\n' "$lat" || printf 'unreachable|\n'
 }
@@ -252,7 +257,8 @@ case "${1:-}" in
     printf '{\n'
     printf '  "system":{"hostname":"%s","uptime":"%s","disk":"%s","memory":"%s"},\n' \
       "$(jesc "$(hostname -s 2>/dev/null || hostname)")" "$(jesc "$(uptime -p 2>/dev/null || uptime)")" \
-      "$(jesc "$(df -h / | awk 'NR == 2 { print $3 "/" $2 " (" $5 " used)" }')")" "$(jesc "$(free -h | awk 'NR == 2 { print $3 "/" $2 " used" }')")"
+      "$(jesc "$(df -h / 2>/dev/null | awk 'NR == 2 { print $3 "/" $2 " (" $5 " used)" }' || printf 'unavailable')")" \
+      "$(jesc "$(free -h 2>/dev/null | awk 'NR == 2 { print $3 "/" $2 " used" }' || printf 'unavailable')")"
     printf '  "tools":{"codex_version":"%s","claude_version":"%s","gh_auth":%s,"foundry_key_loaded":%s},\n' \
       "$(jesc "$(have codex && ver codex || echo missing)")" "$(jesc "$(have claude && ver claude || echo missing)")" "$gh_ok" "$([ -n "${AZURE_OPENAI_API_KEY:-}" ] && echo true || echo false)"
     printf '  "services":{"orchestrator_api":{"url":"%s","http_code":"%s","reachable":%s},"dws_task_monitor":{"state":"%s","healthy":%s},"dws_sessions_init":{"state":"%s","healthy":%s}},\n' \
@@ -275,7 +281,7 @@ case "${1:-}" in
 esac
 tailnet_peers(){
   local self
-  self=$(tailscale ip -4 2>/dev/null | sed -n '1p')
+  self=$(tailscale ip -4 2>/dev/null | sed -n '1p' || true)
   tailscale status --peers 2>/dev/null | awk -v self="$self" '
     $1 != self && $5 != "-" {
       s = $5; for (i = 6; i <= NF; i++) s = s " " $i
@@ -312,7 +318,7 @@ for d in "$HOME"/projects/*; do
   n=$(basename "$d")
   b=$(git -C "$d" symbolic-ref --quiet --short HEAD 2>/dev/null || git -C "$d" rev-parse --short HEAD 2>/dev/null)
   if git -C "$d" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
-    IFS=$'\t ' read -r behind ahead <<<"$(git -C "$d" rev-list --left-right --count '@{upstream}...HEAD' 2>/dev/null)"
+    IFS=$'\t ' read -r behind ahead <<<"$(git -C "$d" rev-list --left-right --count '@{upstream}...HEAD' 2>/dev/null || true)"
     div="+${ahead:-0}/-${behind:-0}"
   else
     div="no-upstream"
@@ -328,22 +334,22 @@ printf '  claude       %s\n' "$(fmt_tool_version claude)"
 
 sec "Auth"
 if have gh && gh auth status >/dev/null 2>&1; then
-  gh_user=$(gh auth status 2>/dev/null | sed -n 's/.*account \([^ ]*\).*/\1/p' | head -1)
+  gh_user=$(gh auth status 2>/dev/null | sed -n 's/.*account \([^ ]*\).*/\1/p' | head -1 || true)
   printf '  gh           %s\n' "$(g "${gh_user:-ok}")"
 else
   printf '  gh           %s\n' "$(r missing)"
 fi
 if have az; then
-  az_acct=$(az account show --query '[user.name,name]' -o tsv 2>/dev/null | paste -sd'|' -)
+  az_acct=$(az account show --query '[user.name,name]' -o tsv 2>/dev/null | paste -sd'|' - || true)
   [ -n "$az_acct" ] && printf '  az           %s\n' "$(g "$az_acct")" || printf '  az           %s\n' "$(r missing)"
 else
   printf '  az           %s\n' "$(r missing)"
 fi
 
 sec "System"
-printf '  disk         %s\n' "$(df -h / | awk 'NR == 2 { print $3 "/" $2 " (" $5 " used)" }')"
-printf '  memory       %s\n' "$(free -h | awk 'NR == 2 { print $3 "/" $2 " used" }')"
-printf '  uptime       %s\n' "$(uptime -p 2>/dev/null || uptime)"
+printf '  disk         %s\n' "$(df -h / 2>/dev/null | awk 'NR == 2 { print $3 "/" $2 " (" $5 " used)" }' || printf 'unavailable')"
+printf '  memory       %s\n' "$(free -h 2>/dev/null | awk 'NR == 2 { print $3 "/" $2 " used" }' || printf 'unavailable')"
+printf '  uptime       %s\n' "$(uptime -p 2>/dev/null || uptime 2>/dev/null || printf 'unavailable')"
 
 sec "Services"
 printf '  task monitor %s\n' "$(fmt_user_unit_state "$(user_unit_state dws-task-monitor)")"

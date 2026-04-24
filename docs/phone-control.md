@@ -1,5 +1,9 @@
 # Phone control (VM ⇄ iPhone)
 
+This path is still operator-local. The repo tracks `scripts/dws-phone-server.py`
+only; it does not provision a `bin/dws-phone-server.py` wrapper, a tracked
+`dws-phone-server.service` unit, or the host-local `push-phone` helper.
+
 The closest thing iOS permits to "control my phone from the terminal":
 
 ```

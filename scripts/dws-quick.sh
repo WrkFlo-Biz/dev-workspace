@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eu
+set -euo pipefail
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TMUX_SOCKET="${DWS_TMUX_SOCKET:-}"
@@ -56,12 +56,10 @@ model(){ case "$1" in
 [ $# -eq 2 ] || { usage >&2; exit 1; }
 command -v tmux >/dev/null 2>&1 || die "tmux is required"
 
-IFS='|' read -r proj short <<EOF
-$(project "$1")
-EOF
-IFS='|' read -r label profile <<EOF
-$(model "$2")
-EOF
+project_spec=$(project "$1") || { usage >&2; die "unknown project: $1"; }
+IFS='|' read -r proj short <<<"$project_spec"
+model_spec=$(model "$2") || { usage >&2; die "unknown model: $2"; }
+IFS='|' read -r label profile <<<"$model_spec"
 [ -d "$HOME/projects/$proj" ] || die "missing ~/projects/$proj"
 session="${short}-${label}"
 if tmux_q has-session -t "$session" 2>/dev/null; then

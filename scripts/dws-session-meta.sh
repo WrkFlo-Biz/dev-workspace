@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  set -euo pipefail
+  printf 'error: %s is a source-only helper\n' "$(basename "$0")" >&2
+  exit 1
+fi
+
 dws_session_meta_dir() {
   local root
   root="${DWS_SESSION_META_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/dev-workspace/session-meta}"

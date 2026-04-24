@@ -47,6 +47,10 @@ Azure Foundry launcher targets plus native Claude Code:
 | `dws` | `dev-workspace` | This repo: VM, launcher, bridge, and ops tooling |
 
 ## Scripts
+
+This table is intentionally curated rather than exhaustive. For the full tracked
+surface, run `rg --files scripts bin | sort`.
+
 | Script | Purpose |
 | --- | --- |
 | `apply-codex-profiles.sh` | Merge Foundry profiles into `~/.codex/config.toml` |
@@ -69,6 +73,14 @@ Azure Foundry launcher targets plus native Claude Code:
 | `sync-vm-to-mac.sh` | `rsync` a VM folder back down to the Mac |
 | `vm-bootstrap.sh` | Lightweight idempotent VM bootstrap |
 | `vm-setup.sh` | Full Ubuntu VM setup for packages, repos, profiles, and services |
+
+## Tests
+
+Run the repo shell suite with:
+
+```bash
+bash tests/run_all.sh
+```
 
 ## Backup Verification
 

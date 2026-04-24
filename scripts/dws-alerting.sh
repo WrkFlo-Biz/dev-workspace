@@ -440,7 +440,7 @@ check_cron_failures() {
 }
 
 main() {
-  while [ $# -gt 0 ]; do
+  if [ $# -gt 0 ]; then
     case "$1" in
       -h|--help)
         usage
@@ -450,8 +450,7 @@ main() {
         die "unknown flag: $1"
         ;;
     esac
-    shift
-  done
+  fi
 
   validate_config
 

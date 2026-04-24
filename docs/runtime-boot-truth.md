@@ -1,32 +1,26 @@
 # Runtime And Boot Truth
 
-Observed on `dev-workspace-vm` on 2026-04-23 UTC.
+Updated for the checked-in repo state on 2026-04-24 UTC.
 
 This file records the live runtime and boot behavior currently in use on the
 VM, not just the checked-in repo intent.
 
-## Managed tmux truth
+## Session truth
 
-Observed `tmux` sessions included:
+The checked-in repo now describes an on-demand session model:
 
-```text
-dws-a
-dws-b
-orchestrator
-worker-c
-worker-d
-worker-e
-worker-f
-worker-g
-worker-h
-worker-i
-```
+- `scripts/dws-sessions-init.sh` does not spawn a fixed Codex worker pool.
+- `dws-task-monitor.service` remains a user service, not a dedicated `tmux`
+  pane.
+- `tmux` sessions present on the VM are operator/runtime state, not a
+  repo-guaranteed boot contract.
 
-Interpretation:
+Historical note:
 
-- The managed boot set is `dws-a`, `dws-b`, `worker-c` through `worker-i`, and
-  `orchestrator` (10 sessions total).
-- There is no dedicated `monitor` `tmux` session in the managed service model.
+- older live snapshots included `dws-a`, `dws-b`, `orchestrator`, and several
+  `worker-*` sessions
+- those snapshots are still useful for incident archaeology, but they are not
+  the current repo truth
 
 ## Task monitor truth
 
@@ -42,7 +36,7 @@ Current runtime behavior:
 
 - runs as a systemd user service, not inside `tmux`
 - loops every `30` seconds
-- manages nine worker sessions
+- manages a small host-local worker set defined by the installed runtime
 - writes cycle logs to `/var/log/dws/monitor.log`
 - reads and updates `~/projects/dev-workspace/.state/task-queue.json`
 - recreates worker sessions that are dead, crashed, compacted, or stuck
@@ -86,7 +80,7 @@ Service definitions:
 
 - `dws-sessions-init.service`
   - runs `%h/bin/dws-sessions-init.sh`
-  - oneshot bootstrap that recreates the 10 managed `tmux` sessions
+  - oneshot bootstrap for the on-demand session model
   - remains `active (exited)` after success
 - `dws-task-monitor.service`
   - runs `%h/bin/task-monitor.sh`
@@ -118,11 +112,12 @@ What still needs explicit proof:
 
 The VM-local `~/bin` entrypoints can drift from the checked-in repo copies.
 
-Observed examples on 2026-04-23:
+Observed examples before this repo sync:
 
-- installed `~/bin/dws-sessions-init.sh` recreates the 10 managed sessions only
-- checked-in `scripts/dws-sessions-init.sh` still includes a `monitor` session
-- installed `~/bin/dws-boot-verify.sh` still checks older paths and assumptions
+- installed `~/bin/dws-sessions-init.sh` and `~/bin/dws-boot-verify.sh` could
+  lag behind the checked-in repo copies
+- some older docs described a fixed 10-session boot pool even after the repo
+  moved to on-demand sessions
 
 Operational rule:
 

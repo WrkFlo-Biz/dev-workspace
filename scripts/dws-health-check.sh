@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -u
+set -euo pipefail
 LOG=/tmp/dws-health.log
 ALERT_LOG=/tmp/dws-health-alerts.log
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -27,7 +27,12 @@ if [ "$mem_pct" -lt 90 ]; then
 else
   alert "memory at ${mem_pct}%"
 fi
-[ -n "${AZURE_OPENAI_API_KEY:-}" ] || { [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"; }
+if [ -z "${AZURE_OPENAI_API_KEY:-}" ] && [ -f "$HOME/.config/wrkflo/foundry.env" ]; then
+  set +u
+  # shellcheck source=/dev/null
+  . "$HOME/.config/wrkflo/foundry.env" || true
+  set -u
+fi
 if [ -n "${AZURE_OPENAI_API_KEY:-}" ]; then
   ok
 else
@@ -39,7 +44,7 @@ else
   alert "Tailscale not connected"
 fi
 MAC_IP="${MAC_GUI_URL:-http://100.78.207.22:9223}"
-MAC_IP=$(echo "$MAC_IP" | sed 's|http://||;s|:.*||')
+MAC_IP=$(printf '%s\n' "$MAC_IP" | sed 's|http://||;s|:.*||')
 if ping -c1 -W2 "$MAC_IP" >/dev/null 2>&1; then
   ok
 else

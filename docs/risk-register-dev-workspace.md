@@ -26,7 +26,7 @@ Captured on 2026-04-23 UTC from the live VM state.
 | Phone path lacks a formal verification artifact | iPhone SSH success exists in journal, but there is no structured operator test record | docs can drift from real operator behavior | run and document a real phone validation checklist |
 | `dws-phone-server` binds `0.0.0.0:8081` | service is reachable on-host and via tailnet; Azure NSG currently blocks public ingress | future ingress mistakes could expose phone callback path | document intended exposure and include in firewall policy review |
 | Repo is busy and dirty | many modified/untracked files; active worker sessions still editing repo-owned files | commit conflicts and accidental reverts | avoid worker-owned files, stage changes in coherent batches only after workers settle |
-| Ad hoc `tmux` sessions can blur the managed baseline | managed boot set is 10 sessions, but extra project-specific or debugging sessions can appear during live work | operators may misread a healthy runtime as drift, or miss real boot regressions | treat the 10-session pool as the managed contract and anything extra as opt-in/operator-owned |
+| Session-model drift across repo and live host | checked-in `dws-sessions-init.sh` now declares an on-demand model, while other boot and monitor surfaces still carry legacy fixed-pool assumptions | operators can misread healthy runtime state or enforce the wrong recovery checks | reconcile boot, monitor, and docs around one session model; until then, prefer live service state plus current installed entrypoints as truth |
 
 ## Low
 

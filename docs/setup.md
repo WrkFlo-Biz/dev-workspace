@@ -103,8 +103,9 @@ What `vm-setup.sh` does **not** finish for you:
 - it does not authenticate `gh` or `az` for you
 - it does not install the repo-managed `dws-sessions-init.service` and
   `dws-task-monitor.service`
-- it does not provide `~/bin/task-monitor.sh` because that script is
-  operator-managed and not stored in this repo
+- it does not provide a live `~/bin/task-monitor.sh`; the service entrypoint is
+  still host-local even though this repo now tracks a source copy at
+  `scripts/task-monitor.sh`
 
 The script is idempotent. If it stops because `gh` is not authenticated yet,
 run `gh auth login` and rerun the same command.
@@ -338,7 +339,9 @@ Tracked templates live in `config/systemd-user/`, and the installer is:
 
 Their purpose:
 
-- `dws-sessions-init.service` recreates the managed `tmux` pool at boot
+- `dws-sessions-init.service` performs lightweight boot-time prep for the
+  on-demand session model and can start the orchestrator API if that sibling
+  unit is installed
 - `dws-task-monitor.service` runs `~/bin/task-monitor.sh`
 
 Prerequisites before you install them:
@@ -349,9 +352,11 @@ Prerequisites before you install them:
 - `~/.config/wrkflo/foundry.env` exists
 - `~/projects/wrkflo-orchestrator` exists
 
-`~/bin/task-monitor.sh` is not stored in this repo. It is operator-managed
-runtime code. If you do not have that script yet, skip `dws-task-monitor.service`
-until you do.
+The live `~/bin/task-monitor.sh` entrypoint is still host-local runtime code.
+This repo tracks `scripts/task-monitor.sh` as a source snapshot, but the
+installed `~/bin` copy can drift until the service is fully repo-managed. If
+you do not have a working `~/bin/task-monitor.sh` yet, skip
+`dws-task-monitor.service` until you do.
 
 Install and enable linger so the services survive reboot without an active
 login:

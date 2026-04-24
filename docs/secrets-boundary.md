@@ -16,9 +16,9 @@ the dev-workspace VM.
 
 ### Foundry-only sessions
 
-Default worker pool:
-`dws-a`, `dws-b`, `worker-c`, `worker-d`, `worker-e`, `worker-f`, `worker-g`,
-`worker-h`, `worker-i`.
+Default case:
+launcher-created Codex or Foundry sessions such as `gs-5-4`, `dws-5-4`, or any
+host-local worker session that the installed runtime happens to create.
 
 - These sessions should only need `AZURE_OPENAI_API_KEY`.
 - They are the right place for normal repo edits, local tests, shell work, and
@@ -53,10 +53,8 @@ Termius/Mac repair flows, or direct bridge debugging.
 
 ## How `foundry.env` Loads
 
-Managed pool sessions from `scripts/dws-sessions-init.sh`:
-
-- prepend `source ~/.config/wrkflo/foundry.env 2>/dev/null || true`
-- then `exec codex --profile ... --search --dangerously-bypass-approvals-and-sandbox`
+`scripts/dws-sessions-init.sh` no longer spawns a managed Codex pool in the
+checked-in repo. It performs lightweight boot prep for the on-demand model.
 
 Ad hoc launcher sessions from `scripts/dws-launcher.sh` and
 `scripts/dws-quick.sh`:

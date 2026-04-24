@@ -171,32 +171,20 @@ Recovery and inspection are handled by
 - `recover` respawns the original pane command in place
 - `relaunch` starts a fresh quick-launch session for the same repo/profile
 
-### Managed tmux sessions
+### Session model
 
-The service-managed `tmux` pool expected on the VM is:
+The checked-in repo is now aligned to an on-demand `tmux` model:
 
-```text
-dws-a
-dws-b
-orchestrator
-worker-c
-worker-d
-worker-e
-worker-f
-worker-g
-worker-h
-worker-i
-```
+- `dws-sessions-init.service` performs lightweight boot prep and does not spawn
+  a fixed Codex session pool.
+- `dws-task-monitor.service` is a user service, not a dedicated `tmux` pane.
+- `orchestrator` may still exist as a live session on hosts that run the
+  sibling API/runtime, but it is no longer a repo-guaranteed boot-time session.
+- Additional ad hoc sessions can exist during live operation and are expected.
 
-Operational meaning:
-
-- `orchestrator` is a dedicated `wrkflo-orchestrator` Codex session.
-- `dws-a`, `dws-b`, and `worker-c` through `worker-i` are autonomous worker panes.
-- The monitor is not part of the managed `tmux` pool anymore; it runs as the
-  user service `dws-task-monitor.service`.
-- Additional ad hoc sessions can exist during live operation. Those sessions are
-  not part of the managed boot set and should not be used as the expected
-  service baseline.
+One live VM snapshot previously showed `dws-a`, `dws-b`, `orchestrator`, and
+`worker-*` sessions, but that should be treated as historical operator state,
+not the current checked-in boot contract.
 
 This matters because older docs reference a `planner` tmux session. On this VM,
 the active control-plane session observed on April 24, 2026 is `orchestrator`,
@@ -214,7 +202,7 @@ Managed units:
 
 | Unit | ExecStart | Role |
 | --- | --- | --- |
-| `dws-sessions-init.service` | `/usr/bin/bash %h/bin/dws-sessions-init.sh` | oneshot bootstrap that recreates the 10 managed `tmux` sessions |
+| `dws-sessions-init.service` | `/usr/bin/bash %h/bin/dws-sessions-init.sh` | oneshot bootstrap for the on-demand session model |
 | `dws-task-monitor.service` | `/usr/bin/bash %h/bin/task-monitor.sh` | long-running monitor loop that starts after `dws-sessions-init.service` |
 
 The installed `~/bin` copies are the live service entrypoints. The repo files
@@ -233,7 +221,7 @@ Current runtime characteristics:
 | Loop interval | `30` seconds |
 | Queue file | `~/projects/dev-workspace/.state/task-queue.json` |
 | Monitor log | `/var/log/dws/monitor.log` |
-| Managed workers | `dws-a`, `dws-b`, `worker-c`..`worker-i` |
+| Worker sessions | host/runtime-dependent; no fixed repo-owned boot pool |
 | Special session | `orchestrator` is health-checked and recreated immediately if missing |
 
 Behavior:
