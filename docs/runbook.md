@@ -16,6 +16,13 @@ Operational procedures for the `dev-workspace-vm` multi-agent environment.
 | Monitor log | `/var/log/dws/monitor.log` |
 | Boot verifier | `~/projects/dev-workspace/bin/dws-boot-verify.sh` |
 | Launcher status | `~/projects/dev-workspace/scripts/dws-launcher.sh status` |
+| `dws-summary.sh` | `~/projects/dev-workspace/bin/dws-summary.sh` |
+| `dws-alerting.sh` | `~/projects/dev-workspace/bin/dws-alerting.sh` |
+| `dws-queue-inspector.sh` | `~/projects/dev-workspace/bin/dws-queue-inspector.sh` |
+| `dws-termius-verify.sh` | `~/projects/dev-workspace/bin/dws-termius-verify.sh` |
+| `dws-reboot-drill.sh` | `~/projects/dev-workspace/bin/dws-reboot-drill.sh` |
+| `dws-service-map.sh` | `~/projects/dev-workspace/bin/dws-service-map.sh` |
+| `dws-maintenance-mode.sh` | `~/projects/dev-workspace/bin/dws-maintenance-mode.sh` |
 | SSH hardening (live) | `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` |
 | SSH baseline (repo) | `~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf` |
 | Foundry env | `~/.config/wrkflo/foundry.env` |
@@ -106,6 +113,26 @@ tail -n 40 /var/log/dws/monitor.log
 ```bash
 tail -f /var/log/dws/monitor.log
 ```
+
+## Ops Hardening
+
+Recent alerting and monitoring work adds dedicated operator surfaces so queue
+stalls, service drift, and recovery regressions show up before they become a
+manual incident.
+
+| Tool | Purpose |
+| --- | --- |
+| `~/projects/dev-workspace/bin/dws-alerting.sh` | Append alerts to `/var/log/dws/alerts.log` for monitor restart loops, repeated rate limits, missing Tailscale peers, disk pressure, and recent cron failures. |
+| `~/projects/dev-workspace/bin/dws-queue-inspector.sh` | Summarize queue depth, per-worker assignment counts, and completion rates; use `--json` when piping into other tooling. |
+| `~/projects/dev-workspace/bin/dws-service-map.sh` | Show the current user-systemd boot order, dependency tree, and runtime state for `dws-sessions-init.service` and `dws-task-monitor.service`. |
+| `~/projects/dev-workspace/bin/dws-worker-utilization.sh` | Parse `/var/log/dws/monitor.log` into per-worker completions, rate-limit hits, idle percentage, and average task duration. |
+| `~/projects/dev-workspace/bin/dws-termius-verify.sh` | Validate the phone access path before relying on Termius during recovery drills or off-Mac operations. |
+
+Use `dws-maintenance-mode.sh` before planned interventions to stop new task
+dispatch cleanly, and pair `dws-reboot-drill.sh` with
+`~/projects/dev-workspace/bin/dws-boot-verify.sh` when rehearsing reboot
+recovery. The goal is to keep alerting, queue visibility, and service topology
+observable from one repo-managed surface instead of ad hoc shell commands.
 
 ## Task Queue
 
