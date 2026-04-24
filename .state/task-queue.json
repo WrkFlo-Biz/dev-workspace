@@ -2287,6 +2287,54 @@
       "description": "Review and harden scripts/dws-backup.sh: ensure it validates paths before tar, handles missing directories gracefully, and exits non-zero on failure. Add backup verification step. Stage, commit, push.",
       "assigned": null,
       "status": "completed"
+    },
+    {
+      "id": "ops-hardening-01",
+      "phase": 9,
+      "repo": "dev-workspace",
+      "description": "Create scripts/dws-maintenance-mode.sh: pause task dispatch with .state/maintenance-lock, wait for active workers, --resume to restart. ONLY touch scripts/dws-maintenance-mode.sh and bin/dws-maintenance-mode.sh.",
+      "assigned": "worker-c",
+      "status": "completed"
+    },
+    {
+      "id": "ops-hardening-02",
+      "phase": 9,
+      "repo": "dev-workspace",
+      "description": "Create scripts/dws-backup-verify.sh: verify backup tarball contents, check key files exist, compare file counts. ONLY touch scripts/dws-backup-verify.sh and bin/dws-backup-verify.sh.",
+      "assigned": "worker-g",
+      "status": "completed"
+    },
+    {
+      "id": "ops-hardening-03",
+      "phase": 9,
+      "repo": "dev-workspace",
+      "description": "Create scripts/dws-service-map.sh: show boot order dependency chain for systemd services, which services depend on what, and current state of each. ONLY touch scripts/dws-service-map.sh and bin/dws-service-map.sh.",
+      "assigned": "worker-c",
+      "status": "in_progress"
+    },
+    {
+      "id": "ops-hardening-04",
+      "phase": 9,
+      "repo": "dev-workspace",
+      "description": "Create scripts/dws-worker-utilization.sh: parse monitor log to show per-worker stats \u2014 tasks completed, rate-limit hits, idle time, avg task duration. ONLY touch scripts/dws-worker-utilization.sh and bin/dws-worker-utilization.sh.",
+      "assigned": "worker-g",
+      "status": "in_progress"
+    },
+    {
+      "id": "ops-hardening-05",
+      "phase": 9,
+      "repo": "dev-workspace",
+      "description": "Add maintenance-lock awareness to ~/bin/task-monitor.sh: if .state/maintenance-lock exists, skip dispatch and log waiting-for-maintenance. Copy to scripts/task-monitor.sh when done.",
+      "assigned": null,
+      "status": "pending"
+    },
+    {
+      "id": "ops-hardening-06",
+      "phase": 9,
+      "repo": "dev-workspace",
+      "description": "Update docs/runbook.md with new operational commands: dws-summary.sh, dws-alerting.sh, dws-queue-inspector.sh, dws-maintenance-mode.sh, dws-termius-verify.sh, dws-reboot-drill.sh. Add to Quick Reference table.",
+      "assigned": null,
+      "status": "pending"
     }
   ]
 }

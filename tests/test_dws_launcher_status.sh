@@ -11,8 +11,14 @@ HEALTH_ALERT_LOG="/tmp/dws-health-alerts.log"
 HEALTH_LOG_BACKUP="${FIXTURE_ROOT}/dws-health.log.bak"
 HEALTH_ALERT_LOG_BACKUP="${FIXTURE_ROOT}/dws-health-alerts.log.bak"
 ORIG_PATH="${PATH}"
+REAL_TMUX_BIN="$(command -v tmux || true)"
+REAL_TMUX_SOCKET=""
 
 cleanup() {
+  if [ -n "${REAL_TMUX_BIN:-}" ] && [ -n "${REAL_TMUX_SOCKET:-}" ]; then
+    "${REAL_TMUX_BIN}" -S "${REAL_TMUX_SOCKET}" kill-server >/dev/null 2>&1 || true
+  fi
+
   if [ -f "$HEALTH_LOG_BACKUP" ]; then
     cp "$HEALTH_LOG_BACKUP" "$HEALTH_LOG"
   else
@@ -59,6 +65,67 @@ set -euo pipefail
 ${body}
 EOF
   chmod +x "$path"
+}
+
+install_real_tmux_wrapper() {
+  [ -n "${REAL_TMUX_BIN:-}" ] || fail "tmux is required for launcher integration test"
+  REAL_TMUX_SOCKET="${FIXTURE_ROOT}/tmux-integration.sock"
+
+  cat >"${FAKE_BIN}/tmux" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+exec "${REAL_TMUX_BIN}" -S "${REAL_TMUX_SOCKET}" "\$@"
+EOF
+  chmod +x "${FAKE_BIN}/tmux"
+}
+
+run_real_tmux_status_integration_test() {
+  local integration_output integration_plain_output session_block
+
+  install_real_tmux_wrapper
+  "${REAL_TMUX_BIN}" -S "${REAL_TMUX_SOCKET}" new-session -d -s test-session-1 'sleep 300'
+  "${REAL_TMUX_BIN}" -S "${REAL_TMUX_SOCKET}" new-session -d -s test-session-2 'sleep 300'
+
+  write_fake_command curl 'exit 1'
+
+  write_fake_command tailscale 'if [ "${1:-}" = "status" ]; then
+  printf "%s\n" "100.64.0.10   dev-workspace-vm      Wrk-Flo@  linux  -"
+  exit 0
+fi
+if [ "${1:-}" = "ip" ] && [ "${2:-}" = "-4" ]; then
+  printf "%s\n" "100.64.0.10"
+  exit 0
+fi
+exit 1'
+
+  integration_output=$(
+    HOME="${FIXTURE_ROOT}/home" \
+    PATH="${FAKE_BIN}:${ORIG_PATH}" \
+    AZURE_OPENAI_API_KEY='' \
+    DWS_LAUNCHER_INTERNAL_STATUS_ONLY=1 \
+    DWS_STATUS_TOOL="${FIXTURE_ROOT}/missing-status.sh" \
+    DWS_STATUS_TOOL_REPO="${FIXTURE_ROOT}/missing-status-repo.sh" \
+    DWS_TASK_QUEUE_PATH="$QUEUE_PATH" \
+    bash "$SCRIPT" status 2>&1
+  )
+
+  integration_plain_output=$(printf '%s\n' "$integration_output" | strip_ansi)
+  session_block=$(printf '%s\n' "$integration_plain_output" | awk '
+    /^  active sessions$/ { capture = 1; next }
+    /^  projects$/ { exit }
+    capture { print }
+  ')
+
+  assert_contains "$integration_plain_output" "orchestrator health API unavailable; using shell heuristics"
+  assert_contains "$integration_plain_output" "sessions: 2 active"
+  assert_contains "$integration_plain_output" "active sessions"
+  assert_contains "$session_block" "test-session-1"
+  assert_contains "$session_block" "test-session-2"
+  assert_contains "$session_block" "detached"
+  assert_not_contains "$integration_plain_output" "no tmux sessions yet; start one from the project list below or use Plain shell (7)"
+
+  "${REAL_TMUX_BIN}" -S "${REAL_TMUX_SOCKET}" kill-server >/dev/null 2>&1 || true
+  REAL_TMUX_SOCKET=""
 }
 
 trap cleanup EXIT
@@ -207,7 +274,6 @@ payload_down_plain_output=$(printf '%s\n' "$payload_down_output" | strip_ansi)
 assert_contains "$payload_down_plain_output" "tailnet:  down"
 assert_contains "$payload_down_plain_output" "connected: no"
 assert_contains "$payload_down_plain_output" "local-only mode: tmux sessions still work, but Mac and phone bridge features are unavailable"
-# skipped: tmux mock unreliable when real tmux running
 
 write_fake_command curl 'exit 1'
 
@@ -256,7 +322,6 @@ assert_contains "$shell_fallback_plain_output" "(tailscale status unavailable)"
 assert_contains "$shell_fallback_plain_output" "disk:   unavailable"
 assert_contains "$shell_fallback_plain_output" "(none)"
 assert_contains "$shell_fallback_plain_output" "no tmux sessions yet; start one from the project list below or use Plain shell (7)"
-# skipped: tmux mock unreliable when real tmux running
 assert_contains "$shell_fallback_plain_output" "OpenAI profiles unavailable: missing"
 assert_contains "$shell_fallback_plain_output" "OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored"
 assert_contains "$shell_fallback_plain_output" "fallback: Claude models 7-9, Claude Code CLI, or plain shell"
@@ -282,8 +347,10 @@ tool_failure_output=$(
 
 tool_failure_plain_output=$(printf '%s\n' "$tool_failure_output" | strip_ansi)
 
-# skipped: fixture isolation issue
-# skipped: fixture isolation issue
-# skipped: fixture isolation issue
+assert_contains "$tool_failure_plain_output" "external status tool failed; falling back"
+assert_contains "$tool_failure_plain_output" "sessions: 2 active"
+assert_contains "$tool_failure_plain_output" "wrkflo-orchestrator"
+
+run_real_tmux_status_integration_test
 
 printf 'PASS: dws launcher status header\n'
