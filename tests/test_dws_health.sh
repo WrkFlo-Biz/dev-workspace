@@ -54,6 +54,7 @@ make_fixture() {
   mkdir -p "${FAKE_BIN}" "${HOME}"
   cat >"${DWS_SSH_HARDENING_CONF}" <<'EOF'
 PasswordAuthentication no
+PubkeyAuthentication yes
 KbdInteractiveAuthentication no
 ChallengeResponseAuthentication no
 PermitRootLogin no
@@ -251,6 +252,7 @@ test_text_output_includes_requested_checks() {
   assert_contains "${output}" "mac gui      200  http://100.78.207.22:9223/apps"
   assert_contains "${output}" "== Security =="
   assert_contains "${output}" "ssh config   ok"
+  assert_contains "${output}" "pubkey=yes"
   assert_contains "${output}" "maxauth=3"
   assert_contains "${output}" "alive=30/3"
   assert_contains "${output}" "firewall     active  ufw"
