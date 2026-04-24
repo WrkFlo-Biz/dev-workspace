@@ -1,6 +1,6 @@
 # dev-workspace architecture
 
-This document describes the live `dev-workspace` system as of April 23, 2026:
+This document describes the live `dev-workspace` system as of April 24, 2026:
 the Azure VM, the Tailscale mesh, the SSH and `tmux` session model, the active
 task monitor, and the Mac-side relay setup that lets the VM drive the Mac.
 
@@ -199,7 +199,7 @@ Operational meaning:
   service baseline.
 
 This matters because older docs reference a `planner` tmux session. On this VM,
-the active control-plane session observed on April 23, 2026 is `orchestrator`,
+the active control-plane session observed on April 24, 2026 is `orchestrator`,
 not `planner`.
 
 ### Systemd user services
