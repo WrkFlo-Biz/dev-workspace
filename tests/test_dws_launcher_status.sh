@@ -159,4 +159,49 @@ assert_contains "$fallback_plain_output" "usage:    disk=41% used"
 assert_not_contains "$fallback_plain_output" "tailnet:  unavailable"
 assert_not_contains "$fallback_plain_output" "usage:    disk=unavailable used"
 
+write_fake_command curl 'exit 1'
+
+write_fake_command tmux 'exit 1'
+
+write_fake_command hostname 'if [ "${1:-}" = "-s" ]; then
+  printf "%s\n" "dev-workspace-vm"
+  exit 0
+fi
+printf "%s\n" "dev-workspace-vm.example.net"'
+
+write_fake_command uptime 'if [ "${1:-}" = "-p" ]; then
+  printf "%s\n" "up 5 minutes"
+  exit 0
+fi
+printf "%s\n" " 00:05:00 up 5 minutes,  1 user,  load average: 0.10, 0.05, 0.01"'
+
+write_fake_command free 'cat <<'\''EOF'\''
+               total        used        free      shared  buff/cache   available
+Mem:            16Gi       4.0Gi       8.0Gi       1.0Mi       4.0Gi        12Gi
+Swap:             0B          0B          0B
+EOF'
+
+write_fake_command sudo 'exit 1'
+
+shell_fallback_output=$(
+  HOME="${FIXTURE_ROOT}/home" \
+  PATH="${FAKE_BIN}:${ORIG_PATH}" \
+  AZURE_OPENAI_API_KEY='' \
+  DWS_STATUS_TOOL="${FIXTURE_ROOT}/missing-status.sh" \
+  DWS_STATUS_TOOL_REPO="${FIXTURE_ROOT}/missing-status-repo.sh" \
+  DWS_TASK_QUEUE_PATH="$QUEUE_PATH" \
+  bash "$SCRIPT" status 2>&1
+)
+
+shell_fallback_plain_output=$(printf '%s\n' "$shell_fallback_output" | strip_ansi)
+
+assert_contains "$shell_fallback_plain_output" "orchestrator health API unavailable; using shell heuristics"
+assert_contains "$shell_fallback_plain_output" "sessions: 0 active"
+assert_contains "$shell_fallback_plain_output" "health:   check=2026-04-23 21:40:00  result=7 ok, 0 fail  key=missing"
+assert_contains "$shell_fallback_plain_output" "active sessions"
+assert_contains "$shell_fallback_plain_output" "projects"
+assert_contains "$shell_fallback_plain_output" "tailnet:  unavailable"
+assert_contains "$shell_fallback_plain_output" "(tailscale status unavailable)"
+assert_contains "$shell_fallback_plain_output" "(none)"
+
 printf 'PASS: dws launcher status header\n'

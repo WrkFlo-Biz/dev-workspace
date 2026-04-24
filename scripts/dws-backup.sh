@@ -92,6 +92,55 @@ say() {
   printf '%s\n' "$*"
 }
 
+validate_nonempty_path() {
+  local path="$1" label="$2"
+  [ -n "$path" ] || die "${label} path is empty"
+}
+
+validate_directory_path() {
+  local path="$1" label="$2"
+  validate_nonempty_path "$path" "$label"
+  if [ -e "$path" ] && [ ! -d "$path" ]; then
+    die "${label} is not a directory: ${path}"
+  fi
+}
+
+validate_parent_dir_path() {
+  local path="$1" label="$2" parent
+  validate_nonempty_path "$path" "$label"
+  parent=$(dirname -- "$path")
+  if [ -e "$parent" ] && [ ! -d "$parent" ]; then
+    die "${label} parent is not a directory: ${parent}"
+  fi
+}
+
+validate_relative_archive_path() {
+  local rel="$1" label="$2"
+  case "$rel" in
+    ""|/*|../*|*/../*|..|*/..)
+      die "unsafe archive path for ${label}: ${rel:-<empty>}"
+      ;;
+  esac
+}
+
+backupable_source_exists() {
+  local path="$1"
+  [ -e "$path" ] || [ -L "$path" ]
+}
+
+backupable_source_type() {
+  local path="$1"
+  if [ -d "$path" ]; then
+    printf '%s\n' "dir"
+  elif [ -f "$path" ]; then
+    printf '%s\n' "file"
+  elif [ -L "$path" ]; then
+    printf '%s\n' "symlink"
+  else
+    return 1
+  fi
+}
+
 cleanup_stage_root() {
   if [ -n "${STAGE_ROOT:-}" ] && [ -d "${STAGE_ROOT}" ]; then
     rm -rf -- "${STAGE_ROOT}"
@@ -149,10 +198,19 @@ write_snapshot_text() {
 }
 
 copy_stage_tree() {
-  local src="$1" rel="$2" label="$3" dest_parent src_parent src_name
+  local src="$1" rel="$2" label="$3" dest_parent src_parent src_name src_type
 
-  if [ ! -e "$src" ]; then
+  validate_nonempty_path "$src" "$label"
+  validate_relative_archive_path "$rel" "$label"
+
+  if ! backupable_source_exists "$src"; then
     say "skip ${label}: ${src} missing"
+    SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+    return 0
+  fi
+
+  if ! src_type=$(backupable_source_type "$src"); then
+    say "skip ${label}: ${src} has unsupported type"
     SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
     return 0
   fi
@@ -166,12 +224,17 @@ copy_stage_tree() {
   dest_parent=$(dirname -- "$(stage_path "$rel")")
   src_parent=$(dirname -- "$src")
   src_name=$(basename -- "$src")
+  [ -d "$src_parent" ] || die "source parent missing for ${label}: ${src_parent}"
   mkdir -p -- "$dest_parent"
-  (
+
+  if ! (
     cd -- "$src_parent"
-    find "$src_name" \( -type d -o -type f -o -type l \) -print0 |
+    find "./$src_name" \( -type d -o -type f -o -type l \) -print0 |
       tar --null -T - -cf - 2>/dev/null
-  ) | tar -C "$dest_parent" -xf -
+  ) | tar -C "$dest_parent" -xf -; then
+    die "failed to back up ${label}: ${src} (${src_type})"
+  fi
+
   record_manifest "$rel" "$label"
 }
 
@@ -443,20 +506,52 @@ EOF
 }
 
 create_archive() {
+  local stage_archive_root
+
+  validate_directory_path "$STAGE_ROOT" "stage root"
+  validate_parent_dir_path "$ARCHIVE_PATH" "archive"
+  stage_archive_root="${STAGE_ROOT}/${ARCHIVE_ROOT}"
+  [ -d "$stage_archive_root" ] || die "stage archive root missing: ${stage_archive_root}"
+
   if [ "$DRY_RUN" -eq 1 ]; then
     say "would create archive: ${ARCHIVE_PATH}"
     return 0
   fi
 
-  tar -C "$STAGE_ROOT" -czf "$ARCHIVE_PATH" "$ARCHIVE_ROOT"
+  if ! tar -C "$STAGE_ROOT" -czf "$ARCHIVE_PATH" "$ARCHIVE_ROOT"; then
+    die "failed to create archive: ${ARCHIVE_PATH}"
+  fi
+}
+
+archive_root_from_tar() {
+  local first root
+
+  validate_nonempty_path "$ARCHIVE_PATH" "archive"
+  [ -f "$ARCHIVE_PATH" ] || die "archive not found: ${ARCHIVE_PATH}"
+
+  first=$(tar -tzf "$ARCHIVE_PATH" 2>/dev/null | sed -n '1p') || return 1
+  first=${first#./}
+  [ -n "$first" ] || return 1
+  root=${first%%/*}
+  case "$root" in
+    ""|"."|".."|/*)
+      return 1
+      ;;
+  esac
+  printf '%s\n' "$root"
 }
 
 extract_archive_to() {
-  local target_root="$1"
+  local target_root="$1" archive_root
 
+  validate_directory_path "$target_root" "extract target"
+  archive_root=$(archive_root_from_tar) || die "could not determine archive root from ${ARCHIVE_PATH}"
   mkdir -p -- "$target_root"
-  tar -xzf "$ARCHIVE_PATH" -C "$target_root"
-  printf '%s/%s\n' "$target_root" "$(archive_root_from_path "$ARCHIVE_PATH")"
+  if ! tar -xzf "$ARCHIVE_PATH" -C "$target_root"; then
+    die "failed to extract archive: ${ARCHIVE_PATH}"
+  fi
+  [ -e "${target_root}/${archive_root}" ] || die "archive extracted without expected root: ${archive_root}"
+  printf '%s/%s\n' "$target_root" "$archive_root"
 }
 
 verify_required_path() {
@@ -482,6 +577,52 @@ verify_manifest_entries() {
   done <"$manifest"
 
   say "verified manifest entries: ${manifest}"
+}
+
+run_archive_verification() {
+  local keep_dir="${1:-0}" prune_after="${2:-0}" phase_label="${3:-Verify restore}"
+  local verify_dir extracted_root
+
+  need mktemp
+  need tar
+  validate_parent_dir_path "$VERIFY_ROOT" "verify root"
+  mkdir -p -- "$VERIFY_ROOT"
+  verify_dir=$(mktemp -d "${VERIFY_ROOT}/verify-${TIMESTAMP}.XXXXXX")
+  VERIFIED_COUNT=0
+
+  if ! tar -tzf "$ARCHIVE_PATH" >/dev/null; then
+    say "verify failed: archive listing failed: ${ARCHIVE_PATH}"
+    say "  temp_dir:  ${verify_dir}"
+    return 1
+  fi
+  VERIFIED_COUNT=$((VERIFIED_COUNT + 1))
+
+  if ! extracted_root=$(extract_archive_to "$verify_dir"); then
+    say "verify failed: archive extraction failed: ${ARCHIVE_PATH}"
+    say "  temp_dir:  ${verify_dir}"
+    return 1
+  fi
+
+  if ! verify_manifest_entries "$extracted_root"; then
+    say "  temp_dir:  ${verify_dir}"
+    return 1
+  fi
+
+  say
+  say "${phase_label} complete"
+  say "  archive:    ${ARCHIVE_PATH}"
+  say "  verified:   ${VERIFIED_COUNT}"
+
+  if [ "$keep_dir" -eq 1 ]; then
+    say "  temp_dir:   ${verify_dir}"
+  else
+    rm -rf -- "$verify_dir"
+    say "  temp_dir:   ${verify_dir} (removed)"
+  fi
+
+  if [ "$prune_after" -eq 1 ]; then
+    prune_old_snapshots
+  fi
 }
 
 prune_old_snapshots() {
@@ -519,6 +660,7 @@ run_backup() {
   need git
   need mktemp
   need tar
+  validate_directory_path "$BACKUP_ROOT" "backup root"
 
   SNAPSHOT_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
   ARCHIVE_PATH="${BACKUP_ROOT}/$(archive_basename_for_timestamp "$TIMESTAMP")"
@@ -545,6 +687,9 @@ run_backup() {
   backup_git_metadata
   write_metadata
   create_archive
+  if ! run_archive_verification 0 0 "Backup verification"; then
+    die "backup verification failed: ${ARCHIVE_PATH}"
+  fi
   set_latest_symlink
   prune_old_snapshots
 
@@ -590,7 +735,7 @@ run_restore() {
 }
 
 run_verify_restore() {
-  local verify_dir extracted_root keep_dir
+  local keep_dir
 
   resolve_backup_reference
   ARCHIVE_ROOT=$(archive_root_from_path "$ARCHIVE_PATH")
@@ -612,45 +757,7 @@ run_verify_restore() {
     return 0
   fi
 
-  need mktemp
-  need tar
-  mkdir -p -- "$VERIFY_ROOT"
-  verify_dir=$(mktemp -d "${VERIFY_ROOT}/verify-${TIMESTAMP}.XXXXXX")
-  VERIFIED_COUNT=0
-
-  if ! tar -tzf "$ARCHIVE_PATH" >/dev/null; then
-    say "verify failed: archive listing failed: ${ARCHIVE_PATH}"
-    say "  temp_dir:  ${verify_dir}"
-    return 1
-  fi
-  VERIFIED_COUNT=$((VERIFIED_COUNT + 1))
-
-  if ! extracted_root=$(extract_archive_to "$verify_dir"); then
-    say "verify failed: archive extraction failed: ${ARCHIVE_PATH}"
-    say "  temp_dir:  ${verify_dir}"
-    return 1
-  fi
-
-  if ! verify_manifest_entries "$extracted_root"; then
-    say "  temp_dir:  ${verify_dir}"
-    return 1
-  fi
-
-  say
-  say "Verify restore complete"
-  say "  archive:    ${ARCHIVE_PATH}"
-  say "  verified:   ${VERIFIED_COUNT}"
-
-  if [ "$keep_dir" -eq 1 ]; then
-    say "  temp_dir:   ${verify_dir}"
-  else
-    rm -rf -- "$verify_dir"
-    say "  temp_dir:   ${verify_dir} (removed)"
-  fi
-
-  if [ "$PRUNE_AFTER_VERIFY" -eq 1 ]; then
-    prune_old_snapshots
-  fi
+  run_archive_verification "$keep_dir" "$PRUNE_AFTER_VERIFY" "Verify restore"
 }
 
 case "${1:-}" in
@@ -722,6 +829,7 @@ is_int "$KEEP_COUNT" || die "--keep must be an integer"
 [ "$KEEP_COUNT" -ge 1 ] || die "--keep must be at least 1"
 [ -n "$BACKUP_ROOT" ] || die "--root requires a value"
 [ -n "$VERIFY_ROOT" ] || die "--verify-root requires a value"
+validate_nonempty_path "$TIMESTAMP" "timestamp"
 case "$KEEP_VERIFY_DIR" in
   0|1) ;;
   *) die "DWS_VERIFY_RESTORE_KEEP must be 0 or 1" ;;

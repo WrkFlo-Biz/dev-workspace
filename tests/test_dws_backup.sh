@@ -149,6 +149,7 @@ test_backup_creates_tarball_with_expected_contents() {
   [ "${latest_target}" = "${snapshot}" ] || fail "expected latest symlink to point to ${snapshot}"
 
   assert_contains "${output}" "Backup complete"
+  assert_contains "${output}" "Backup verification complete"
   assert_contains "${output}" "archive:   ${archive}"
   assert_contains "${output}" "restore:   extract the archive and read ${archive_root}/RESTORE.txt"
   assert_file_contains "${snapshot}/meta/archive-name.txt" "dws-backup-${DWS_BACKUP_TIMESTAMP}.tar.gz"
@@ -167,6 +168,48 @@ test_backup_creates_tarball_with_expected_contents() {
   assert_tar_text_contains "${archive}" "${archive_root}/RESTORE.txt" "This backup intentionally stores refs, remotes, status, and stash patches only."
   assert_tar_text_contains "${archive}" "${archive_root}/projects-git/app/stashes.txt" "backup stash"
   assert_tar_text_contains "${archive}" "${archive_root}/projects-git/app/stash-patches/stash-00.patch" "stashed change"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
+test_backup_skips_missing_optional_dirs_gracefully() {
+  local output archive archive_root
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  rm -rf -- "${DWS_WRKFLO_CONFIG_DIR}" "${DWS_USER_BIN_DIR}"
+  archive="${DWS_BACKUP_ROOT}/dws-backup-${DWS_BACKUP_TIMESTAMP}.tar.gz"
+  archive_root="dws-backup-${DWS_BACKUP_TIMESTAMP}"
+
+  output=$("${SCRIPT}" backup 2>&1)
+
+  assert_contains "${output}" "skip wrkflo config: ${DWS_WRKFLO_CONFIG_DIR} missing"
+  assert_contains "${output}" "skip user bin: ${DWS_USER_BIN_DIR} missing"
+  assert_contains "${output}" "Backup verification complete"
+  assert_contains "${output}" "skipped:   2"
+  [ -f "${archive}" ] || fail "expected archive at ${archive}"
+  assert_tar_contains "${archive}" "${archive_root}/home/.ssh/id_ed25519"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
+test_backup_exits_non_zero_when_backup_root_is_invalid() {
+  local output invalid_root
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  invalid_root="${FIXTURE_ROOT}/invalid-root"
+  printf 'not a directory\n' >"${invalid_root}"
+
+  if output=$("${SCRIPT}" backup --root "${invalid_root}" 2>&1); then
+    fail "expected backup with invalid root to fail"
+  fi
+
+  assert_contains "${output}" "backup root is not a directory: ${invalid_root}"
 
   cleanup_fixture
   trap - EXIT
@@ -227,6 +270,8 @@ test_backup_prunes_to_last_five_snapshots() {
 }
 
 test_backup_creates_tarball_with_expected_contents
+test_backup_skips_missing_optional_dirs_gracefully
+test_backup_exits_non_zero_when_backup_root_is_invalid
 test_restore_and_verify_use_latest_snapshot_metadata
 test_backup_prunes_to_last_five_snapshots
 printf 'ok\n'
