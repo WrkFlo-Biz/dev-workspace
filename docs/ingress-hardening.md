@@ -95,6 +95,15 @@ supports `--dry-run`, `--verify`, and `--rollback`, and the repo test suite
 currently passes for both the `ufw` and `iptables` code paths
 (`bash tests/test_dws_firewall.sh`).
 
+Flag behavior:
+
+- `--dry-run` prints the exact apply or rollback commands without changing the host
+- `--verify` is read-only; for `iptables` it checks that `DWS_FIREWALL_INPUT`
+  is the first `INPUT` jump and that the live managed chain still matches the
+  repo policy in order
+- `--rollback` restores the most recent pre-apply snapshot saved under
+  `/var/lib/dws/firewall/`
+
 The intended repo-managed policy is:
 
 - default deny incoming, default allow outgoing
@@ -142,7 +151,10 @@ apply, all of the following should be true:
 7. Re-test SSH on `22/tcp`, plus the required dev ports from a Tailscale peer:
    SSH should work from anywhere, while `8080`, `9222`, and `3000` should only
    answer from `100.64.0.0/10`.
-8. Keep rollback available before closing the last surviving session.
+8. If verification fails or reachability regresses, restore immediately from
+   the surviving session:
+   `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --rollback`
+9. Keep rollback available before closing the last surviving session.
 
 The apply command automatically snapshots the pre-change backend state under
 `/var/lib/dws/firewall/snapshots/<timestamp>-<backend>` and refreshes the
@@ -156,11 +168,16 @@ If apply or verification leaves the host in the wrong state:
    `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --rollback --dry-run`
 2. Restore the most recent saved snapshot:
    `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --rollback`
-3. Confirm the host is back to the expected pre-apply state:
-   `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --verify`
+3. Confirm the host is back to the expected pre-apply state with backend-native
+   inspection plus a real connectivity check. For example:
+   `sudo ufw status verbose`
+   `sudo iptables -S INPUT`
+4. Re-test the surviving SSH session before closing it.
 
 For `iptables`, swap `--backend ufw` for `--backend iptables`. Rollback restores
-the saved backend snapshot rather than trying to compute an inverse rule set.
+the saved backend snapshot rather than trying to compute an inverse rule set, so
+`--verify` is only appropriate after a successful apply of the repo policy, not
+after restoring an older snapshot that may intentionally differ.
 
 ## Audit Commands
 

@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-REPO_ROOT=$(CDPATH='' cd -- "${SCRIPT_DIR}/.." && pwd)
-
 LOG_DIR="${DWS_ALERT_LOG_DIR:-/var/log/dws}"
 ALERT_LOG_PATH="${DWS_ALERT_LOG_PATH:-${LOG_DIR}/alerts.log}"
-BOOT_VERIFY_CMD="${DWS_ALERT_BOOT_VERIFY_CMD:-${REPO_ROOT}/bin/dws-boot-verify.sh}"
 
 MONITOR_RESTART_WINDOW_SECONDS="${DWS_ALERT_MONITOR_RESTART_WINDOW_SECONDS:-600}"
 MONITOR_RESTART_LIMIT="${DWS_ALERT_MONITOR_RESTART_LIMIT:-3}"
@@ -17,12 +13,11 @@ DISK_PATH="${DWS_ALERT_DISK_PATH:-/}"
 CRON_FAILURE_WINDOW_SECONDS="${DWS_ALERT_CRON_FAILURE_WINDOW_SECONDS:-86400}"
 CRON_TAIL_LINES="${DWS_ALERT_CRON_TAIL_LINES:-120}"
 
-STDOUT=0
 ALERT_COUNT=0
 
 usage() {
   cat <<'EOF'
-usage: dws-alerting.sh [--stdout] [--help]
+usage: dws-alerting.sh [--help]
 
 Run lightweight alert checks for dev-workspace and append alert lines to
 /var/log/dws/alerts.log by default.
@@ -30,19 +25,16 @@ Run lightweight alert checks for dev-workspace and append alert lines to
 Checks:
   - monitor restart loops (>3 start/restart events in 10 minutes)
   - repeated rate limits in the monitor log
-  - boot verify failures
   - missing Tailscale peers
   - disk usage above the configured threshold
   - failed cron jobs in recent cron logs
 
 Options:
-  --stdout    mirror alert lines to stdout
   -h, --help  show this help
 
 Environment overrides:
   DWS_ALERT_LOG_PATH
   DWS_ALERT_MONITOR_LOG_PATH
-  DWS_ALERT_BOOT_VERIFY_CMD
   DWS_ALERT_TAILSCALE_REQUIRED_PEERS
   DWS_ALERT_CRON_LOG_PATHS
   DWS_ALERT_NOW_EPOCH
@@ -148,9 +140,6 @@ emit_alert() {
 
   line="$(alert_timestamp) ALERT ${message}"
   printf '%s\n' "$line" >>"$ALERT_LOG_PATH"
-  if [ "$STDOUT" -eq 1 ]; then
-    printf '%s\n' "$line"
-  fi
   ALERT_COUNT=$((ALERT_COUNT + 1))
 }
 
@@ -300,26 +289,6 @@ check_monitor_rate_limits() {
     window_text=$(window_label "$RATE_LIMIT_WINDOW_SECONDS")
     emit_alert "monitor rate limits repeating (${rate_limit_count} entries in ${window_text}; latest: $(shorten "$last_line" 140))"
   fi
-}
-
-check_boot_verify() {
-  local output fail_line
-
-  if [ ! -x "$BOOT_VERIFY_CMD" ]; then
-    emit_alert "boot verify command missing or not executable (${BOOT_VERIFY_CMD})"
-    return 0
-  fi
-
-  if output=$(NO_COLOR=1 "$BOOT_VERIFY_CMD" 2>&1); then
-    return 0
-  fi
-
-  fail_line=$(printf '%s\n' "$output" | awk '/FAIL / { sub(/^[[:space:]]+/, "", $0); print; exit }')
-  if [ -z "$fail_line" ]; then
-    fail_line=$(printf '%s\n' "$output" | sed -n '1p')
-  fi
-
-  emit_alert "boot verify failed ($(shorten "$fail_line" 160))"
 }
 
 tailscale_output_has_target() {
@@ -479,9 +448,6 @@ check_cron_failures() {
 main() {
   while [ $# -gt 0 ]; do
     case "$1" in
-      --stdout)
-        STDOUT=1
-        ;;
       -h|--help)
         usage
         exit 0
@@ -497,7 +463,6 @@ main() {
 
   check_monitor_restart_loop
   check_monitor_rate_limits
-  check_boot_verify
   check_tailscale_peers
   check_disk_usage
   check_cron_failures

@@ -256,6 +256,89 @@ EOF
   assert_contains "${output}" 'firewall verification complete'
 }
 
+test_iptables_verify_fails_when_chain_drifts_from_repo_policy() {
+  local output
+
+  reset_fake_bin
+  write_fake_command iptables <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "$*" in
+  '-w -S INPUT')
+    cat <<'OUT'
+-P INPUT ACCEPT
+-A INPUT -j DWS_FIREWALL_INPUT
+OUT
+    ;;
+  '-w -S DWS_FIREWALL_INPUT')
+    cat <<'OUT'
+-N DWS_FIREWALL_INPUT
+-A DWS_FIREWALL_INPUT -i lo -j ACCEPT
+-A DWS_FIREWALL_INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A DWS_FIREWALL_INPUT -p udp -m udp --dport 41641 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp --dport 22 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8080 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 9222 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 3000 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp --dport 8443 -j ACCEPT
+-A DWS_FIREWALL_INPUT -j DROP
+OUT
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+EOF
+
+  if output=$(run_script --backend iptables --verify 2>&1); then
+    fail 'expected iptables verification to fail when the managed chain drifts from the repo policy'
+  fi
+
+  assert_contains "${output}" 'verification failed: DWS_FIREWALL_INPUT rule count does not match the repo policy'
+}
+
+test_iptables_verify_fails_when_ssh_rule_is_not_public() {
+  local output
+
+  reset_fake_bin
+  write_fake_command iptables <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "$*" in
+  '-w -S INPUT')
+    cat <<'OUT'
+-P INPUT ACCEPT
+-A INPUT -j DWS_FIREWALL_INPUT
+OUT
+    ;;
+  '-w -S DWS_FIREWALL_INPUT')
+    cat <<'OUT'
+-N DWS_FIREWALL_INPUT
+-A DWS_FIREWALL_INPUT -i lo -j ACCEPT
+-A DWS_FIREWALL_INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A DWS_FIREWALL_INPUT -p udp -m udp --dport 41641 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 22 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8080 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 9222 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 3000 -j ACCEPT
+-A DWS_FIREWALL_INPUT -j DROP
+OUT
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+EOF
+
+  if output=$(run_script --backend iptables --verify 2>&1); then
+    fail 'expected iptables verification to fail when the SSH rule is not public'
+  fi
+
+  assert_contains "${output}" 'verification failed: tcp/22 rule does not match the expected public ingress policy'
+}
+
 test_rollback_dry_run_uses_latest_snapshot() {
   local snapshot output
 
@@ -296,5 +379,7 @@ test_ufw_verify_passes_when_rules_match_policy
 test_ufw_verify_fails_when_ssh_is_not_public
 test_iptables_dry_run_logs_expected_rules
 test_iptables_verify_passes_when_chain_is_first
+test_iptables_verify_fails_when_chain_drifts_from_repo_policy
+test_iptables_verify_fails_when_ssh_rule_is_not_public
 test_rollback_dry_run_uses_latest_snapshot
 printf 'ok\n'

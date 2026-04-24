@@ -30,6 +30,7 @@ Modes:
 - default: apply the policy
 - --verify: read-only verification of the active repo-managed backend
 - --rollback: restore the most recent saved snapshot
+- --dry-run: print the apply or rollback actions without changing the host
 
 Environment:
 - DWS_FIREWALL_STATE_DIR overrides the rollback snapshot directory
@@ -550,28 +551,139 @@ verify_ufw() {
 iptables_has_rule() {
   local lines="$1"
   shift
-  local line fragment found
+  local line
 
   while IFS= read -r line; do
-    found=1
-    for fragment in "$@"; do
-      case "$line" in
-        *"$fragment"*) ;;
-        *)
-          found=0
-          break
-          ;;
-      esac
-    done
-
-    [ "$found" -eq 1 ] && return 0
+    if iptables_line_matches "$line" "$@"; then
+      return 0
+    fi
   done <<<"$lines"
 
   return 1
 }
 
+iptables_line_matches() {
+  local line="$1"
+  shift
+  local fragment
+
+  for fragment in "$@"; do
+    case "$line" in
+      *"$fragment"*) ;;
+      *)
+        return 1
+        ;;
+    esac
+  done
+
+  return 0
+}
+
+iptables_line_has_source_selector() {
+  case "$1" in
+    *' -s '*|*' --source '*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+iptables_line_has_destination_selector() {
+  case "$1" in
+    *' -d '*|*' --destination '*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+iptables_line_has_interface_selector() {
+  case "$1" in
+    *' -i '*|*' --in-interface '*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+verify_iptables_chain_rules() {
+  local chain_rules="$1"
+  local definition_count expected_rule_count index port rule_line
+  local -a chain_rule_lines=()
+
+  definition_count=$(printf '%s\n' "$chain_rules" | grep -Fxc -- "-N ${IPTABLES_CHAIN}" || true)
+  if [ "$definition_count" -ne 1 ]; then
+    verify_fail "${IPTABLES_CHAIN} definition is missing or duplicated"
+    return 1
+  fi
+
+  while IFS= read -r rule_line; do
+    case "$rule_line" in
+      "-A ${IPTABLES_CHAIN}"*) chain_rule_lines+=("$rule_line") ;;
+    esac
+  done <<<"$chain_rules"
+
+  expected_rule_count=$(( ${#DEV_PORTS[@]} + 5 ))
+  if [ "${#chain_rule_lines[@]}" -ne "$expected_rule_count" ]; then
+    verify_fail "${IPTABLES_CHAIN} rule count does not match the repo policy"
+    return 1
+  fi
+
+  if iptables_line_matches "${chain_rule_lines[0]}" "-A ${IPTABLES_CHAIN}" "-i lo" "-j ACCEPT"; then
+    verify_pass 'loopback traffic is allowed'
+  else
+    verify_fail 'missing loopback allow rule'
+    return 1
+  fi
+
+  if iptables_line_matches "${chain_rule_lines[1]}" "-A ${IPTABLES_CHAIN}" "--ctstate RELATED,ESTABLISHED" "-j ACCEPT"; then
+    verify_pass 'related and established traffic is allowed'
+  else
+    verify_fail 'missing related/established allow rule'
+    return 1
+  fi
+
+  if ! iptables_line_matches "${chain_rule_lines[2]}" "-A ${IPTABLES_CHAIN}" "-p udp" "--dport ${TAILSCALE_PORT}" "-j ACCEPT"; then
+    verify_fail "missing public udp/${TAILSCALE_PORT} allow rule"
+    return 1
+  fi
+  if iptables_line_has_source_selector "${chain_rule_lines[2]}" ||
+     iptables_line_has_destination_selector "${chain_rule_lines[2]}" ||
+     iptables_line_has_interface_selector "${chain_rule_lines[2]}"; then
+    verify_fail "udp/${TAILSCALE_PORT} rule does not match the expected public ingress policy"
+    return 1
+  fi
+  verify_pass "udp/${TAILSCALE_PORT} stays open globally for Tailscale peer traffic"
+
+  if ! iptables_line_matches "${chain_rule_lines[3]}" "-A ${IPTABLES_CHAIN}" "-p tcp" "--dport ${SSH_PORT}" "-j ACCEPT"; then
+    verify_fail "missing public tcp/${SSH_PORT} allow rule for SSH relay traffic"
+    return 1
+  fi
+  if iptables_line_has_source_selector "${chain_rule_lines[3]}" ||
+     iptables_line_has_destination_selector "${chain_rule_lines[3]}" ||
+     iptables_line_has_interface_selector "${chain_rule_lines[3]}"; then
+    verify_fail "tcp/${SSH_PORT} rule does not match the expected public ingress policy"
+    return 1
+  fi
+  verify_pass "tcp/${SSH_PORT} is open from any source for SSH relay traffic"
+
+  index=4
+  for port in "${DEV_PORTS[@]}"; do
+    rule_line="${chain_rule_lines[$index]}"
+    if ! iptables_line_matches "$rule_line" "-A ${IPTABLES_CHAIN}" "-p tcp" "-s ${TAILSCALE_SUBNET}" "--dport ${port}" "-j ACCEPT"; then
+      verify_fail "tcp/${port} rule does not match the expected ${TAILSCALE_SUBNET} restriction"
+      return 1
+    fi
+    verify_pass "tcp/${port} is restricted to ${TAILSCALE_SUBNET}"
+    index=$((index + 1))
+  done
+
+  if [ "${chain_rule_lines[$index]}" = "-A ${IPTABLES_CHAIN} -j DROP" ]; then
+    verify_pass "all other inbound IPv4 traffic drops at the end of ${IPTABLES_CHAIN}"
+  else
+    verify_fail "missing final drop rule in ${IPTABLES_CHAIN}"
+    return 1
+  fi
+
+  verify_pass "${IPTABLES_CHAIN} rule set matches the repo policy"
+}
+
 verify_iptables() {
-  local input_rules chain_rules first_input_rule input_jump_count port last_chain_rule line target
+  local input_rules chain_rules first_input_rule input_jump_count
 
   input_rules=$(capture_cmd iptables -w -S INPUT) || die "unable to read INPUT chain: ${input_rules:-unknown error}"
   chain_rules=$(capture_cmd iptables -w -S "$IPTABLES_CHAIN") || die "unable to read ${IPTABLES_CHAIN} chain: ${chain_rules:-unknown error}"
@@ -590,73 +702,7 @@ verify_iptables() {
     return 1
   fi
 
-  if iptables_has_rule "$chain_rules" "-A ${IPTABLES_CHAIN}" "-i lo" "-j ACCEPT"; then
-    verify_pass 'loopback traffic is allowed'
-  else
-    verify_fail 'missing loopback allow rule'
-    return 1
-  fi
-
-  if iptables_has_rule "$chain_rules" "-A ${IPTABLES_CHAIN}" "--ctstate RELATED,ESTABLISHED" "-j ACCEPT"; then
-    verify_pass 'related and established traffic is allowed'
-  else
-    verify_fail 'missing related/established allow rule'
-    return 1
-  fi
-
-  if iptables_has_rule "$chain_rules" "-A ${IPTABLES_CHAIN}" "-p udp" "--dport ${TAILSCALE_PORT}" "-j ACCEPT"; then
-    verify_pass "udp/${TAILSCALE_PORT} stays open globally for Tailscale peer traffic"
-  else
-    verify_fail "missing public udp/${TAILSCALE_PORT} allow rule"
-    return 1
-  fi
-
-  if iptables_has_rule "$chain_rules" "-A ${IPTABLES_CHAIN}" "-p tcp" "--dport ${SSH_PORT}" "-j ACCEPT"; then
-    verify_pass "tcp/${SSH_PORT} is open from any source for SSH relay traffic"
-  else
-    verify_fail "missing public tcp/${SSH_PORT} allow rule for SSH relay traffic"
-    return 1
-  fi
-
-  for port in "${DEV_PORTS[@]}"; do
-    if ! iptables_has_rule "$chain_rules" "-A ${IPTABLES_CHAIN}" "-p tcp" "-s ${TAILSCALE_SUBNET}" "--dport ${port}" "-j ACCEPT"; then
-      verify_fail "missing tcp/${port} allow rule for ${TAILSCALE_SUBNET}"
-      return 1
-    fi
-    verify_pass "tcp/${port} is restricted to ${TAILSCALE_SUBNET}"
-  done
-
-  for target in "${DEV_PORTS[@]}"; do
-    while IFS= read -r line; do
-      case "$line" in
-        *"--dport ${target}"*'-j ACCEPT'*)
-          case "$line" in
-            *"-s ${TAILSCALE_SUBNET}"*) ;;
-            *)
-              verify_fail "unexpected public tcp/${target} rule detected in ${IPTABLES_CHAIN}"
-              return 1
-              ;;
-          esac
-          ;;
-      esac
-    done <<<"$chain_rules"
-  done
-
-  last_chain_rule=''
-  while IFS= read -r line; do
-    case "$line" in
-      "-A ${IPTABLES_CHAIN}"*)
-        last_chain_rule="$line"
-        ;;
-    esac
-  done <<<"$chain_rules"
-
-  if [ "$last_chain_rule" = "-A ${IPTABLES_CHAIN} -j DROP" ]; then
-    verify_pass "all other inbound IPv4 traffic drops at the end of ${IPTABLES_CHAIN}"
-  else
-    verify_fail "missing final drop rule in ${IPTABLES_CHAIN}"
-    return 1
-  fi
+  verify_iptables_chain_rules "$chain_rules"
 }
 
 verify_firewall() {
