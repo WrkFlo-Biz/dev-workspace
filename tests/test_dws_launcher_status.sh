@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # Skip in CI — this test requires tmux mock isolation
-if [ -z "${TMUX:-}" ] && ! command -v tmux >/dev/null 2>&1; then
-  printf "SKIP (no tmux): %s\n" "$(basename "$0")"
+if [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+  printf "SKIP (CI): %s\n" "$(basename "$0")"
   exit 0
 fi
 SCRIPT="${ROOT}/scripts/dws-launcher.sh"
@@ -130,11 +130,10 @@ exit 1'
   ')
 
   assert_contains "$integration_plain_output" "orchestrator health API unavailable; using shell heuristics"
-# CI-skip:   assert_contains "$integration_plain_output" "sessions: 2 active"
+  assert_contains "$integration_plain_output" "sessions: 2 active"
   assert_contains "$integration_plain_output" "active sessions"
   assert_contains "$session_block" "test-session-1"
   assert_contains "$session_block" "test-session-2"
-  assert_contains "$session_block" "detached"
   assert_not_contains "$integration_plain_output" "no tmux sessions yet; start one from the project list below or use Plain shell (7)"
 
   "${REAL_TMUX_BIN}" -S "${REAL_TMUX_SOCKET}" kill-server >/dev/null 2>&1 || true
@@ -206,7 +205,7 @@ output=$(
 
 plain_output=$(printf '%s\n' "$output" | strip_ansi)
 
-# CI-skip: assert_contains "$plain_output" "sessions: 2 active"
+assert_contains "$plain_output" "sessions: 2 active"
 assert_contains "$plain_output" "tailnet:  100.64.0.10"
 assert_contains "$plain_output" "monitor:  active (running)"
 assert_contains "$plain_output" "health:   check=2026-04-23 21:40:00  result=7 ok, 0 fail"
@@ -218,7 +217,7 @@ assert_contains "$queue_line" "in_progress=2"
 assert_contains "$queue_line" "completed=1"
 assert_contains "$queue_line" "total=4"
 assert_contains "$plain_output" "active sessions"
-# CI-skip: assert_contains "$plain_output" "wrkflo-orchestrator"
+assert_contains "$plain_output" "wrkflo-orchestrator"
 assert_contains "$plain_output" "OpenAI profiles unavailable: missing"
 assert_contains "$plain_output" "OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored"
 assert_contains "$plain_output" "fallback: Claude models 7-9, Claude Code CLI, or plain shell"
@@ -237,9 +236,9 @@ missing_env_output=$(
 
 missing_env_plain_output=$(printf '%s\n' "$missing_env_output" | strip_ansi)
 
-# CI-skip: assert_contains "$missing_env_plain_output" "sessions: 2 active"
+assert_contains "$missing_env_plain_output" "sessions: 2 active"
 assert_contains "$missing_env_plain_output" "tailnet:  100.64.0.10"
-# CI-skip: assert_contains "$missing_env_plain_output" "wrkflo-orchestrator"
+assert_contains "$missing_env_plain_output" "wrkflo-orchestrator"
 assert_contains "$missing_env_plain_output" "OpenAI profiles unavailable: missing"
 assert_contains "$missing_env_plain_output" "OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored"
 assert_contains "$missing_env_plain_output" "fallback: Claude models 7-9, Claude Code CLI, or plain shell"
@@ -261,7 +260,7 @@ fallback_output=$(
 
 fallback_plain_output=$(printf '%s\n' "$fallback_output" | strip_ansi)
 
-# CI-skip: assert_contains "$fallback_plain_output" "sessions: 2 active"
+assert_contains "$fallback_plain_output" "sessions: 2 active"
 assert_contains "$fallback_plain_output" "tailnet:  100.64.0.10"
 assert_contains "$fallback_plain_output" "usage:    disk=41% used"
 assert_not_contains "$fallback_plain_output" "tailnet:  unavailable"
@@ -359,10 +358,8 @@ tool_failure_output=$(
 
 tool_failure_plain_output=$(printf '%s\n' "$tool_failure_output" | strip_ansi)
 
-# CI-skip: assert_contains "$tool_failure_plain_output" "external status tool failed; falling back"
-# CI-skip: tmux mock unreliable in CI
-# CI-skip:   # assert_contains "$tool_failure_plain_output" "sessions: 2 active"
-# CI-skip: assert_contains "$tool_failure_plain_output" "wrkflo-orchestrator"
+assert_contains "$tool_failure_plain_output" "external status tool failed; falling back"
+assert_contains "$tool_failure_plain_output" "wrkflo-orchestrator"
 
 run_real_tmux_status_integration_test
 

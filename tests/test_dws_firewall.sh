@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Skip in CI - requires firewall script dry-run with specific output
-if [ "\${CI:-}" = "true" ] || [ "\${GITHUB_ACTIONS:-}" = "true" ]; then
-  printf "SKIP (CI): %s\n" "\$(basename "\$0")"
+# Skip in CI - firewall tests require VM-specific dry-run behavior
+if [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+  printf "SKIP (CI): %s\n" "$(basename "$0")"
   exit 0
 fi
 
@@ -112,11 +112,13 @@ Status: active
      To                         Action      From
      --                         ------      ----
 [ 1] 41641/udp                  ALLOW IN    Anywhere
-[ 2] 22/tcp                     ALLOW IN    Anywhere
+[ 2] 22/tcp                     ALLOW IN    100.64.0.0/10
 [ 3] 8080/tcp                   ALLOW IN    100.64.0.0/10
-[ 4] 9222/tcp                   ALLOW IN    100.64.0.0/10
-[ 5] 3000/tcp                   ALLOW IN    100.64.0.0/10
-[ 6] 41641/udp (v6)             ALLOW IN    Anywhere (v6)
+[ 4] 8081/tcp                   ALLOW IN    100.64.0.0/10
+[ 5] 8100/tcp                   ALLOW IN    100.64.0.0/10
+[ 6] 9222/tcp                   ALLOW IN    100.64.0.0/10
+[ 7] 3000/tcp                   ALLOW IN    100.64.0.0/10
+[ 8] 41641/udp (v6)             ALLOW IN    Anywhere (v6)
 OUT
     ;;
   *)
@@ -132,12 +134,14 @@ EOF
   assert_contains "${output}" 'verification passed: ufw defaults deny incoming and allow outgoing'
   assert_contains "${output}" 'verification passed: tcp/22 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/8080 is restricted to 100.64.0.0/10'
+  assert_contains "${output}" 'verification passed: tcp/8081 is restricted to 100.64.0.0/10'
+  assert_contains "${output}" 'verification passed: tcp/8100 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/9222 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/3000 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'firewall verification complete'
 }
 
-test_ufw_verify_fails_when_ssh_is_not_public() {
+test_ufw_verify_fails_when_ssh_rule_is_public() {
   local output
 
   reset_fake_bin
@@ -166,10 +170,12 @@ Status: active
      To                         Action      From
      --                         ------      ----
 [ 1] 41641/udp                  ALLOW IN    Anywhere
-[ 2] 22/tcp                     ALLOW IN    100.64.0.0/10
+[ 2] 22/tcp                     ALLOW IN    Anywhere
 [ 3] 8080/tcp                   ALLOW IN    100.64.0.0/10
-[ 4] 9222/tcp                   ALLOW IN    100.64.0.0/10
-[ 5] 3000/tcp                   ALLOW IN    100.64.0.0/10
+[ 4] 8081/tcp                   ALLOW IN    100.64.0.0/10
+[ 5] 8100/tcp                   ALLOW IN    100.64.0.0/10
+[ 6] 9222/tcp                   ALLOW IN    100.64.0.0/10
+[ 7] 3000/tcp                   ALLOW IN    100.64.0.0/10
 OUT
     ;;
   *)
@@ -179,10 +185,10 @@ esac
 EOF
 
   if output=$(run_script --backend ufw --verify 2>&1); then
-    fail 'expected ufw verification to fail when SSH is not public'
+    fail 'expected ufw verification to fail when SSH is public'
   fi
 
-  assert_contains "${output}" 'verification failed: missing tcp/22 allow rule for 100.64.0.0/10'
+  assert_contains "${output}" 'verification failed: unexpected public tcp/22 rule — SSH should be Tailscale-only'
 }
 
 test_iptables_dry_run_logs_expected_rules() {
@@ -206,8 +212,10 @@ EOF
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -i lo -j ACCEPT'
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -m conntrack --ctstate RELATED\,ESTABLISHED -j ACCEPT'
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p udp --dport 41641 -j ACCEPT'
-  assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp --dport 22 -j ACCEPT'
+  assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp -s 100.64.0.0/10 --dport 22 -j ACCEPT'
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp -s 100.64.0.0/10 --dport 8080 -j ACCEPT'
+  assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp -s 100.64.0.0/10 --dport 8081 -j ACCEPT'
+  assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp -s 100.64.0.0/10 --dport 8100 -j ACCEPT'
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp -s 100.64.0.0/10 --dport 9222 -j ACCEPT'
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp -s 100.64.0.0/10 --dport 3000 -j ACCEPT'
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -j DROP'
@@ -238,8 +246,10 @@ OUT
 -A DWS_FIREWALL_INPUT -i lo -j ACCEPT
 -A DWS_FIREWALL_INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 -A DWS_FIREWALL_INPUT -p udp -m udp --dport 41641 -j ACCEPT
--A DWS_FIREWALL_INPUT -p tcp -m tcp --dport 22 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 22 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8080 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8081 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8100 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 9222 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 3000 -j ACCEPT
 -A DWS_FIREWALL_INPUT -j DROP
@@ -258,6 +268,8 @@ EOF
   assert_contains "${output}" 'verification passed: DWS_FIREWALL_INPUT is the first INPUT rule'
   assert_contains "${output}" 'verification passed: tcp/22 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/8080 is restricted to 100.64.0.0/10'
+  assert_contains "${output}" 'verification passed: tcp/8081 is restricted to 100.64.0.0/10'
+  assert_contains "${output}" 'verification passed: tcp/8100 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/9222 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/3000 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: all other inbound IPv4 traffic drops at the end of DWS_FIREWALL_INPUT'
@@ -286,8 +298,10 @@ OUT
 -A DWS_FIREWALL_INPUT -i lo -j ACCEPT
 -A DWS_FIREWALL_INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 -A DWS_FIREWALL_INPUT -p udp -m udp --dport 41641 -j ACCEPT
--A DWS_FIREWALL_INPUT -p tcp -m tcp --dport 22 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 22 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8080 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8081 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8100 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 9222 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 3000 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp --dport 8443 -j ACCEPT
@@ -307,7 +321,7 @@ EOF
   assert_contains "${output}" 'verification failed: DWS_FIREWALL_INPUT rule count does not match the repo policy'
 }
 
-test_iptables_verify_fails_when_ssh_rule_is_not_public() {
+test_iptables_verify_fails_when_ssh_rule_is_public() {
   local output
 
   reset_fake_bin
@@ -328,8 +342,10 @@ OUT
 -A DWS_FIREWALL_INPUT -i lo -j ACCEPT
 -A DWS_FIREWALL_INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 -A DWS_FIREWALL_INPUT -p udp -m udp --dport 41641 -j ACCEPT
--A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 22 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp --dport 22 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8080 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8081 -j ACCEPT
+-A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8100 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 9222 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 3000 -j ACCEPT
 -A DWS_FIREWALL_INPUT -j DROP
@@ -342,10 +358,10 @@ esac
 EOF
 
   if output=$(run_script --backend iptables --verify 2>&1); then
-    fail 'expected iptables verification to fail when the SSH rule is not public'
+    fail 'expected iptables verification to fail when the SSH rule is public'
   fi
 
-  assert_contains "${output}" 'verification failed: tcp/22 rule does not match the expected public ingress policy'
+  assert_contains "${output}" 'verification failed: tcp/22 rule does not match the expected 100.64.0.0/10 restriction'
 }
 
 test_rollback_dry_run_uses_latest_snapshot() {
@@ -385,10 +401,10 @@ trap cleanup EXIT
 test_script_is_executable
 test_ufw_dry_run_logs_expected_rules
 test_ufw_verify_passes_when_rules_match_policy
-test_ufw_verify_fails_when_ssh_is_not_public
+test_ufw_verify_fails_when_ssh_rule_is_public
 test_iptables_dry_run_logs_expected_rules
 test_iptables_verify_passes_when_chain_is_first
 test_iptables_verify_fails_when_chain_drifts_from_repo_policy
-test_iptables_verify_fails_when_ssh_rule_is_not_public
+test_iptables_verify_fails_when_ssh_rule_is_public
 test_rollback_dry_run_uses_latest_snapshot
 printf 'ok\n'
