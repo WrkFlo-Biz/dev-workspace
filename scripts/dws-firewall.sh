@@ -22,7 +22,7 @@ usage: dws-firewall.sh [--dry-run] [--backend ufw|iptables] [--verify] [--rollba
 Default action snapshots the current backend state, applies the repo ingress
 policy, and verifies the result:
 - allow udp/41641 from anywhere for Tailscale peer traffic
-- allow tcp/22 from 100.64.0.0/10
+- allow tcp/22 from anywhere for SSH relay compatibility
 - allow tcp/8080, tcp/9222, and tcp/3000 from 100.64.0.0/10
 - deny all other inbound traffic
 
@@ -374,7 +374,8 @@ restore_snapshot_files() {
 log_common_notes() {
   log_msg "using firewall backend: $BACKEND"
   log_msg "tailscale note: udp/${TAILSCALE_PORT} stays open globally so direct peers can reach this host"
-  log_msg "tailscale subnet allowlist: tcp access is restricted to ${TAILSCALE_SUBNET}"
+  log_msg "ssh relay note: tcp/${SSH_PORT} stays open globally for relay-compatible SSH access"
+  log_msg "tailscale subnet allowlist: dev ports stay restricted to ${TAILSCALE_SUBNET}"
 }
 
 apply_ufw() {
@@ -391,8 +392,8 @@ apply_ufw() {
   run ufw allow "${TAILSCALE_PORT}/udp"
   log_msg "allow udp/${TAILSCALE_PORT} from anywhere (Tailscale peer traffic)"
 
-  run ufw allow from "$TAILSCALE_SUBNET" to any port "$SSH_PORT" proto tcp
-  log_msg "allow tcp/${SSH_PORT} from ${TAILSCALE_SUBNET} (SSH over Tailscale)"
+  run ufw allow "${SSH_PORT}/tcp"
+  log_msg "allow tcp/${SSH_PORT} from anywhere (SSH relay compatibility)"
 
   for port in "${DEV_PORTS[@]}"; do
     run ufw allow from "$TAILSCALE_SUBNET" to any port "$port" proto tcp
@@ -449,8 +450,8 @@ apply_iptables() {
   run iptables -w -A "$IPTABLES_CHAIN" -p udp --dport "$TAILSCALE_PORT" -j ACCEPT
   log_msg "allow udp/${TAILSCALE_PORT} from anywhere (Tailscale peer traffic)"
 
-  run iptables -w -A "$IPTABLES_CHAIN" -p tcp -s "$TAILSCALE_SUBNET" --dport "$SSH_PORT" -j ACCEPT
-  log_msg "allow tcp/${SSH_PORT} from ${TAILSCALE_SUBNET} (SSH over Tailscale)"
+  run iptables -w -A "$IPTABLES_CHAIN" -p tcp --dport "$SSH_PORT" -j ACCEPT
+  log_msg "allow tcp/${SSH_PORT} from anywhere (SSH relay compatibility)"
 
   for port in "${DEV_PORTS[@]}"; do
     run iptables -w -A "$IPTABLES_CHAIN" -p tcp -s "$TAILSCALE_SUBNET" --dport "$port" -j ACCEPT
@@ -527,15 +528,11 @@ verify_ufw() {
     return 1
   fi
 
-  if ! ufw_has_rule "$numbered" "${SSH_PORT}/tcp" "$TAILSCALE_SUBNET"; then
-    verify_fail "missing tcp/${SSH_PORT} allow rule for ${TAILSCALE_SUBNET}"
+  if ! ufw_has_public_tcp_rule "$numbered" "${SSH_PORT}/tcp"; then
+    verify_fail "missing public tcp/${SSH_PORT} rule for SSH relay traffic"
     return 1
   fi
-  if ufw_has_public_tcp_rule "$numbered" "${SSH_PORT}/tcp"; then
-    verify_fail "unexpected public tcp/${SSH_PORT} rule detected"
-    return 1
-  fi
-  verify_pass "tcp/${SSH_PORT} is restricted to ${TAILSCALE_SUBNET}"
+  verify_pass "tcp/${SSH_PORT} is open from any source for SSH relay traffic"
 
   for port in "${DEV_PORTS[@]}"; do
     if ! ufw_has_rule "$numbered" "${port}/tcp" "$TAILSCALE_SUBNET"; then
@@ -614,10 +611,10 @@ verify_iptables() {
     return 1
   fi
 
-  if iptables_has_rule "$chain_rules" "-A ${IPTABLES_CHAIN}" "-p tcp" "-s ${TAILSCALE_SUBNET}" "--dport ${SSH_PORT}" "-j ACCEPT"; then
-    verify_pass "tcp/${SSH_PORT} is restricted to ${TAILSCALE_SUBNET}"
+  if iptables_has_rule "$chain_rules" "-A ${IPTABLES_CHAIN}" "-p tcp" "--dport ${SSH_PORT}" "-j ACCEPT"; then
+    verify_pass "tcp/${SSH_PORT} is open from any source for SSH relay traffic"
   else
-    verify_fail "missing tcp/${SSH_PORT} allow rule for ${TAILSCALE_SUBNET}"
+    verify_fail "missing public tcp/${SSH_PORT} allow rule for SSH relay traffic"
     return 1
   fi
 
@@ -629,7 +626,7 @@ verify_iptables() {
     verify_pass "tcp/${port} is restricted to ${TAILSCALE_SUBNET}"
   done
 
-  for target in "$SSH_PORT" "${DEV_PORTS[@]}"; do
+  for target in "${DEV_PORTS[@]}"; do
     while IFS= read -r line; do
       case "$line" in
         *"--dport ${target}"*'-j ACCEPT'*)

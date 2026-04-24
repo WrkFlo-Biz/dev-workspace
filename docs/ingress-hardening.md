@@ -99,15 +99,18 @@ The intended repo-managed policy is:
 
 - default deny incoming, default allow outgoing
 - allow `udp/41641` from anywhere for Tailscale peer traffic
-- allow `tcp/22` only from `100.64.0.0/10`
+- allow `tcp/22` from anywhere for SSH relay compatibility
 - allow `tcp/8080`, `tcp/9222`, and `tcp/3000` only from `100.64.0.0/10`
 - deny all other inbound traffic
 
-Important nuance: the script does **not** restrict `udp/41641` to
-`100.64.0.0/10`. It intentionally leaves that UDP port globally open so direct
-Tailscale peers and NAT traversal keep working. That means the script is ready
-for Tailscale SSH on `tcp/22` from `100.64.0.0/10`, but the Tailscale WireGuard
-listener stays broader by design.
+Important nuances:
+
+- the script does **not** restrict `udp/41641` to `100.64.0.0/10`; it stays
+  globally open so direct Tailscale peers and NAT traversal keep working
+- the script also leaves `tcp/22` globally reachable so SSH relay paths keep
+  working even when the client is not directly sourced from `100.64.0.0/10`
+- only the dev ports (`8080`, `9222`, `3000`) are restricted to the Tailscale
+  subnet at the host-firewall layer
 
 Readiness findings from the 2026-04-24 review:
 
@@ -118,7 +121,7 @@ Readiness findings from the 2026-04-24 review:
 - because neither supported backend is installed, the script logic looks ready
   but the host is not yet ready to apply it safely
 
-### Safe Enablement Checklist
+### Exact Apply Procedure
 
 Do not enable the firewall from a single fragile session. Before the first real
 apply, all of the following should be true:
@@ -130,19 +133,34 @@ apply, all of the following should be true:
 3. Confirm Tailscale and SSH are already healthy before touching ingress:
    `tailscale status`, `systemctl is-active ssh ssh.socket`, and a live SSH
    login over the Tailscale path.
-4. Run a dry-run after the backend is installed:
-   `~/projects/dev-workspace/bin/dws-firewall.sh --dry-run --backend ufw`
-5. Snapshot the pre-change state so rollback is simple:
-   `sudo ufw status verbose` or `sudo iptables-save`, depending on the chosen
-   backend.
-6. Apply only from the known-good Tailscale session:
+4. Preview the exact rules without changing the host:
+   `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --dry-run`
+5. Apply from the known-good session:
    `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw`
-7. Verify immediately after apply:
+6. Verify immediately after apply:
    `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --verify`
-8. Re-test SSH on `22/tcp` over Tailscale and confirm the required dev ports
-   still behave as expected from the tailnet.
-9. Keep the rollback steps in [troubleshooting.md](troubleshooting.md)
-   available before closing the last surviving session.
+7. Re-test SSH on `22/tcp`, plus the required dev ports from a Tailscale peer:
+   SSH should work from anywhere, while `8080`, `9222`, and `3000` should only
+   answer from `100.64.0.0/10`.
+8. Keep rollback available before closing the last surviving session.
+
+The apply command automatically snapshots the pre-change backend state under
+`/var/lib/dws/firewall/snapshots/<timestamp>-<backend>` and refreshes the
+`latest` / `latest-<backend>` symlinks in `/var/lib/dws/firewall/`.
+
+### Exact Rollback Procedure
+
+If apply or verification leaves the host in the wrong state:
+
+1. Preview the rollback actions first if you want a read-only check:
+   `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --rollback --dry-run`
+2. Restore the most recent saved snapshot:
+   `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --rollback`
+3. Confirm the host is back to the expected pre-apply state:
+   `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --verify`
+
+For `iptables`, swap `--backend ufw` for `--backend iptables`. Rollback restores
+the saved backend snapshot rather than trying to compute an inverse rule set.
 
 ## Audit Commands
 
