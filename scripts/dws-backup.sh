@@ -149,6 +149,14 @@ validate_optional_source_dir_path() {
   fi
 }
 
+verify_staged_path() {
+  local path="$1" label="$2"
+
+  if [ ! -e "$path" ]; then
+    die "stage verification failed: missing ${label}: ${path}"
+  fi
+}
+
 backupable_source_exists() {
   local path="$1"
   [ -e "$path" ] || [ -L "$path" ]
@@ -399,13 +407,19 @@ EOF
 }
 
 backup_git_metadata() {
-  local repo
+  local repo repo_list
+
+  if ! repo_list=$(discover_git_repos); then
+    die "failed to discover git repos under ${PROJECTS_ROOT}"
+  fi
 
   while IFS= read -r repo; do
     [ -n "$repo" ] || continue
     git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || continue
     backup_git_repo "$repo"
-  done < <(discover_git_repos)
+  done <<EOF
+${repo_list}
+EOF
 }
 
 capture_tmux_layouts() {
@@ -531,6 +545,27 @@ EOF
     mkdir -p -- "$(dirname "$MANIFEST_LEGACY")"
     printf '%s' "$REPO_MANIFEST_LINES" >"$MANIFEST_LEGACY"
   fi
+}
+
+verify_staged_backup_contents() {
+  local stage_archive_root manifest rel label
+
+  validate_directory_path "$STAGE_ROOT" "stage root"
+  stage_archive_root="${STAGE_ROOT}/${ARCHIVE_ROOT}"
+  [ -d "$stage_archive_root" ] || die "stage archive root missing: ${stage_archive_root}"
+
+  manifest="${stage_archive_root}/meta/manifest.tsv"
+  verify_staged_path "$stage_archive_root/RESTORE.txt" "restore instructions"
+  verify_staged_path "$stage_archive_root/meta/archive-name.txt" "archive name"
+  verify_staged_path "$stage_archive_root/meta/summary.txt" "summary"
+  verify_staged_path "$stage_archive_root/meta/repo-manifest.tsv" "repo manifest"
+  verify_staged_path "$manifest" "manifest"
+
+  while IFS=$'\t' read -r rel label; do
+    [ -n "${rel:-}" ] || continue
+    validate_relative_archive_path "$rel" "${label:-manifest entry}"
+    verify_staged_path "${stage_archive_root}/${rel}" "${label:-manifest entry}"
+  done <"$manifest"
 }
 
 create_archive() {
@@ -709,6 +744,7 @@ run_backup() {
   validate_optional_source_dir_path "$WRKFLO_CONFIG_DIR" "wrkflo config"
   validate_optional_source_dir_path "$USER_BIN_DIR" "user bin"
   validate_optional_source_dir_path "$SSH_DIR" "SSH keys"
+  validate_optional_source_dir_path "$PROJECTS_ROOT" "projects root"
 
   SNAPSHOT_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
   ARCHIVE_PATH="${BACKUP_ROOT}/$(archive_basename_for_timestamp "$TIMESTAMP")"
@@ -736,6 +772,11 @@ run_backup() {
   capture_crontab
   backup_git_metadata
   write_metadata
+  if [ "$DRY_RUN" -eq 1 ]; then
+    say "would verify staged backup contents: ${ARCHIVE_ROOT}"
+  else
+    verify_staged_backup_contents
+  fi
   create_archive
   if [ "$DRY_RUN" -eq 1 ]; then
     say "would verify backup archive: ${ARCHIVE_PATH}"

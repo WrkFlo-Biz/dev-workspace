@@ -46,9 +46,21 @@ cleanup_fixture() {
   fi
 }
 
+install_fake_tar_wrapper() {
+  local body="$1"
+
+  cat >"${FAKE_BIN}/tar" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+${body}
+EOF
+  chmod +x "${FAKE_BIN}/tar"
+}
+
 make_fixture() {
   FIXTURE_ROOT=$(mktemp -d "/tmp/dws-backup-test.XXXXXX")
   ORIG_PATH="${PATH}"
+  REAL_TAR=$(command -v tar)
 
   export HOME="${FIXTURE_ROOT}/home"
   export TMPDIR="${FIXTURE_ROOT}/tmp"
@@ -250,6 +262,56 @@ test_backup_exits_non_zero_when_source_path_is_unsafe() {
   trap - EXIT
 }
 
+test_backup_exits_non_zero_when_projects_root_is_not_directory() {
+  local output invalid_source
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  invalid_source="${FIXTURE_ROOT}/projects-not-a-dir"
+  printf 'not a directory\n' >"${invalid_source}"
+
+  if output=$(DWS_PROJECTS_ROOT="${invalid_source}" "${SCRIPT}" backup 2>&1); then
+    fail "expected backup with non-directory projects root to fail"
+  fi
+
+  assert_contains "${output}" "projects root is not a directory: ${invalid_source}"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
+test_backup_exits_non_zero_when_archive_verification_fails() {
+  local output archive
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  archive="${DWS_BACKUP_ROOT}/dws-backup-${DWS_BACKUP_TIMESTAMP}.tar.gz"
+
+  install_fake_tar_wrapper '
+for arg in "$@"; do
+  if [ "$arg" = "-tzf" ]; then
+    printf "%s\n" "simulated tar list failure" >&2
+    exit 1
+  fi
+done
+exec "'"${REAL_TAR}"'" "$@"
+'
+
+  if output=$("${SCRIPT}" backup 2>&1); then
+    fail "expected backup to fail when archive verification fails"
+  fi
+
+  assert_contains "${output}" "verify failed: archive listing failed: ${archive}"
+  assert_contains "${output}" "backup verification failed: ${archive}"
+  [ -f "${archive}" ] || fail "expected archive to exist before verification failure"
+  [ ! -L "${DWS_BACKUP_ROOT}/latest" ] || fail "expected latest symlink not to be refreshed on verification failure"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
 test_backup_dry_run_reports_actions_without_writing_files() {
   local output snapshot archive archive_root
 
@@ -264,6 +326,7 @@ test_backup_dry_run_reports_actions_without_writing_files() {
 
   assert_contains "${output}" "would create snapshot dir: ${snapshot}"
   assert_contains "${output}" "would back up wrkflo config: ${DWS_WRKFLO_CONFIG_DIR} -> ${archive_root}/home/.config/wrkflo"
+  assert_contains "${output}" "would verify staged backup contents: ${archive_root}"
   assert_contains "${output}" "would create archive: ${archive}"
   assert_contains "${output}" "would verify backup archive: ${archive}"
   assert_contains "${output}" "would refresh latest symlink: ${DWS_BACKUP_ROOT}/latest -> ${snapshot}"
@@ -395,6 +458,8 @@ test_backup_skips_missing_optional_dirs_gracefully
 test_backup_exits_non_zero_when_backup_root_is_invalid
 test_backup_exits_non_zero_when_source_path_is_not_directory
 test_backup_exits_non_zero_when_source_path_is_unsafe
+test_backup_exits_non_zero_when_projects_root_is_not_directory
+test_backup_exits_non_zero_when_archive_verification_fails
 test_backup_dry_run_reports_actions_without_writing_files
 test_restore_and_verify_use_latest_snapshot_metadata
 test_restore_dry_run_reports_actions_without_creating_temp_dir
