@@ -2325,16 +2325,16 @@
       "phase": 9,
       "repo": "dev-workspace",
       "description": "Add maintenance-lock awareness to ~/bin/task-monitor.sh: if .state/maintenance-lock exists, skip dispatch and log waiting-for-maintenance. Copy to scripts/task-monitor.sh when done.",
-      "assigned": null,
-      "status": "pending"
+      "assigned": "worker-i",
+      "status": "completed"
     },
     {
       "id": "ops-hardening-06",
       "phase": 9,
       "repo": "dev-workspace",
       "description": "Update docs/runbook.md with new operational commands: dws-summary.sh, dws-alerting.sh, dws-queue-inspector.sh, dws-maintenance-mode.sh, dws-termius-verify.sh, dws-reboot-drill.sh. Add to Quick Reference table.",
-      "assigned": null,
-      "status": "pending"
+      "assigned": "dws-a",
+      "status": "completed"
     }
   ]
 }
