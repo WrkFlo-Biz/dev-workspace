@@ -49,7 +49,7 @@ currently narrowed by UFW.
 | Bind | Proto | Process | Why it is open | Exposure notes |
 | --- | --- | --- | --- | --- |
 | `0.0.0.0:22`, `[::]:22` | TCP | `sshd` | Remote shell access for operators | Bound on all interfaces. Host firewall does not currently narrow this to Tailscale-only traffic, so access control relies on SSH hardening plus any upstream network perimeter. |
-| `0.0.0.0:8081` | TCP | `dws-phone-server.service` (`~/bin/dws-phone-server.py`) | Phone-control callback server used by the iPhone shortcut flow (`/health`, `/pending`, `/queue`, `/result`) | Bound on all interfaces. The application comment says Tailscale ACLs are the intended gate, but the host firewall does not currently enforce that posture. |
+| `0.0.0.0:8081` | TCP | host-local `dws-phone-server.service` (`~/bin/dws-phone-server.py`) | Phone-control callback server used by the iPhone shortcut flow (`/health`, `/pending`, `/queue`, `/result`) | Bound on all interfaces. This repo does not provision the unit. The application comment says Tailscale ACLs are the intended gate, but the host firewall does not currently enforce that posture. |
 | `0.0.0.0:41641`, `[::]:41641` | UDP | `tailscaled` | Tailscale WireGuard / magicsock listener for peer traffic and NAT traversal | Expected and required for Tailscale connectivity. This is the one globally accepted UDP port in the Tailscale-managed host rules. |
 | `100.117.16.63:52421` | TCP | `tailscaled` | Tailscale PeerAPI on the node's Tailscale IPv4 address | Bound only to the Tailscale IPv4 address, not to a wildcard interface. |
 | `[fd7a:115c:a1e0::cf37:103f]:38251` | TCP | `tailscaled` | Tailscale PeerAPI on the node's Tailscale IPv6 address | Bound only to the Tailscale IPv6 address, not to a wildcard interface. |
@@ -155,6 +155,6 @@ sudo nft list chain ip filter INPUT
 sudo nft list chain ip filter ts-input
 sudo ss -tulpn
 sed -n '1,160p' /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
-systemctl --user status dws-phone-server.service --no-pager -l
+systemctl --user status dws-phone-server.service --no-pager -l  # if the host-local phone server is installed
 sudo tailscale status --json
 ```

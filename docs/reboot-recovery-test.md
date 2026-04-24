@@ -2,7 +2,7 @@
 
 Operator drill for validating the `dev-workspace-vm` stack after a VM restart. Use this plan before any maintenance reboot, after unplanned outages, or on a cadence (quarterly) to confirm recovery posture.
 
-This doc does not change runtime code — it tells you what to observe and in what order. The canonical post-reboot smoke test is `~/projects/dev-workspace/bin/dws-boot-verify.sh`; the sections below expand its coverage (phone server, orchestrator API, launcher, cron entries) and define explicit pass/fail criteria.
+This doc does not change runtime code — it tells you what to observe and in what order. The canonical post-reboot smoke test is `~/projects/dev-workspace/bin/dws-boot-verify.sh`; the sections below expand its coverage (optional host-local phone server, optional sibling-repo orchestrator API, launcher, cron entries) and define explicit pass/fail criteria.
 
 ## Scope
 
@@ -12,11 +12,11 @@ The drill validates that after a clean reboot (`sudo reboot`), the following com
 |---|---|---|
 | Tailscale mesh | `tailscaled.service` (system) | active, VM IP `100.117.16.63`, Mac + iPhone visible |
 | SSH | `ssh.socket` (socket-activated) | `ssh.socket` active, `ssh.service` starts on first connection |
-| systemd user services | linger + `default.target.wants/` | 4 user services active |
+| systemd user services | linger + `default.target.wants/` | 2 repo-managed user services active, plus optional host-local services if installed |
 | dws-sessions-init.service | `~/bin/dws-sessions-init.sh` (oneshot) | 10 tmux sessions recreated |
 | dws-task-monitor.service | `~/bin/task-monitor.sh` (simple, Restart=on-failure) | active, writing `/var/log/dws/monitor.log` |
-| dws-phone-server.service | `~/bin/dws-phone-server.py` | active, Restart=always |
-| wrkflo-orchestrator-api.service | FastAPI on `127.0.0.1:8100` | active, `/v1/workspace/health` returns 200 |
+| dws-phone-server.service | optional host-local `~/bin/dws-phone-server.py` | if installed: active, Restart=always |
+| wrkflo-orchestrator-api.service | optional sibling-repo FastAPI on `127.0.0.1:8100` | if installed: active, `/v1/workspace/health` returns 200 |
 | tmux sessions | spawned by `dws-sessions-init` | managed set present: `dws-a dws-b worker-c worker-d worker-e worker-f worker-g worker-h worker-i orchestrator` |
 | Cron | system `cron.service` | daemon active, 3 dev-workspace entries present |
 | Launcher | `~/bin/dws-launcher.sh` | runnable on a fresh SSH login |
@@ -130,10 +130,11 @@ ssh moses@dev-workspace-vm '
 Pass: `Linger=yes`; both `dws-sessions-init.service` and
 `dws-task-monitor.service` are `enabled`; both are active after login manager
 startup; `ExecStart` resolves to `/usr/bin/bash /home/moses/bin/dws-sessions-init.sh`
-and `/usr/bin/bash /home/moses/bin/task-monitor.sh`; both
-`~/.config/systemd/user/default.target.wants/` symlinks are present; and
-`dws-phone-server.service`, `dws-task-monitor.service`,
-`wrkflo-orchestrator-api.service` all appear in the running user-service list.
+and `/usr/bin/bash /home/moses/bin/task-monitor.sh`; and both
+`~/.config/systemd/user/default.target.wants/` symlinks are present. If this
+host also installs `dws-phone-server.service` and/or
+`wrkflo-orchestrator-api.service`, those units should appear in the running
+user-service list too.
 Fail: `Linger=no` → user services did not auto-start on boot; run `sudo loginctl enable-linger moses` and reboot again.
 
 Current live verification snapshot on `2026-04-23 23:52:44 UTC`:
@@ -175,22 +176,31 @@ ssh moses@dev-workspace-vm 'systemctl --user is-active dws-task-monitor.service;
 Pass: `active`; monitor log advancing with fresh `--- check cycle ...` lines (cycles every 30 s).
 Fail: inactive or log frozen > 2 min → `systemctl --user restart dws-task-monitor.service`, then re-tail.
 
-### 3.6 dws-phone-server.service
+### 3.6 Optional host-local dws-phone-server.service
+
+Run this only on hosts that install the phone-control helper described in
+`docs/phone-control.md`.
 
 ```bash
 ssh moses@dev-workspace-vm 'systemctl --user is-active dws-phone-server.service; curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8081/health || true'
 ```
 
 Pass: `active`; `/health` returns `200`.
+Skip: the unit is not installed on this host because phone control is not part
+of the runtime.
 Fail: inactive → `journalctl --user -u dws-phone-server.service -n 50 --no-pager`; restart with `systemctl --user restart dws-phone-server.service`.
 
-### 3.7 wrkflo-orchestrator-api.service
+### 3.7 Optional wrkflo-orchestrator-api.service
+
+Run this only on hosts that deploy the sibling `wrkflo-orchestrator` user unit.
 
 ```bash
 ssh moses@dev-workspace-vm 'systemctl --user is-active wrkflo-orchestrator-api.service; curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8100/v1/workspace/health'
 ```
 
 Pass: `active`; `/v1/workspace/health` returns `200`.
+Skip: the unit is not installed on this host because the sibling orchestrator
+repo is not deployed here.
 Fail: inactive or non-200 → `journalctl --user -u wrkflo-orchestrator-api.service -n 80 --no-pager`; common cause is missing `state.db` dir → `mkdir -p ~/.local/state/wrkflo-orchestrator` and restart.
 
 ### 3.8 tmux sessions
@@ -246,7 +256,9 @@ Fail: any script exits non-zero → section-specific recovery above, then rerun 
 The drill is green when **all** of the following hold:
 
 - `~/projects/dev-workspace/bin/dws-boot-verify.sh` reports `STATUS: READY`, `0 failed`.
-- Sections 3.1 – 3.11 each show their pass criterion.
+- Sections 3.1 – 3.5 and 3.8 – 3.11 each show their pass criterion.
+- Sections 3.6 and 3.7 either pass or are explicitly skipped because the
+  optional service is not installed on that host.
 - `tmux list-sessions` shows the managed 10-session pool.
 - `~/projects/dev-workspace/scripts/dws-health.sh --json` returns healthy service state after the reboot.
 - Monitor log advanced at least 2 cycles (1 min) since boot.

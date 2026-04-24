@@ -72,10 +72,13 @@ User lingering is enabled:
 
 - `loginctl show-user "$USER" -p Linger` -> `Linger=yes`
 
-Active user services observed:
+Repo-managed user services observed:
 
 - `dws-sessions-init.service`
 - `dws-task-monitor.service`
+
+Additional host-local or sibling-repo services observed on this VM:
+
 - `dws-phone-server.service`
 - `wrkflo-orchestrator-api.service`
 
@@ -101,6 +104,8 @@ What already recovers on reboot:
 - user systemd services because `Linger=yes`
   - `dws-sessions-init.service`
   - `dws-task-monitor.service`
+  - additional host-local or sibling-repo services can also recover if they
+    are installed on the VM, for example:
   - `dws-phone-server.service`
   - `wrkflo-orchestrator-api.service`
 

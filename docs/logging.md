@@ -91,8 +91,8 @@ orchestrator API units also leave stdout/stderr in the user journal.
 | --- | --- | --- |
 | `dws-sessions-init.service` | `journalctl --user -u dws-sessions-init.service` | No file log is configured in the tracked unit. |
 | `dws-task-monitor.service` | `journalctl --user -u dws-task-monitor.service` plus `/var/log/dws/monitor.log` | The unit launches `~/bin/task-monitor.sh`, which also writes its own file log. |
-| `dws-phone-server.service` | `journalctl --user -u dws-phone-server.service` | `~/bin/dws-phone-server.py` prints startup logs to stdout and request logs to stderr via `log_message()`. |
-| `wrkflo-orchestrator-api.service` | `journalctl --user -u wrkflo-orchestrator-api.service` | Runs the local API on `127.0.0.1:8100`; no file log path is configured. |
+| `dws-phone-server.service` | `journalctl --user -u dws-phone-server.service` | Host-local phone-control unit. `~/bin/dws-phone-server.py` prints startup logs to stdout and request logs to stderr via `log_message()`. This repo does not provision the unit. |
+| `wrkflo-orchestrator-api.service` | `journalctl --user -u wrkflo-orchestrator-api.service` | Host-local or sibling-repo unit that runs the local API on `127.0.0.1:8100`; no file log path is configured by this repo. |
 
 ## Retention And Cleanup
 

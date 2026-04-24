@@ -133,7 +133,7 @@ validate_parent_dir_path() {
 validate_relative_archive_path() {
   local rel="$1" label="$2"
   case "$rel" in
-    ""|/*|../*|*/../*|*/..|..|./*|*/./*|*/.)
+    ""|"."|/*|../*|*/../*|*/..|..|./*|*/./*|*/.)
       die "unsafe archive path for ${label}: ${rel:-<empty>}"
       ;;
   esac
@@ -145,6 +145,15 @@ validate_timestamp_value() {
     [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z) ;;
     *) die "timestamp must match YYYYMMDDTHHMMSSZ: ${value}" ;;
   esac
+}
+
+validate_requested_host_path() {
+  local path="$1" label="$2"
+
+  case "$path" in
+    ""|latest) return 0 ;;
+  esac
+  validate_safe_host_path "$path" "$label"
 }
 
 validate_path_within_root() {
@@ -172,6 +181,16 @@ verify_staged_path() {
   if [ ! -e "$path" ]; then
     die "stage verification failed: missing ${label}: ${path}"
   fi
+}
+
+normalize_archive_member_path() {
+  local member="$1"
+
+  while [ "${member#./}" != "$member" ]; do
+    member=${member#./}
+  done
+  member=${member%/}
+  printf '%s\n' "$member"
 }
 
 backupable_source_exists() {
@@ -328,11 +347,13 @@ resolve_backup_reference() {
   local ref="${SNAPSHOT_DIR:-}"
 
   if [ -n "$ARCHIVE_PATH" ]; then
+    validate_requested_host_path "$ARCHIVE_PATH" "archive"
     [ -f "$ARCHIVE_PATH" ] || die "archive not found: ${ARCHIVE_PATH}"
     SNAPSHOT_DIR=""
     return 0
   fi
 
+  validate_requested_host_path "$ref" "backup reference"
   if [ -z "$ref" ] || [ "$ref" = "latest" ]; then
     ref=$(latest_snapshot)
   fi
@@ -592,15 +613,18 @@ validate_archive_member_paths() {
 
   while IFS= read -r member; do
     [ -n "${member:-}" ] || continue
-    normalized=${member#./}
-    normalized=${normalized%/}
+    normalized=$(normalize_archive_member_path "$member")
     [ -n "${normalized:-}" ] || continue
 
-    validate_relative_archive_path "$normalized" "archive member"
+    case "$normalized" in
+      ""|"."|/*|../*|*/../*|*/..|..|./*|*/./*|*/.)
+        return 1
+        ;;
+    esac
     root=${normalized%%/*}
     case "$root" in
       ""|"."|".."|/*)
-        die "archive has unsafe root path: ${member}"
+        return 1
         ;;
     esac
 
@@ -610,13 +634,13 @@ validate_archive_member_paths() {
     fi
 
     if [ "$root" != "$expected_root" ]; then
-      die "archive contains unexpected root path: ${member}"
+      return 1
     fi
   done <<EOF
 $listing
 EOF
 
-  [ -n "$expected_root" ] || die "archive is empty: ${ARCHIVE_PATH}"
+  [ -n "$expected_root" ] || return 1
   printf '%s\n' "$expected_root"
 }
 
@@ -648,8 +672,12 @@ archive_root_from_tar() {
 extract_archive_to() {
   local target_root="$1" archive_root
 
+  validate_safe_host_path "$target_root" "extract target"
   validate_directory_path "$target_root" "extract target"
-  archive_root=$(archive_root_from_tar) || die "could not determine archive root from ${ARCHIVE_PATH}"
+  archive_root=$(archive_root_from_tar) || {
+    printf '%s\n' "archive contains unsafe or inconsistent member paths: ${ARCHIVE_PATH}" >&2
+    return 1
+  }
   mkdir -p -- "$target_root"
   if ! tar -xzf "$ARCHIVE_PATH" -C "$target_root"; then
     die "failed to extract archive: ${ARCHIVE_PATH}"
@@ -696,6 +724,13 @@ run_archive_verification() {
 
   if ! tar -tzf "$ARCHIVE_PATH" >/dev/null; then
     say "verify failed: archive listing failed: ${ARCHIVE_PATH}"
+    say "  temp_dir:  ${verify_dir}"
+    return 1
+  fi
+  VERIFIED_COUNT=$((VERIFIED_COUNT + 1))
+
+  if ! archive_root_from_tar >/dev/null 2>&1; then
+    say "verify failed: archive contains unsafe or inconsistent member paths: ${ARCHIVE_PATH}"
     say "  temp_dir:  ${verify_dir}"
     return 1
   fi
@@ -973,6 +1008,9 @@ validate_nonempty_path "$VERIFY_ROOT" "verify root"
 validate_safe_host_path "$VERIFY_ROOT" "verify root"
 validate_nonempty_path "$TIMESTAMP" "timestamp"
 validate_timestamp_value "$TIMESTAMP"
+validate_requested_host_path "$SNAPSHOT_DIR" "backup reference"
+validate_requested_host_path "$ARCHIVE_PATH" "archive"
+validate_requested_host_path "$RESTORE_TARGET" "extract target"
 case "$KEEP_VERIFY_DIR" in
   0|1) ;;
   *) die "DWS_VERIFY_RESTORE_KEEP must be 0 or 1" ;;

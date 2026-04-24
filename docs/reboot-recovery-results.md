@@ -171,7 +171,10 @@ Session count: `<n>/10`. Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 
 Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
 
-### 3.7 dws-phone-server.service
+### 3.7 Optional host-local dws-phone-server.service
+
+Skip this section if the host does not install the phone-control helper from
+`docs/phone-control.md`.
 
 ```bash
 systemctl --user is-active dws-phone-server.service
@@ -183,9 +186,12 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8081/health || true
 | Unit active | `<active/inactive>` | `[ ]` |
 | `/health` response | `<200/other>` | `[ ]` |
 
-Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
+Section verdict: `[ PASS / FAIL / SKIP ]` — notes: `<…>`
 
-### 3.8 wrkflo-orchestrator-api.service
+### 3.8 Optional wrkflo-orchestrator-api.service
+
+Skip this section if the sibling `wrkflo-orchestrator` user unit is not
+deployed on the host.
 
 ```bash
 systemctl --user is-active wrkflo-orchestrator-api.service
@@ -197,7 +203,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8100/v1/workspace/heal
 | Unit active | `<active/inactive>` | `[ ]` |
 | `/v1/workspace/health` response | `<code>` (expect `200`) | `[ ]` |
 
-Section verdict: `[ PASS / FAIL ]` — notes: `<…>`
+Section verdict: `[ PASS / FAIL / SKIP ]` — notes: `<…>`
 
 ### 3.9 Cron
 
