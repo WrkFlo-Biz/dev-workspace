@@ -9,6 +9,42 @@
 
 set -u
 
+FOUNDRY_ENV_PATH="${DWS_FOUNDRY_ENV_PATH:-$HOME/.config/wrkflo/foundry.env}"
+FOUNDRY_ENV_STATE="unknown"
+
+load_foundry_env() {
+  local rc=0
+
+  if [ -n "${AZURE_OPENAI_API_KEY:-}" ]; then
+    FOUNDRY_ENV_STATE="preloaded"
+    return 0
+  fi
+
+  if [ ! -f "$FOUNDRY_ENV_PATH" ]; then
+    FOUNDRY_ENV_STATE="missing"
+    return 1
+  fi
+
+  set +u
+  # shellcheck source=/dev/null
+  . "$FOUNDRY_ENV_PATH"
+  rc=$?
+  set -u
+
+  if [ "$rc" -ne 0 ]; then
+    FOUNDRY_ENV_STATE="error"
+    return "$rc"
+  fi
+
+  if [ -n "${AZURE_OPENAI_API_KEY:-}" ]; then
+    FOUNDRY_ENV_STATE="loaded"
+    return 0
+  fi
+
+  FOUNDRY_ENV_STATE="empty"
+  return 1
+}
+
 DWS_LAUNCHER_CMD="${1:-}"
 case "$DWS_LAUNCHER_CMD" in
   status) shift ;;
@@ -22,9 +58,7 @@ if [ "$DWS_LAUNCHER_CMD" != "status" ]; then
   export DWS_LAUNCHER_RAN=1
 fi
 
-[ -n "${AZURE_OPENAI_API_KEY:-}" ] || {
-  [ -f "$HOME/.config/wrkflo/foundry.env" ] && . "$HOME/.config/wrkflo/foundry.env"
-}
+load_foundry_env >/dev/null 2>&1 || true
 
 LAUNCHER_DIR=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(CDPATH='' cd -- "$LAUNCHER_DIR/.." && pwd)
@@ -56,6 +90,40 @@ key_status() {
   else
     red "missing"
   fi
+}
+
+foundry_key_ready() {
+  [ -n "${AZURE_OPENAI_API_KEY:-}" ]
+}
+
+foundry_key_hint() {
+  case "$FOUNDRY_ENV_STATE" in
+    preloaded)
+      printf '%s' "AZURE_OPENAI_API_KEY is already loaded"
+      ;;
+    loaded)
+      printf '%s' "loaded key from ${FOUNDRY_ENV_PATH}"
+      ;;
+    missing)
+      printf '%s' "missing ${FOUNDRY_ENV_PATH}"
+      ;;
+    empty)
+      printf '%s' "${FOUNDRY_ENV_PATH} did not export AZURE_OPENAI_API_KEY"
+      ;;
+    error)
+      printf '%s' "could not load ${FOUNDRY_ENV_PATH}"
+      ;;
+    *)
+      printf '%s' "AZURE_OPENAI_API_KEY is unavailable"
+      ;;
+  esac
+}
+
+show_openai_profile_warning() {
+  yellow "  OpenAI profiles unavailable"; echo
+  dim "  $(foundry_key_hint)"; echo
+  dim "  choose Claude or plain shell until the key is restored"; echo
+  sleep 1
 }
 
 active_session_summary() {
@@ -477,6 +545,48 @@ status_motd_orchestrator() {
   printf '\n'
 }
 
+shell_tailnet_preview() {
+  local out=""
+
+  if ! command -v tailscale >/dev/null 2>&1; then
+    dim "    (tailscale CLI unavailable)"; echo
+    return 0
+  fi
+
+  out=$(tailscale status 2>&1 || true)
+  if [ -z "$out" ] && command -v sudo >/dev/null 2>&1; then
+    out=$(sudo -n tailscale status 2>&1 || true)
+  fi
+
+  out=$(printf '%s\n' "$out" | sed -n '1,6p' | sed '/^[[:space:]]*$/d')
+  if [ -n "$out" ]; then
+    printf '%s\n' "$out" | sed 's/^/    /'
+  else
+    dim "    (tailscale status unavailable)"; echo
+  fi
+}
+
+show_local_projects() {
+  local d found=0 name branch dirty
+
+  for d in "$HOME"/projects/*/; do
+    [ -d "$d" ] || continue
+    found=1
+    name=$(basename "$d")
+    branch=$(git -C "$d" symbolic-ref --short HEAD 2>/dev/null || echo "-")
+    dirty=$(git -C "$d" status --porcelain 2>/dev/null | head -1)
+    if [ -n "$dirty" ]; then
+      printf "    %-28s %s %s\n" "$name" "$branch" "$(yellow "*dirty")"
+    else
+      printf "    %-28s %s\n" "$name" "$branch"
+    fi
+  done
+
+  if [ "$found" -eq 0 ]; then
+    dim "    (none)"; echo
+  fi
+}
+
 status_command() {
   local mode="${1:-}" payload tool
   case "$mode" in
@@ -490,11 +600,16 @@ status_command() {
   tool=$(status_tool_path || true)
   if [ -n "$tool" ]; then
     if [ -n "$mode" ]; then
-      "$tool" "$mode"
+      if "$tool" "$mode"; then
+        return 0
+      fi
     else
-      "$tool"
+      if "$tool"; then
+        return 0
+      fi
+      yellow "external status tool failed; falling back"; echo
+      echo
     fi
-    return $?
   fi
   refresh_health_status
   payload=$(orchestrator_health_payload || true)
@@ -507,11 +622,15 @@ status_command() {
         printf '  orchestrator: %s  source=%s\n' "$(red "unavailable")" "$ORCHESTRATOR_HEALTH_URL"
         ;;
       *)
-        red "orchestrator health unavailable"; echo
-        printf '  source: %s\n' "$ORCHESTRATOR_HEALTH_URL"
+        yellow "orchestrator health API unavailable; using shell heuristics"; echo
+        echo
+        status_page_shell
         ;;
     esac
-    return 1
+    case "$mode" in
+      "" ) return 0 ;;
+      *) return 1 ;;
+    esac
   fi
   case "$mode" in
     --json) printf '%s\n' "$payload" ;;
@@ -559,17 +678,7 @@ status_page_shell() {
   fi
   echo
   bold "  projects"; echo
-  for d in "$HOME"/projects/*/; do
-    local name branch dirty
-    name=$(basename "$d")
-    branch=$(git -C "$d" symbolic-ref --short HEAD 2>/dev/null || echo "-")
-    dirty=$(git -C "$d" status --porcelain 2>/dev/null | head -1)
-    if [ -n "$dirty" ]; then
-      printf "    %-28s %s %s\n" "$name" "$branch" "$(yellow "*dirty")"
-    else
-      printf "    %-28s %s\n" "$name" "$branch"
-    fi
-  done
+  show_local_projects
   echo
   bold "  system"; echo
   printf "    uptime: %s\n" "$(uptime -p 2>/dev/null || uptime)"
@@ -578,7 +687,7 @@ status_page_shell() {
   printf "    key:    %s\n" "$(key_status)"
   echo
   bold "  tailnet"; echo
-  sudo tailscale status 2>&1 | head -6 | sed 's/^/    /'
+  shell_tailnet_preview
   status_page_health_logs
 }
 
@@ -944,6 +1053,10 @@ MENU
 
     case "$model_choice" in
       [1-9])
+        if [ "$model_choice" -le 6 ] && ! foundry_key_ready; then
+          show_openai_profile_warning
+          continue
+        fi
         if launch_choice "$proj" "$model_choice"; then
           continue
         fi

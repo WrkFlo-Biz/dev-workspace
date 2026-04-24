@@ -5,7 +5,7 @@ SSH_HOST="${DWS_BOOT_VERIFY_SSH_HOST:-127.0.0.1}"
 SSH_PORT="${DWS_BOOT_VERIFY_SSH_PORT:-22}"
 SSH_TIMEOUT_SECONDS="${DWS_BOOT_VERIFY_SSH_TIMEOUT_SECONDS:-5}"
 LOG_DIR="${DWS_BOOT_VERIFY_LOG_DIR:-/var/log/dws}"
-TASK_MONITOR_UNIT="${DWS_BOOT_VERIFY_TASK_MONITOR_UNIT:-dws-task-monitor.service}"
+TASK_MONITOR_UNIT="${DWS_BOOT_VERIFY_TASK_MONITOR_UNIT:-task-monitor.service}"
 EXPECTED_TMUX_SESSIONS=(
   dws-a
   dws-b
@@ -59,7 +59,7 @@ Verify post-reboot dev-workspace readiness:
   - tmux has the managed session set
   - cron is active and a crontab is loaded
   - /var/log/dws exists
-  - dws-task-monitor.service is active
+  - task-monitor.service is active
 
 Exits non-zero when one or more checks fail.
 EOF
@@ -79,9 +79,7 @@ is_uint() {
 validate_config() {
   is_uint "$SSH_PORT" || die "DWS_BOOT_VERIFY_SSH_PORT must be an integer"
   is_uint "$SSH_TIMEOUT_SECONDS" || die "DWS_BOOT_VERIFY_SSH_TIMEOUT_SECONDS must be an integer"
-  if [ "$SSH_PORT" -lt 1 ] || [ "$SSH_PORT" -gt 65535 ]; then
-    die "DWS_BOOT_VERIFY_SSH_PORT must be between 1 and 65535"
-  fi
+  [ "$SSH_PORT" -ge 1 ] && [ "$SSH_PORT" -le 65535 ] || die "DWS_BOOT_VERIFY_SSH_PORT must be between 1 and 65535"
   [ "$SSH_TIMEOUT_SECONDS" -ge 1 ] || die "DWS_BOOT_VERIFY_SSH_TIMEOUT_SECONDS must be at least 1"
 }
 
@@ -201,15 +199,13 @@ PY
 }
 
 read_ssh_banner_tcp() {
-  local tcp_script
-
-  tcp_script=$'exec 3<>"/dev/tcp/$1/$2" || exit 1\n'
-  tcp_script+=$'IFS= read -r line <&3 || exit 1\n'
-  tcp_script+=$'printf "%s\\n" "$line"\n'
-  tcp_script+=$'exec 3<&-\n'
-  tcp_script+=$'exec 3>&-\n'
-
-  timeout "$SSH_TIMEOUT_SECONDS" bash -c "$tcp_script" _ "$SSH_HOST" "$SSH_PORT"
+  timeout "$SSH_TIMEOUT_SECONDS" bash -c '
+    exec 3<>"/dev/tcp/$1/$2" || exit 1
+    IFS= read -r line <&3 || exit 1
+    printf "%s\n" "$line"
+    exec 3<&-
+    exec 3>&-
+  ' _ "$SSH_HOST" "$SSH_PORT"
 }
 
 read_ssh_banner() {

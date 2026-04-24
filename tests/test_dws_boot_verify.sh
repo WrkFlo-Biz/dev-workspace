@@ -237,6 +237,41 @@ exit 1
   trap - EXIT
 }
 
+test_boot_verify_fails_when_worker_i_is_missing() {
+  local output
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  write_fake_command tmux '
+if [ "${1:-}" = "list-sessions" ]; then
+  cat <<'\''EOF'\''
+dws-a
+dws-b
+worker-c
+worker-d
+worker-e
+worker-f
+worker-g
+worker-h
+orchestrator
+EOF
+  exit 0
+fi
+exit 1
+'
+
+  if output=$("${SCRIPT}" 2>&1); then
+    fail "expected dws-boot-verify.sh to fail when worker-i is missing"
+  fi
+
+  assert_contains "${output}" "FAIL tmux managed sessions missing (worker-i; active: dws-a, dws-b, worker-c, worker-d, worker-e, worker-f, worker-g, worker-h, orchestrator)"
+  assert_contains "${output}" "overall: FAIL (5 passed, 1 failed)"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
 test_boot_verify_passes_when_all_checks_are_ready
 test_boot_verify_fails_when_task_monitor_is_inactive
 test_boot_verify_fails_when_worker_i_is_missing

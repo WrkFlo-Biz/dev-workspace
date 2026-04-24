@@ -1,32 +1,24 @@
 # Dev Workspace Runbook
 
-Operator runbook for the `dev-workspace-vm` multi-agent environment.
-
-Unless a heading says otherwise, every command block below is intended to be
-copy/paste ready on the VM.
+Operational procedures for the `dev-workspace-vm` multi-agent environment.
 
 ## Quick Reference
 
-| Item | Location / command |
+| Item | Location |
 | --- | --- |
 | Repo | `~/projects/dev-workspace` |
-| Backup root | `~/backups/dev-workspace` |
+| Managed queue | `~/projects/dev-workspace/.state/task-queue.json` |
 | Repo wrappers | `~/projects/dev-workspace/bin/` |
 | Repo scripts | `~/projects/dev-workspace/scripts/` |
-| Managed queue | `~/projects/dev-workspace/.state/task-queue.json` |
-| User units | `dws-sessions-init.service`, `dws-task-monitor.service`, `dws-phone-server.service` |
-| User-unit installer | `~/projects/dev-workspace/bin/dws-systemd-user-setup.sh` (installs `dws-sessions-init.service` and `dws-task-monitor.service`) |
+| VM-local service entrypoints | `~/bin/` |
+| User services | `~/.config/systemd/user/dws-sessions-init.service`, `~/.config/systemd/user/dws-task-monitor.service` |
+| Service installer | `~/projects/dev-workspace/bin/dws-systemd-user-setup.sh` |
 | Monitor log | `/var/log/dws/monitor.log` |
-| Log viewer | `~/projects/dev-workspace/bin/dws-log-viewer.sh` |
 | Boot verifier | `~/projects/dev-workspace/bin/dws-boot-verify.sh` |
-| Status commands | `~/projects/dev-workspace/bin/dws-status.sh`, `~/projects/dev-workspace/bin/dws-doctor.sh` |
-| Update script | `~/projects/dev-workspace/scripts/dws-update.sh` |
-| Firewall tool | `~/projects/dev-workspace/bin/dws-firewall.sh` |
-| Firewall snapshots | `/var/lib/dws/firewall` |
+| Launcher status | `~/projects/dev-workspace/scripts/dws-launcher.sh status` |
+| SSH hardening (live) | `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` |
 | SSH baseline (repo) | `~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf` |
-| Live SSH drop-in | `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` |
 | Foundry env | `~/.config/wrkflo/foundry.env` |
-| Phone server | `http://127.0.0.1:8081/health` |
 
 ## Tailscale Network
 
@@ -37,474 +29,260 @@ copy/paste ready on the VM.
 | iPhone | `100.88.249.22` |
 | openclaw-gateway | `100.126.194.98` |
 
-## Live Runtime Paths
+## Start / Resume
 
-Use these exact exports in any shell where you want repo readers to follow the
-live queue and live monitor log instead of legacy `/tmp/*` defaults:
+### After reboot (automatic)
 
-```bash
-export DWS_TASK_QUEUE_PATH="$HOME/projects/dev-workspace/.state/task-queue.json"
-export DWS_MONITOR_LOG="/var/log/dws/monitor.log"
-export DWS_MONITOR_LOG_PATH="/var/log/dws/monitor.log"
-```
+The service-managed boot path is:
 
-## Start
+1. `dws-sessions-init.service` recreates the managed `tmux` pool.
+2. `dws-task-monitor.service` starts the monitor loop after session init.
 
-### Start the managed runtime
+Verify the stack with:
 
 ```bash
-systemctl --user start dws-sessions-init.service
-systemctl --user start dws-task-monitor.service
-systemctl --user start dws-phone-server.service 2>/dev/null || true
 systemctl --user status dws-sessions-init.service --no-pager
 systemctl --user status dws-task-monitor.service --no-pager
-systemctl --user status dws-phone-server.service --no-pager || true
-DWS_MONITOR_LOG=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-sessions.sh list
-DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
-  ~/projects/dev-workspace/bin/dws-status.sh
-DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
-DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-doctor.sh
-~/projects/dev-workspace/scripts/dws-launcher.sh status
+tail -n 20 /var/log/dws/monitor.log
+~/projects/dev-workspace/bin/dws-boot-verify.sh
 ```
 
-### Install or repair the repo-managed user units
+### Manual repair
+
+If the user units are missing or stale:
 
 ```bash
-~/projects/dev-workspace/bin/dws-systemd-user-setup.sh check || \
-  ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
+~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
 systemctl --user daemon-reload
-systemctl --user enable dws-sessions-init.service dws-task-monitor.service
-systemctl --user show dws-sessions-init.service -p ExecStart -p FragmentPath -p UnitFileState
-systemctl --user show dws-task-monitor.service -p ExecStart -p FragmentPath -p UnitFileState
+```
+
+If the units are installed but the runtime needs to be rebuilt:
+
+```bash
 systemctl --user restart dws-sessions-init.service
 systemctl --user restart dws-task-monitor.service
-systemctl --user status dws-sessions-init.service --no-pager
-systemctl --user status dws-task-monitor.service --no-pager
 ```
 
-### Reattach after a disconnect
-
-```bash
-DWS_MONITOR_LOG=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-sessions.sh list
-~/projects/dev-workspace/bin/dws-sessions.sh reconnect
-SESSION=$(DWS_MONITOR_LOG=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-sessions.sh list | awk 'NR == 2 { print $1 }')
-DWS_MONITOR_LOG=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-sessions.sh show "$SESSION"
-DWS_MONITOR_LOG=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-sessions.sh reconnect "$SESSION"
-```
-
-### Launcher recovery if SSH lands at a plain shell
-
-```bash
-unset SKIP_LAUNCHER
-~/bin/dws-launcher.sh
-~/projects/dev-workspace/scripts/dws-launcher.sh status
-```
+Use the user services as the normal control surface. Do not launch
+`~/bin/task-monitor.sh` in a dedicated `tmux` session unless you are debugging
+the service path itself.
 
 ## Stop
 
-### Stop only the monitor loop
+### Graceful stop (keep worker sessions)
 
 ```bash
 systemctl --user stop dws-task-monitor.service
-systemctl --user status dws-task-monitor.service --no-pager
 ```
 
-### Full stop of monitor plus managed `tmux` sessions
+### Full stop (stop monitor and kill the managed pool)
 
 ```bash
 systemctl --user stop dws-task-monitor.service
-systemctl --user stop dws-phone-server.service 2>/dev/null || true
-~/projects/dev-workspace/bin/dws-sessions.sh kill-all
-systemctl --user stop dws-sessions-init.service || true
-tmux list-sessions 2>/dev/null || echo "no tmux sessions"
-```
-
-### Rebuild after a full stop
-
-```bash
-systemctl --user start dws-sessions-init.service
-systemctl --user start dws-task-monitor.service
-systemctl --user start dws-phone-server.service 2>/dev/null || true
-DWS_MONITOR_LOG=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-sessions.sh list
-~/projects/dev-workspace/scripts/dws-launcher.sh status
-```
-
-## Backup
-
-### Create a new backup snapshot
-
-```bash
-~/projects/dev-workspace/bin/dws-backup.sh backup
-readlink -f ~/backups/dev-workspace/latest
-find ~/backups/dev-workspace -maxdepth 1 -type f -name 'dws-backup-*.tar.gz' | sort | tail -3
-```
-
-### Verify that the latest backup restores cleanly
-
-```bash
-~/projects/dev-workspace/bin/dws-backup.sh verify-restore latest
-~/projects/dev-workspace/bin/dws-backup.sh verify-restore latest --prune
-```
-
-### Backup plus verify in one command
-
-```bash
-~/projects/dev-workspace/bin/dws-backup.sh cron
-```
-
-## Restore
-
-### Extract the latest backup into a restore directory
-
-```bash
-RESTORE_TARGET="$HOME/restore/$(date -u +%Y%m%dT%H%M%SZ)"
-mkdir -p "$RESTORE_TARGET"
-~/projects/dev-workspace/bin/dws-backup.sh restore latest --target "$RESTORE_TARGET"
-RESTORE_ROOT=$(find "$RESTORE_TARGET" -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
-RESTORE_NOTE="$RESTORE_ROOT/RESTORE.txt"
-printf '%s\n' "$RESTORE_NOTE"
-printf '%s\n' "$RESTORE_ROOT"
-sed -n '1,160p' "$RESTORE_NOTE"
-```
-
-### Restore the backed-up home data after extraction
-
-```bash
-mkdir -p ~/.config/wrkflo && cp -a "$RESTORE_ROOT/home/.config/wrkflo/." ~/.config/wrkflo/
-mkdir -p ~/bin && cp -a "$RESTORE_ROOT/home/bin/." ~/bin/
-mkdir -p ~/.ssh && chmod 700 ~/.ssh && cp -a "$RESTORE_ROOT/home/.ssh/." ~/.ssh/
-[ -f "$RESTORE_ROOT/system/crontab.txt" ] && crontab "$RESTORE_ROOT/system/crontab.txt" || true
-```
-
-### Post-restore validation
-
-```bash
-~/projects/dev-workspace/bin/dws-systemd-user-setup.sh check || \
-  ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
-~/projects/dev-workspace/bin/dws-cron-setup.sh --check || \
-  ~/projects/dev-workspace/bin/dws-cron-setup.sh
-systemctl --user restart dws-sessions-init.service
-systemctl --user restart dws-task-monitor.service
-systemctl --user restart dws-phone-server.service 2>/dev/null || true
-DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
-  ~/projects/dev-workspace/bin/dws-status.sh
-DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
-DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-doctor.sh
-DWS_MONITOR_LOG=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-sessions.sh list
-~/projects/dev-workspace/scripts/dws-launcher.sh status
-```
-
-## Update
-
-### Update the repo checkout and deployed helpers
-
-```bash
-cd ~/projects/dev-workspace
-git status --short
-if [ -z "$(git status --porcelain)" ] && git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
-  git pull --ff-only
-else
-  echo "skip git pull (repo dirty or no upstream); use the dirty-tree flow below"
-fi
-~/projects/dev-workspace/scripts/dws-update.sh --dry-run
-~/projects/dev-workspace/scripts/dws-update.sh --force
-~/projects/dev-workspace/bin/dws-systemd-user-setup.sh check || \
-  ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
-~/projects/dev-workspace/bin/dws-cron-setup.sh --check || \
-  ~/projects/dev-workspace/bin/dws-cron-setup.sh
-systemctl --user daemon-reload
-systemctl --user restart dws-sessions-init.service
-systemctl --user restart dws-task-monitor.service
-systemctl --user restart dws-phone-server.service 2>/dev/null || true
-systemctl --user status dws-sessions-init.service --no-pager
-systemctl --user status dws-task-monitor.service --no-pager
-systemctl --user status dws-phone-server.service --no-pager || true
-DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
-  ~/projects/dev-workspace/bin/dws-status.sh
-DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
-DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-doctor.sh
-~/projects/dev-workspace/scripts/dws-launcher.sh status
-```
-
-### When the repo has local changes and `dws-update.sh` skips `git pull`
-
-```bash
-cd ~/projects/dev-workspace
-git status --short
-git fetch --all --prune
-git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || echo "no upstream configured"
-git log --oneline --decorate --max-count=5 HEAD..@{upstream} 2>/dev/null || true
-~/projects/dev-workspace/scripts/dws-update.sh --dry-run
-```
-
-## Reboot Recovery
-
-Full drill: [`docs/reboot-recovery-test.md`](./reboot-recovery-test.md)
-
-### Quick recovery path from another machine
-
-```bash
-ssh moses@dev-workspace-vm 'sudo reboot'
-until ssh -o ConnectTimeout=5 -o BatchMode=yes moses@dev-workspace-vm 'uptime -p' 2>/dev/null; do
-  sleep 5
+for s in dws-a dws-b worker-c worker-d worker-e worker-f worker-g worker-h worker-i orchestrator; do
+  tmux kill-session -t "$s" 2>/dev/null || true
 done
-ssh moses@dev-workspace-vm '~/projects/dev-workspace/bin/dws-boot-verify.sh'
-ssh moses@dev-workspace-vm 'systemctl --user status dws-sessions-init.service --no-pager'
-ssh moses@dev-workspace-vm 'systemctl --user status dws-task-monitor.service --no-pager'
-ssh moses@dev-workspace-vm 'systemctl --user status dws-phone-server.service --no-pager || true'
-ssh moses@dev-workspace-vm 'tail -n 20 /var/log/dws/monitor.log'
-ssh moses@dev-workspace-vm 'curl -s http://127.0.0.1:8081/health || true'
-ssh moses@dev-workspace-vm '~/projects/dev-workspace/scripts/dws-launcher.sh status'
 ```
 
-### Quick recovery path when already on the VM
+## Monitor Management
+
+### Check status
 
 ```bash
-sudo reboot
-# reconnect after 60-90s
-~/projects/dev-workspace/bin/dws-boot-verify.sh
-DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
-  ~/projects/dev-workspace/bin/dws-status.sh
-DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
-DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-doctor.sh
+systemctl --user status dws-task-monitor.service --no-pager
+journalctl --user -u dws-task-monitor.service -n 40 --no-pager
+tail -n 20 /var/log/dws/monitor.log
 ```
 
-### Post-reboot service checks
+### Restart monitor
 
 ```bash
-systemctl is-active tailscaled ssh ssh.socket cron
-systemctl --user is-active dws-sessions-init.service dws-task-monitor.service
+systemctl --user restart dws-task-monitor.service
+tail -n 40 /var/log/dws/monitor.log
+```
+
+### View the live log
+
+```bash
+tail -f /var/log/dws/monitor.log
+```
+
+## Task Queue
+
+### Check queue counts
+
+```bash
+jq -r '
+  .tasks as $tasks
+  | "pending=\($tasks | map(select(.status == \"pending\")) | length)"
+  , "in_progress=\($tasks | map(select(.status == \"in_progress\")) | length)"
+  , "completed=\($tasks | map(select(.status == \"completed\")) | length)"
+' ~/projects/dev-workspace/.state/task-queue.json
+```
+
+### Inspect active assignments
+
+```bash
+jq -r '.tasks[]? | select(.status == "in_progress") | [.id, .assigned, .repo] | @tsv' \
+  ~/projects/dev-workspace/.state/task-queue.json
+```
+
+## tmux Sessions
+
+### Managed-session view
+
+```bash
+~/projects/dev-workspace/bin/dws-sessions.sh list
+~/projects/dev-workspace/bin/dws-sessions.sh show <session>
+~/projects/dev-workspace/bin/dws-sessions.sh reconnect <session>
+```
+
+### Raw `tmux`
+
+```bash
 tmux list-sessions
-crontab -l | sed -n '/# >>> dev-workspace managed cron >>>/,/# <<< dev-workspace managed cron <<</p'
+tmux attach-session -t dws-a
+tmux capture-pane -t worker-c -p | tail -10
 ```
 
-## SSH / Firewall Recovery
+Detach with `Ctrl-a d`.
 
-### SSH health and safe reload
+## SSH
+
+### Inspect the live config
 
 ```bash
-systemctl is-active ssh ssh.socket sshd sshd.socket 2>/dev/null || true
-ss -tlnp | grep -E '[:.]22[[:space:]]'
 sudo sh -c 'for f in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*; do [ -e "$f" ] || continue; echo "--- $f ---"; sed -n "1,160p" "$f"; done'
-journalctl -u ssh --since '24 hours ago' --no-pager | tail -n 40
-sudo grep -E 'PasswordAuthentication|PubkeyAuthentication|KbdInteractiveAuthentication|ChallengeResponseAuthentication|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax' \
-  /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
-sudo sshd -T | rg '^(passwordauthentication|pubkeyauthentication|kbdinteractiveauthentication|challengeresponseauthentication|permitrootlogin|x11forwarding|maxauthtries|clientaliveinterval|clientalivecountmax) '
+grep -E 'PasswordAuthentication|PermitRootLogin|ClientAliveInterval' /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
 sudo sshd -t
+```
+
+### Reload SSH safely
+
+```bash
 sudo systemctl reload ssh || sudo systemctl restart ssh
 ```
 
-### SSH lockout rollback
+### Lockout recovery
 
-Keep one working shell open while doing this.
+1. Keep one working shell open.
+2. If a hardening drop-in caused the lockout, move it aside and validate:
 
 ```bash
 sudo mv /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf.disabled 2>/dev/null || true
-sudo mv /etc/ssh/sshd_config.d/zz-dws-hardening.conf /etc/ssh/sshd_config.d/zz-dws-hardening.conf.disabled 2>/dev/null || true
-sudo mv /etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf /etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf.disabled 2>/dev/null || true
 sudo sshd -t
 sudo systemctl reload ssh || sudo systemctl restart ssh
 ```
 
-### Reinstall the repo SSH baseline after access is back
+3. Restore the repo baseline after a fresh login works again:
 
 ```bash
 sudo install -d -m 0755 /etc/ssh/sshd_config.d
 sudo install -m 0644 \
   ~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf \
   /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
-sudo grep -E 'PasswordAuthentication|PubkeyAuthentication|KbdInteractiveAuthentication|ChallengeResponseAuthentication|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax' \
-  /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
-sudo sshd -T | rg '^(passwordauthentication|pubkeyauthentication|kbdinteractiveauthentication|challengeresponseauthentication|permitrootlogin|x11forwarding|maxauthtries|clientaliveinterval|clientalivecountmax) '
 sudo sshd -t
 sudo systemctl reload ssh || sudo systemctl restart ssh
 ```
 
-### Firewall preview, apply, verify, rollback
+## Backup / Restore
+
+### Backup
 
 ```bash
-~/projects/dev-workspace/bin/dws-firewall.sh --dry-run
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --verify
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --rollback
+~/projects/dev-workspace/bin/dws-backup.sh backup
 ```
 
-### Force a specific firewall backend
+### Verify restoreability and prune old archives
 
 ```bash
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --verify --backend ufw
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --rollback --backend ufw
-
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend iptables
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --verify --backend iptables
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh --rollback --backend iptables
+~/projects/dev-workspace/bin/dws-backup.sh verify-restore latest --prune
 ```
 
-### Inspect firewall snapshots and current access paths
+### Restore
 
 ```bash
-ls -l /var/lib/dws/firewall/latest /var/lib/dws/firewall/latest-ufw /var/lib/dws/firewall/latest-iptables 2>/dev/null || true
-sudo ufw status verbose 2>/dev/null || true
-sudo iptables -S 2>/dev/null | sed -n '1,120p'
-~/projects/dev-workspace/bin/dws-connect-test.sh
-tailscale status
-ssh -o ConnectTimeout=5 moses@dev-workspace-vm 'printf ssh-ok\n'
-ssh -o ConnectTimeout=5 moses@100.117.16.63 'printf ssh-ok\n'
+~/projects/dev-workspace/bin/dws-backup.sh restore latest
 ```
 
-## Phone Access
-
-### Print the current Termius host settings
+## Update Repo-Managed Assets
 
 ```bash
-~/projects/dev-workspace/bin/dws-termius-setup.sh
-ls -l ~/.ssh/termius_20260415 ~/.ssh/id_ed25519 ~/.ssh/id_rsa 2>/dev/null
+cd ~/projects/dev-workspace
+git pull --ff-only
+~/projects/dev-workspace/bin/dws-systemd-user-setup.sh check || \
+  ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
 ```
 
-### Verify the phone SSH key from a trusted desktop or Mac
+`git pull` updates the checked-in repo only. If you rely on copied helpers under
+`~/bin`, redeploy them with your normal host update path before you trust the
+live service entrypoints again.
+
+## Reboot Recovery
+
+Full drill: `docs/reboot-recovery-test.md`
+
+Quick path:
 
 ```bash
-DWS_TERMIUS_KEY="$(~/projects/dev-workspace/bin/dws-termius-setup.sh | sed -n 's/^  SSH key path: \([^ ]*\) (.*/\1/p')"
-printf '%s\n' "$DWS_TERMIUS_KEY"
-ssh -i "$DWS_TERMIUS_KEY" -o BatchMode=yes -o ConnectTimeout=5 moses@100.117.16.63 'printf phone-key-ok\n'
-ssh -i "$DWS_TERMIUS_KEY" -o BatchMode=yes -o ConnectTimeout=5 moses@dev-workspace-vm 'printf phone-key-ok\n'
+sudo reboot
+# Wait 60-90s
+ssh dev-workspace-vm '~/projects/dev-workspace/bin/dws-boot-verify.sh'
 ```
 
-### Termius reconnect path after a phone sleep or network drop
+## Phone / Termius Access
 
-```bash
-DWS_MONITOR_LOG=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-sessions.sh list
-~/projects/dev-workspace/bin/dws-sessions.sh reconnect
-SESSION=$(DWS_MONITOR_LOG=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-sessions.sh list | awk 'NR == 2 { print $1 }')
-DWS_MONITOR_LOG=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-sessions.sh show "$SESSION"
-DWS_MONITOR_LOG=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-sessions.sh reconnect "$SESSION"
-~/projects/dev-workspace/scripts/dws-launcher.sh status
-```
+1. Install Termius on the iPhone.
+2. Add host: IP `100.117.16.63`, port `22`, user `moses`.
+3. Import the SSH key shown by `~/projects/dev-workspace/bin/dws-termius-setup.sh`.
+4. Connect with Tailscale enabled on the phone.
+5. Reconnect to work with `~/projects/dev-workspace/bin/dws-sessions.sh reconnect`.
 
-### Phone server health and recovery
+See `docs/termius-setup.md` for the full setup flow.
 
-```bash
-systemctl --user status dws-phone-server.service --no-pager
-journalctl --user -u dws-phone-server.service -n 40 --no-pager
-curl -sS http://127.0.0.1:8081/health
-curl -sS http://127.0.0.1:8081/results
-systemctl --user restart dws-phone-server.service
-curl -sS http://127.0.0.1:8081/health
-```
+## Troubleshooting
 
-### Queue a phone action from the VM with exact HTTP calls
+| Symptom | Fix |
+| --- | --- |
+| Monitor down | `systemctl --user restart dws-task-monitor.service` |
+| Managed sessions missing | `systemctl --user restart dws-sessions-init.service` |
+| Queue looks wrong | inspect `~/projects/dev-workspace/.state/task-queue.json` and compare against `dws-sessions.sh list` |
+| SSH dropped | reconnect and use `dws-sessions.sh reconnect` |
+| Cron drift | `~/projects/dev-workspace/bin/dws-cron-setup.sh` |
+| Firewall rollback needed | use the steps in `docs/troubleshooting.md` |
 
-```bash
-curl -sS -X POST http://127.0.0.1:8081/queue \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"notify","title":"ALERT","body":"prod 500s"}'
+## Cron Jobs
 
-curl -sS -X POST http://127.0.0.1:8081/queue \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"open_url","url":"https://github.com/Wrk-Flo/dev-workspace"}'
-
-curl -sS -X POST http://127.0.0.1:8081/queue \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"speak","text":"Moses, coffee is ready"}'
-
-curl -sS -X POST http://127.0.0.1:8081/queue \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"copy","text":"API_KEY_abcdef123"}'
-
-curl -sS http://127.0.0.1:8081/results
-```
-
-### Tailnet reachability checks for Mac and iPhone
-
-```bash
-tailscale ping 100.78.207.22
-tailscale ping 100.88.249.22
-~/projects/dev-workspace/bin/dws-connect-test.sh
-```
-
-## Monitor Management
-
-### Check monitor state, logs, and queue health
-
-```bash
-systemctl --user status dws-task-monitor.service --no-pager
-journalctl --user -u dws-task-monitor.service -n 40 --no-pager
-tail -n 40 /var/log/dws/monitor.log
-~/projects/dev-workspace/bin/dws-log-viewer.sh --since '30 minutes ago' --grep 'FAIL|ERROR|ALERT'
-sed -n '1,220p' ~/projects/dev-workspace/.state/task-queue.json
-DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
-  ~/projects/dev-workspace/bin/dws-status.sh
-DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
-DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-doctor.sh
-~/projects/dev-workspace/scripts/dws-launcher.sh status
-```
-
-### Start, stop, and restart the monitor
-
-```bash
-systemctl --user start dws-task-monitor.service
-systemctl --user stop dws-task-monitor.service
-systemctl --user restart dws-task-monitor.service
-```
-
-### Rebuild the runtime when the monitor looks stale
-
-```bash
-systemctl --user restart dws-sessions-init.service
-systemctl --user restart dws-task-monitor.service
-DWS_MONITOR_LOG=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-sessions.sh list
-DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
-  ~/projects/dev-workspace/bin/dws-status.sh
-DWS_TASK_QUEUE_PATH=~/projects/dev-workspace/.state/task-queue.json \
-DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
-  ~/projects/dev-workspace/bin/dws-doctor.sh
-```
-
-### Follow the monitor log live
-
-```bash
-~/projects/dev-workspace/bin/dws-log-viewer.sh --follow
-```
-
-### Queue counts and active assignments
-
-```bash
-jq -r '
-  (.tasks // []) as $tasks
-  | "pending=\($tasks | map(select(.status == \"pending\")) | length)"
-  , "in_progress=\($tasks | map(select(.status == \"in_progress\")) | length)"
-  , "completed=\($tasks | map(select(.status == \"completed\")) | length)"
-' ~/projects/dev-workspace/.state/task-queue.json
-
-jq -r '.tasks[]? | select(.status == "in_progress") | [.id, .assigned, .repo] | @tsv' \
-  ~/projects/dev-workspace/.state/task-queue.json
-```
-
-## Cron
-
-### Inspect and repair the repo-managed cron block
+Inspect the managed block with:
 
 ```bash
 crontab -l | sed -n '/# >>> dev-workspace managed cron >>>/,/# <<< dev-workspace managed cron <<</p'
-~/projects/dev-workspace/bin/dws-cron-setup.sh --show
-~/projects/dev-workspace/bin/dws-cron-setup.sh --check
+```
+
+Current schedules from `dws-cron-setup.sh`:
+
+- `*/15 * * * *` — `dws-health-check.sh`
+- `30 2 * * 0` — `dws-rotate-logs.sh`
+- `0 4 * * *` — `dws-cleanup.sh --session-hours 24 --log-days 7 --temp-days 365000`
+
+The cron installer does not take an `install` subcommand. Re-run the installer
+with:
+
+```bash
 ~/projects/dev-workspace/bin/dws-cron-setup.sh
+```
+
+Cron logs still default to `/tmp`. If you want them centralized under
+`/var/log/dws`, reinstall the block with:
+
+```bash
+DWS_CRON_LOG_DIR=/var/log/dws ~/projects/dev-workspace/bin/dws-cron-setup.sh
+```
+
+## Self-Healing Stack
+
+```text
+Layer 3: Tailscale + SSH reconnect         -> operator reconnects to an existing session
+Layer 2: dws-task-monitor.service          -> relaunches crashed or compacted workers
+Layer 1: dws-sessions-init.service         -> recreates the managed tmux pool after boot
 ```
