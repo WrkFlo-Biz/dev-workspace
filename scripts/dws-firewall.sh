@@ -375,7 +375,7 @@ restore_snapshot_files() {
 log_common_notes() {
   log_msg "using firewall backend: $BACKEND"
   log_msg "tailscale note: udp/${TAILSCALE_PORT} stays open globally so direct peers can reach this host"
-  log_msg "ssh relay note: tcp/${SSH_PORT} stays open globally for relay-compatible SSH access"
+  log_msg "ssh note: tcp/${SSH_PORT} restricted to ${TAILSCALE_SUBNET} (Tailscale only)"
   log_msg "tailscale subnet allowlist: dev ports stay restricted to ${TAILSCALE_SUBNET}"
 }
 
@@ -393,8 +393,8 @@ apply_ufw() {
   run ufw allow "${TAILSCALE_PORT}/udp"
   log_msg "allow udp/${TAILSCALE_PORT} from anywhere (Tailscale peer traffic)"
 
-  run ufw allow "${SSH_PORT}/tcp"
-  log_msg "allow tcp/${SSH_PORT} from anywhere (SSH relay compatibility)"
+  run ufw allow from "$TAILSCALE_SUBNET" to any port "$SSH_PORT" proto tcp
+  log_msg "allow tcp/${SSH_PORT} from ${TAILSCALE_SUBNET} (SSH over Tailscale only)"
 
   for port in "${DEV_PORTS[@]}"; do
     run ufw allow from "$TAILSCALE_SUBNET" to any port "$port" proto tcp
@@ -451,8 +451,8 @@ apply_iptables() {
   run iptables -w -A "$IPTABLES_CHAIN" -p udp --dport "$TAILSCALE_PORT" -j ACCEPT
   log_msg "allow udp/${TAILSCALE_PORT} from anywhere (Tailscale peer traffic)"
 
-  run iptables -w -A "$IPTABLES_CHAIN" -p tcp --dport "$SSH_PORT" -j ACCEPT
-  log_msg "allow tcp/${SSH_PORT} from anywhere (SSH relay compatibility)"
+  run iptables -w -A "$IPTABLES_CHAIN" -p tcp -s "$TAILSCALE_SUBNET" --dport "$SSH_PORT" -j ACCEPT
+  log_msg "allow tcp/${SSH_PORT} from ${TAILSCALE_SUBNET} (SSH over Tailscale only)"
 
   for port in "${DEV_PORTS[@]}"; do
     run iptables -w -A "$IPTABLES_CHAIN" -p tcp -s "$TAILSCALE_SUBNET" --dport "$port" -j ACCEPT
@@ -529,11 +529,15 @@ verify_ufw() {
     return 1
   fi
 
-  if ! ufw_has_public_tcp_rule "$numbered" "${SSH_PORT}/tcp"; then
-    verify_fail "missing public tcp/${SSH_PORT} rule for SSH relay traffic"
+  if ! ufw_has_rule "$numbered" "${SSH_PORT}/tcp" "$TAILSCALE_SUBNET"; then
+    verify_fail "missing tcp/${SSH_PORT} allow rule for ${TAILSCALE_SUBNET}"
     return 1
   fi
-  verify_pass "tcp/${SSH_PORT} is open from any source for SSH relay traffic"
+  if ufw_has_public_tcp_rule "$numbered" "${SSH_PORT}/tcp"; then
+    verify_fail "unexpected public tcp/${SSH_PORT} rule — SSH should be Tailscale-only"
+    return 1
+  fi
+  verify_pass "tcp/${SSH_PORT} is restricted to ${TAILSCALE_SUBNET}"
 
   for port in "${DEV_PORTS[@]}"; do
     if ! ufw_has_rule "$numbered" "${port}/tcp" "$TAILSCALE_SUBNET"; then
@@ -635,17 +639,11 @@ verify_iptables_chain_rules() {
   fi
   verify_pass "udp/${TAILSCALE_PORT} stays open globally for Tailscale peer traffic"
 
-  if ! iptables_line_matches "${chain_rule_lines[3]}" "-A ${IPTABLES_CHAIN}" "-p tcp" "--dport ${SSH_PORT}" "-j ACCEPT"; then
-    verify_fail "missing public tcp/${SSH_PORT} allow rule for SSH relay traffic"
+  if ! iptables_line_matches "${chain_rule_lines[3]}" "-A ${IPTABLES_CHAIN}" "-p tcp" "-s ${TAILSCALE_SUBNET}" "--dport ${SSH_PORT}" "-j ACCEPT"; then
+    verify_fail "tcp/${SSH_PORT} rule does not match the expected ${TAILSCALE_SUBNET} restriction"
     return 1
   fi
-  if iptables_line_has_source_selector "${chain_rule_lines[3]}" ||
-     iptables_line_has_destination_selector "${chain_rule_lines[3]}" ||
-     iptables_line_has_interface_selector "${chain_rule_lines[3]}"; then
-    verify_fail "tcp/${SSH_PORT} rule does not match the expected public ingress policy"
-    return 1
-  fi
-  verify_pass "tcp/${SSH_PORT} is open from any source for SSH relay traffic"
+  verify_pass "tcp/${SSH_PORT} is restricted to ${TAILSCALE_SUBNET}"
 
   index=4
   for port in "${DEV_PORTS[@]}"; do
