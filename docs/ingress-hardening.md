@@ -4,12 +4,17 @@ This document records the live ingress posture of the dev-workspace VM as
 audited on 2026-04-24.
 
 The intended primary ingress control is the tailnet policy: Tailscale ACLs gate
-who can reach the VM over its Tailscale addresses. On the VM itself, host-level
-firewall enforcement is currently minimal:
+who can reach the VM over its Tailscale addresses. Operationally, SSH access is
+now Tailscale-only: `tcp/22` is limited to `100.64.0.0/10`, and there is no
+public internet SSH access. On the VM itself, host-level filtering is still
+most visible through the Tailscale-managed chains:
 
 - `bin/dws-firewall.sh` exists, but neither `ufw` nor `iptables` is currently
   installed on this VM, so the repo-managed host firewall policy has not been
   applied.
+- Effective SSH restriction currently comes from the combined Tailscale /
+  upstream ingress path rather than from a repo-managed `ufw` or `iptables`
+  backend on this VM.
 - The only active kernel filter rules are the Tailscale-managed `ts-input` and
   `ts-forward` chains.
 - `sshd` is hardened through
@@ -21,8 +26,9 @@ firewall enforcement is currently minimal:
 | --- | --- | --- |
 | Tailscale ACLs | Primary intended ingress control | Access to the Tailscale IPs is governed by tailnet policy, not by this repo. |
 | Tailscale host rules | Active `ts-input` / `ts-forward` chains | Accepts traffic arriving on `tailscale0`, accepts `udp/41641`, and drops spoofed `100.64.0.0/10` traffic that does not arrive via `tailscale0`. |
+| SSH exposure | `tcp/22` restricted to `100.64.0.0/10` | Operator SSH access is Tailscale-only; there is no public internet SSH path. |
 | Repo firewall backend availability | `bin/dws-firewall.sh` is present, but `command -v ufw` and `command -v iptables` both fail on this VM | The repo-managed firewall policy cannot be applied until one supported backend is installed. |
-| nftables / iptables base policy | `INPUT` policy is `ACCEPT` and the only explicit `INPUT` rule is a jump to `ts-input` | Services bound to `0.0.0.0` or `[::]` are not restricted by a host firewall deny policy. Any restriction beyond Tailscale must come from the application itself or an upstream network perimeter. |
+| nftables / iptables base policy | `INPUT` policy is `ACCEPT` and the only explicit `INPUT` rule is a jump to `ts-input` | There is no blanket host-level default deny for every wildcard listener. SSH is the exception in the current posture; other services may still rely on application controls or an upstream perimeter. |
 | SSH daemon hardening | `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` | Disables password and keyboard-interactive auth, disables root login, requires pubkeys, and sets client keepalives. |
 
 ## SSH Hardening
@@ -39,8 +45,9 @@ The live SSH drop-in currently sets:
 | `ClientAliveInterval` | `30` |
 | `ClientAliveCountMax` | `3` |
 
-This means SSH is hardened at the authentication layer even though it is not
-currently narrowed by UFW.
+This means SSH is hardened at the authentication layer and, in the current
+posture, is reachable only from Tailscale peers in `100.64.0.0/10`. There is
+no public internet SSH access.
 
 ## Open Ports
 
@@ -48,7 +55,7 @@ currently narrowed by UFW.
 
 | Bind | Proto | Process | Why it is open | Exposure notes |
 | --- | --- | --- | --- | --- |
-| `0.0.0.0:22`, `[::]:22` | TCP | `sshd` | Remote shell access for operators | Bound on all interfaces. Host firewall does not currently narrow this to Tailscale-only traffic, so access control relies on SSH hardening plus any upstream network perimeter. |
+| `0.0.0.0:22`, `[::]:22` | TCP | `sshd` | Remote shell access for operators | Bound on all interfaces, but effective access is limited to `100.64.0.0/10` / Tailscale-only sources. There is no public internet SSH access. |
 | `0.0.0.0:8081` | TCP | host-local `dws-phone-server.service` (`~/bin/dws-phone-server.py`) | Phone-control callback server used by the iPhone shortcut flow (`/health`, `/pending`, `/queue`, `/result`) | Bound on all interfaces. This repo does not provision the unit. The application comment says Tailscale ACLs are the intended gate, but the host firewall does not currently enforce that posture. |
 | `0.0.0.0:41641`, `[::]:41641` | UDP | `tailscaled` | Tailscale WireGuard / magicsock listener for peer traffic and NAT traversal | Expected and required for Tailscale connectivity. This is the one globally accepted UDP port in the Tailscale-managed host rules. |
 | `100.117.16.63:52421` | TCP | `tailscaled` | Tailscale PeerAPI on the node's Tailscale IPv4 address | Bound only to the Tailscale IPv4 address, not to a wildcard interface. |
@@ -80,13 +87,12 @@ The live packet filter is Tailscale-managed and intentionally narrow:
 
 What it does **not** currently do:
 
-- It does not deny public ingress by default.
-- It does not restrict `22/tcp` to the Tailscale interface.
+- It does not deny public ingress by default for every wildcard listener.
 - It does not restrict `8081/tcp` to the Tailscale interface.
 
-Operationally, that means Tailscale ACLs are the primary intended ingress
-control, but the VM is not currently enforcing a Tailscale-only posture with a
-host firewall.
+Operationally, SSH is now Tailscale-only, but the VM still does not enforce the
+same blanket Tailscale-only posture for every wildcard listener with a general
+host-firewall default deny.
 
 ## Repo Firewall Script Readiness
 
@@ -109,17 +115,16 @@ The intended repo-managed policy is:
 
 - default deny incoming, default allow outgoing
 - allow `udp/41641` from anywhere for Tailscale peer traffic
-- allow `tcp/22` from anywhere for SSH relay compatibility
-- allow `tcp/8080`, `tcp/9222`, and `tcp/3000` only from `100.64.0.0/10`
+- allow `tcp/22`, `tcp/8080`, `tcp/8081`, `tcp/8100`, `tcp/9222`, and `tcp/3000` only from `100.64.0.0/10`
 - deny all other inbound traffic
 
 Important nuances:
 
 - the script does **not** restrict `udp/41641` to `100.64.0.0/10`; it stays
   globally open so direct Tailscale peers and NAT traversal keep working
-- the script also leaves `tcp/22` globally reachable so SSH relay paths keep
-  working even when the client is not directly sourced from `100.64.0.0/10`
-- only the dev ports (`8080`, `9222`, `3000`) are restricted to the Tailscale
+- the script keeps `tcp/22` Tailscale-only by restricting it to
+  `100.64.0.0/10`; it is not intended to leave a public internet SSH path
+- the SSH port and the repo-managed dev ports stay restricted to the Tailscale
   subnet at the host-firewall layer
 
 Readiness findings from the 2026-04-24 review:
@@ -150,8 +155,8 @@ apply, all of the following should be true:
 6. Verify immediately after apply:
    `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --verify`
 7. Re-test SSH on `22/tcp`, plus the required dev ports from a Tailscale peer:
-   SSH should work from anywhere, while `8080`, `9222`, and `3000` should only
-   answer from `100.64.0.0/10`.
+   SSH and the repo-managed dev ports should answer from `100.64.0.0/10`, and
+   SSH should not be reachable from the public internet.
 8. If verification fails or reachability regresses, restore immediately from
    the surviving session:
    `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --rollback`

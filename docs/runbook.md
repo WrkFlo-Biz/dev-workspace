@@ -25,6 +25,9 @@ Operational procedures for the `dev-workspace-vm` multi-agent environment.
 | `dws-maintenance-mode.sh` | `~/projects/dev-workspace/bin/dws-maintenance-mode.sh` |
 | `dws-pause-dispatch.sh` | `~/projects/dev-workspace/bin/dws-pause-dispatch.sh` |
 | `dws-incident-export.sh` | `~/projects/dev-workspace/bin/dws-incident-export.sh` |
+| `dws-worker-exec.sh` | `~/projects/dev-workspace/scripts/dws-worker-exec.sh` |
+| `dws-termius-mac-fix.sh` | `~/projects/dev-workspace/bin/dws-termius-mac-fix.sh` |
+| `dws-safe-mode.sh` | `~/projects/dev-workspace/scripts/dws-safe-mode.sh` |
 | SSH hardening (live) | `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` |
 | SSH baseline (repo) | `~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf` |
 | Foundry env | `~/.config/wrkflo/foundry.env` |
@@ -150,6 +153,11 @@ manual incident.
 | `~/projects/dev-workspace/bin/dws-alerting.sh` | Append alerts to `/var/log/dws/alerts.log` for monitor restart loops, repeated rate limits, missing Tailscale peers, disk pressure, and recent cron failures. |
 | `~/projects/dev-workspace/bin/dws-queue-inspector.sh` | Summarize queue depth, per-worker assignment counts, and completion rates; use `--json` when piping into other tooling. |
 | `~/projects/dev-workspace/bin/dws-service-map.sh` | Show the current user-systemd boot order, dependency tree, and runtime state for `dws-sessions-init.service` and `dws-task-monitor.service`. |
+| `~/projects/dev-workspace/bin/dws-pause-dispatch.sh` | Create or clear `/tmp/dws-dispatch-paused` so the monitor keeps running but stops sending new work. |
+| `~/projects/dev-workspace/bin/dws-incident-export.sh` | Capture an incident bundle under `/tmp/dws-incident-TIMESTAMP.tar.gz` with monitor, queue, tmux, service, network, disk, memory, and uptime snapshots. |
+| `~/projects/dev-workspace/scripts/dws-worker-exec.sh` | Execute a single queued task JSON, write `.state/results/<task-id>.log` and `.json`, and mark the queue item `completed` or `failed`. |
+| `~/projects/dev-workspace/bin/dws-termius-mac-fix.sh` | Repair macOS SSH pubkey settings and file permissions when Termius key auth breaks on the Mac side. |
+| `~/projects/dev-workspace/scripts/dws-safe-mode.sh` | Stop worker dispatch and session management while leaving SSH, Tailscale, health checks, and log rotation available. |
 | `~/projects/dev-workspace/bin/dws-worker-utilization.sh` | Parse `/var/log/dws/monitor.log` into per-worker completions, rate-limit hits, idle percentage, and average task duration. |
 | `~/projects/dev-workspace/bin/dws-termius-verify.sh` | Validate the phone access path before relying on Termius during recovery drills or off-Mac operations. |
 
@@ -178,6 +186,16 @@ jq -r '
 jq -r '.tasks[]? | select(.status == "in_progress") | [.id, .assigned, .repo] | @tsv' \
   ~/projects/dev-workspace/.state/task-queue.json
 ```
+
+### Execute one queued task by id
+
+```bash
+~/projects/dev-workspace/scripts/dws-worker-exec.sh <task-id>
+```
+
+This reads `.state/tasks/<task-id>.json`, runs the command in the task repo,
+writes `.state/results/<task-id>.log` and `.json`, and updates
+`.state/task-queue.json` to `completed` or `failed`.
 
 ## tmux Sessions
 
@@ -292,6 +310,13 @@ ssh dev-workspace-vm '~/projects/dev-workspace/bin/dws-boot-verify.sh'
 4. Connect with Tailscale enabled on the phone.
 5. Reconnect to work with `~/projects/dev-workspace/bin/dws-sessions.sh reconnect`.
 
+If Termius key auth breaks because macOS `sshd` or `~/.ssh` permissions drifted,
+run on the Mac:
+
+```bash
+~/projects/dev-workspace/bin/dws-termius-mac-fix.sh
+```
+
 See `docs/termius-setup.md` for the full setup flow.
 
 ## Troubleshooting
@@ -380,11 +405,11 @@ response, or debugging.
 
 ```bash
 # Enter safe mode
-scripts/dws-safe-mode.sh on
+~/projects/dev-workspace/scripts/dws-safe-mode.sh on
 
 # Check status
-scripts/dws-safe-mode.sh status
+~/projects/dev-workspace/scripts/dws-safe-mode.sh status
 
 # Exit safe mode
-scripts/dws-safe-mode.sh off
+~/projects/dev-workspace/scripts/dws-safe-mode.sh off
 ```
