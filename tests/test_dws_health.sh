@@ -130,10 +130,11 @@ exit 1
 '
 
   write_fake_command curl '
-case "${*: -1}" in
-  http://127.0.0.1:8100/v1/workspace/health) printf "200" ;;
-  http://100.78.207.22:9223) printf "200" ;;
-  http://100.78.207.22:9222) printf "200" ;;
+case "$*" in
+  *http://127.0.0.1:8100/v1/workspace/health*) printf "200" ;;
+  *http://100.78.207.22:9223/apps*) printf "200" ;;
+  *http://100.78.207.22:9222*) printf "200" ;;
+  *http://100.78.207.22:9223*) printf "404" ;;
   *) printf "000" ;;
 esac
 '
@@ -242,6 +243,7 @@ test_text_output_includes_requested_checks() {
   assert_contains "${output}" "== Services =="
   assert_contains "${output}" "task monitor active (running)"
   assert_contains "${output}" "sessions init active (exited)"
+  assert_contains "${output}" "mac gui      200  http://100.78.207.22:9223/apps"
   assert_contains "${output}" "== Security =="
   assert_contains "${output}" "ssh config   ok"
   assert_contains "${output}" "firewall     active  ufw"

@@ -22,8 +22,14 @@ http(){
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null) || { printf 'ERR'; return; }
   printf '%s' "$code"
 }
+http_post_json(){
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 -X POST "$1" -H 'Content-Type: application/json' -d '{}' 2>/dev/null) || { printf 'ERR'; return; }
+  printf '%s' "$code"
+}
 paint(){ case "$1" in 2??) g "$1" ;; 3??) y "$1" ;; *) r "$1" ;; esac; }
-reach(){ case "$1" in 000|ERR) r "$1" ;; *) g "$1" ;; esac; }
+reach(){ paint "$1"; }
+mac_gui_health_url(){ printf '%s/apps' "${MAC_GUI_URL%/}"; }
 ver(){ case "$1" in tmux) tmux -V 2>/dev/null ;; *) "$1" --version 2>/dev/null | sed -n '1p' ;; esac; }
 usage(){ printf 'usage: %s [--json]\n' "$(basename "$0")"; }
 jesc(){ printf '%s' "$1" | sed 's/\\/\\\\/g;s/"/\\"/g'; }
@@ -304,7 +310,7 @@ sec "Services"
 printf '  task monitor %s\n' "$(fmt_user_unit_state "$(user_unit_state dws-task-monitor)")"
 printf '  sessions init %s\n' "$(fmt_user_unit_state "$(user_unit_state dws-sessions-init)")"
 printf '  orchestrator %s  %s\n' "$(paint "$(http "$ORCHESTRATOR_HEALTH_URL")")" "$ORCHESTRATOR_HEALTH_URL"
-printf '  mac gui      %s  %s\n' "$(reach "$(http "$MAC_GUI_URL")")" "$MAC_GUI_URL"
+printf '  mac gui      %s  %s\n' "$(reach "$(http_post_json "$(mac_gui_health_url)")")" "$(mac_gui_health_url)"
 printf '  mac cdp      %s  %s\n' "$(reach "$(http "$MAC_CDP_URL")")" "$MAC_CDP_URL"
 
 sec "Security"
