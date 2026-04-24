@@ -23,6 +23,8 @@ Operational procedures for the `dev-workspace-vm` multi-agent environment.
 | `dws-reboot-drill` | `~/projects/dev-workspace/bin/dws-reboot-drill.sh` |
 | `dws-service-map` | `~/projects/dev-workspace/bin/dws-service-map.sh` |
 | `dws-maintenance-mode.sh` | `~/projects/dev-workspace/bin/dws-maintenance-mode.sh` |
+| `dws-pause-dispatch.sh` | `~/projects/dev-workspace/bin/dws-pause-dispatch.sh` |
+| `dws-incident-export.sh` | `~/projects/dev-workspace/bin/dws-incident-export.sh` |
 | SSH hardening (live) | `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` |
 | SSH baseline (repo) | `~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf` |
 | Foundry env | `~/.config/wrkflo/foundry.env` |
@@ -113,6 +115,29 @@ tail -n 40 /var/log/dws/monitor.log
 ```bash
 tail -f /var/log/dws/monitor.log
 ```
+
+### Pause new task dispatch
+
+```bash
+~/projects/dev-workspace/bin/dws-pause-dispatch.sh on
+~/projects/dev-workspace/bin/dws-pause-dispatch.sh status
+~/projects/dev-workspace/bin/dws-pause-dispatch.sh off
+```
+
+This creates `/tmp/dws-dispatch-paused`. While that flag exists,
+`task-monitor.sh` continues checking workers but skips new task dispatch and
+retry sends until the flag is removed.
+
+### Export an incident bundle
+
+```bash
+~/projects/dev-workspace/bin/dws-incident-export.sh
+```
+
+The archive lands at `/tmp/dws-incident-TIMESTAMP.tar.gz` and includes the last
+200 lines of `/var/log/dws/monitor.log`, the current queue JSON, `tmux list-sessions`,
+`systemctl --user status`, `tailscale status`, `ufw status`, `df -h`,
+`free -h`, and `uptime`.
 
 ## Ops Hardening
 
@@ -276,6 +301,7 @@ See `docs/termius-setup.md` for the full setup flow.
 | Monitor down | `systemctl --user restart dws-task-monitor.service` |
 | Managed sessions missing | `systemctl --user restart dws-sessions-init.service` |
 | Queue looks wrong | inspect `~/projects/dev-workspace/.state/task-queue.json` and compare against `dws-sessions.sh list` |
+| Need an incident handoff bundle | `~/projects/dev-workspace/bin/dws-incident-export.sh` |
 | SSH dropped | reconnect and use `dws-sessions.sh reconnect` |
 | Cron drift | `~/projects/dev-workspace/bin/dws-cron-setup.sh` |
 | Firewall rollback needed | use the steps in `docs/troubleshooting.md` |

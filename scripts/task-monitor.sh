@@ -31,6 +31,8 @@ GLOBAL_RATE_LIMIT_WINDOW_START=0
 GLOBAL_DISPATCH_STAGGER=3
 GLOBAL_THROTTLE_ACTIVE=0
 GLOBAL_THROTTLE_UNTIL=0
+DISPATCH_PAUSE_FLAG="${DWS_DISPATCH_PAUSE_FLAG:-/tmp/dws-dispatch-paused}"
+DISPATCH_PAUSE_STATE=0
 
 log() { printf "%s [monitor] %s\n" "$(date "+%H:%M:%S")" "$*" >> "$LOGFILE"; }
 
@@ -237,6 +239,22 @@ record_global_rate_limit() {
   log "global rate limit count: $GLOBAL_RATE_LIMIT_COUNT in current window"
 }
 
+dispatch_paused() {
+  if [ -f "$DISPATCH_PAUSE_FLAG" ]; then
+    if [ "$DISPATCH_PAUSE_STATE" -eq 0 ]; then
+      log "dispatch pause active via ${DISPATCH_PAUSE_FLAG}; skipping new task dispatch"
+    fi
+    DISPATCH_PAUSE_STATE=1
+    return 0
+  fi
+
+  if [ "$DISPATCH_PAUSE_STATE" -eq 1 ]; then
+    log "dispatch pause cleared; resuming new task dispatch"
+  fi
+  DISPATCH_PAUSE_STATE=0
+  return 1
+}
+
 dispatch_task() {
   local session="$1" task_repo="$2" task_text="$3"
   # Validate repo exists
@@ -382,6 +400,16 @@ check_stuck() {
 assign_idle_worker() {
   local session="$1" repo="$DEFAULT_REPO"
   local result task_id task_repo task_desc
+  local completed
+
+  completed=$(mark_completed "$session")
+  if [ "$completed" = "completed" ]; then
+    log "$session: marked previous task completed"
+  fi
+
+  if dispatch_paused; then
+    return 12
+  fi
 
   if [ "${RATE_LIMIT_RECOVERY_PENDING[$session]:-0}" -eq 1 ]; then
     retry_rate_limited_task "$session"
@@ -396,13 +424,6 @@ assign_idle_worker() {
   if ! should_dispatch; then
     log "$session: dispatch deferred by global throttle"
     return 10
-  fi
-
-  # First mark any in_progress tasks as completed (worker finished)
-  local completed
-  completed=$(mark_completed "$session")
-  if [ "$completed" = "completed" ]; then
-    log "$session: marked previous task completed"
   fi
 
   # Try preferred repo first
@@ -440,6 +461,7 @@ while true; do
 
   # Auto-refill queue if running low
   refill_queue
+  dispatch_paused || true
 
   for session in "${WORKERS[@]}"; do
     status=$(classify_worker "$session")
@@ -464,6 +486,7 @@ while true; do
         case $? in
           10) LAST_STATUS[$session]="BACKOFF" ;;
           11) LAST_STATUS[$session]="RETRYING" ;;
+          12) LAST_STATUS[$session]="PAUSED" ;;
           *) LAST_STATUS[$session]="IDLE" ;;
         esac
         sleep "$GLOBAL_DISPATCH_STAGGER"
@@ -475,6 +498,7 @@ while true; do
         case $? in
           10) LAST_STATUS[$session]="BACKOFF" ;;
           11) LAST_STATUS[$session]="RETRYING" ;;
+          12) LAST_STATUS[$session]="PAUSED" ;;
           *) LAST_STATUS[$session]="RELAUNCHED" ;;
         esac
         ;;
