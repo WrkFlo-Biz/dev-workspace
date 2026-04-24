@@ -308,7 +308,7 @@ Fix:
 3. Validate the queue file itself: `jq . ~/projects/dev-workspace/.state/task-queue.json >/dev/null`
 4. Compare queue assignments to live worker state with `~/projects/dev-workspace/bin/dws-sessions.sh list`
 5. If the queue is corrupted or obviously older than the newest snapshot, restore it: `~/projects/dev-workspace/bin/dws-backup.sh restore latest`
-6. Restart planner and monitor after queue repair so they reread the corrected state
+6. Restart the orchestrator and monitor after queue repair so they reread the corrected state
 
 Notes:
 - There is no separate `backup-prune` command. Use `verify-restore --prune` or `~/projects/dev-workspace/bin/dws-backup.sh cron`.

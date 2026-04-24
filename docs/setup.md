@@ -264,7 +264,8 @@ path and can break when called through a `~/bin` symlink. For `~/bin`, either
 install a real copy or symlink directly to the matching file under
 `~/projects/dev-workspace/scripts/`.
 
-`vm-setup.sh` already copies these into `~/bin`:
+When `vm-setup.sh` runs successfully, it copies these repo-managed helpers into
+`~/bin`:
 
 - `dws-launcher.sh`
 - `dws-health.sh`
@@ -293,13 +294,15 @@ ln -sf ~/projects/dev-workspace/scripts/dws-tailscale-diag.sh ~/bin/dws-tailscal
 ln -sf ~/projects/dev-workspace/scripts/dws-termius-setup.sh ~/bin/dws-termius-setup.sh
 ```
 
-`scripts/dws-update.sh` currently refreshes `~/.tmux.conf`,
+The tracked `scripts/dws-update.sh` also refreshes `~/.tmux.conf`,
 `~/bin/dws-health.sh`, `~/bin/dws-health-check.sh`,
 `~/bin/dws-rotate-logs.sh`, and `~/bin/dws-notify.sh`. It does **not**
 currently refresh `~/bin/dws-launcher.sh`, so reinstall that file manually or
 rerun `vm-setup.sh` after launcher changes. For the symlinked helpers above,
 repo updates are picked up automatically because the symlink already points at
-the matching file under `scripts/`.
+the matching file under `scripts/`. If one of the fixed-copy helpers is missing
+on an older host, rerun `vm-setup.sh` or `scripts/dws-update.sh` before you
+assume the deployment is current.
 
 ## 8. Install and Verify Services
 
