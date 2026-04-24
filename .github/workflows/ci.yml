@@ -25,7 +25,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          expected_tests=21
+          expected_tests=22
           summary_file="${GITHUB_STEP_SUMMARY:-}"
           mapfile -t tests < <(find tests -maxdepth 1 -type f -name 'test_*.sh' | sort)
 
