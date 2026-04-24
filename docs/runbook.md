@@ -16,12 +16,12 @@ Operational procedures for the `dev-workspace-vm` multi-agent environment.
 | Monitor log | `/var/log/dws/monitor.log` |
 | Boot verifier | `~/projects/dev-workspace/bin/dws-boot-verify.sh` |
 | Launcher status | `~/projects/dev-workspace/scripts/dws-launcher.sh status` |
-| `dws-summary.sh` | `~/projects/dev-workspace/bin/dws-summary.sh` |
-| `dws-alerting.sh` | `~/projects/dev-workspace/bin/dws-alerting.sh` |
-| `dws-queue-inspector.sh` | `~/projects/dev-workspace/bin/dws-queue-inspector.sh` |
-| `dws-termius-verify.sh` | `~/projects/dev-workspace/bin/dws-termius-verify.sh` |
-| `dws-reboot-drill.sh` | `~/projects/dev-workspace/bin/dws-reboot-drill.sh` |
-| `dws-service-map.sh` | `~/projects/dev-workspace/bin/dws-service-map.sh` |
+| `dws-summary` | `~/projects/dev-workspace/bin/dws-summary.sh` |
+| `dws-alerting` | `~/projects/dev-workspace/bin/dws-alerting.sh` |
+| `dws-queue-inspector` | `~/projects/dev-workspace/bin/dws-queue-inspector.sh` |
+| `dws-termius-verify` | `~/projects/dev-workspace/bin/dws-termius-verify.sh` |
+| `dws-reboot-drill` | `~/projects/dev-workspace/bin/dws-reboot-drill.sh` |
+| `dws-service-map` | `~/projects/dev-workspace/bin/dws-service-map.sh` |
 | `dws-maintenance-mode.sh` | `~/projects/dev-workspace/bin/dws-maintenance-mode.sh` |
 | SSH hardening (live) | `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` |
 | SSH baseline (repo) | `~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf` |
