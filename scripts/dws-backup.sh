@@ -97,6 +97,22 @@ validate_nonempty_path() {
   [ -n "$path" ] || die "${label} path is empty"
 }
 
+validate_safe_host_path() {
+  local path="$1" label="$2"
+
+  validate_nonempty_path "$path" "$label"
+
+  case "$path" in
+    /*) ;;
+    *) die "${label} path must be absolute: ${path}" ;;
+  esac
+
+  case "$path" in
+    /) die "${label} path must not be /" ;;
+    ../*|*/../*|*/..|./*|*/./*|*/.) die "${label} path must not contain dot segments: ${path}" ;;
+  esac
+}
+
 validate_directory_path() {
   local path="$1" label="$2"
   validate_nonempty_path "$path" "$label"
@@ -117,10 +133,20 @@ validate_parent_dir_path() {
 validate_relative_archive_path() {
   local rel="$1" label="$2"
   case "$rel" in
-    ""|/*|../*|*/../*|..|*/..)
+    ""|/*|../*|*/../*|*/..|..|./*|*/./*|*/.)
       die "unsafe archive path for ${label}: ${rel:-<empty>}"
       ;;
   esac
+}
+
+validate_optional_source_dir_path() {
+  local path="$1" label="$2"
+
+  validate_safe_host_path "$path" "$label"
+
+  if backupable_source_exists "$path" && [ ! -d "$path" ]; then
+    die "${label} is not a directory: ${path}"
+  fi
 }
 
 backupable_source_exists() {
@@ -161,6 +187,7 @@ archive_root_from_path() {
 }
 
 stage_path() {
+  validate_relative_archive_path "$1" "stage path"
   printf '%s/%s/%s\n' "$STAGE_ROOT" "$ARCHIVE_ROOT" "$1"
 }
 
@@ -189,6 +216,7 @@ save_stage_text() {
 
 write_snapshot_text() {
   local rel="$1" content="$2" path
+  validate_relative_archive_path "$rel" "snapshot path"
   path="${SNAPSHOT_DIR}/${rel}"
   if [ "$DRY_RUN" -eq 1 ]; then
     say "would write ${path}"
@@ -508,15 +536,15 @@ EOF
 create_archive() {
   local stage_archive_root
 
-  validate_directory_path "$STAGE_ROOT" "stage root"
   validate_parent_dir_path "$ARCHIVE_PATH" "archive"
-  stage_archive_root="${STAGE_ROOT}/${ARCHIVE_ROOT}"
-  [ -d "$stage_archive_root" ] || die "stage archive root missing: ${stage_archive_root}"
-
   if [ "$DRY_RUN" -eq 1 ]; then
     say "would create archive: ${ARCHIVE_PATH}"
     return 0
   fi
+
+  validate_directory_path "$STAGE_ROOT" "stage root"
+  stage_archive_root="${STAGE_ROOT}/${ARCHIVE_ROOT}"
+  [ -d "$stage_archive_root" ] || die "stage archive root missing: ${stage_archive_root}"
 
   if ! tar -C "$STAGE_ROOT" -czf "$ARCHIVE_PATH" "$ARCHIVE_ROOT"; then
     die "failed to create archive: ${ARCHIVE_PATH}"
@@ -626,11 +654,25 @@ run_archive_verification() {
 }
 
 prune_old_snapshots() {
+  local include_pending_snapshot="${1:-0}"
   local -a snapshots=()
   local snapshot archive pruned=0
 
-  [ -d "$BACKUP_ROOT" ] || return 0
-  mapfile -t snapshots < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '????????T??????Z' | sort)
+  mapfile -t snapshots < <(
+    {
+      if [ -d "$BACKUP_ROOT" ]; then
+        find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '????????T??????Z'
+      fi
+
+      if [ "$include_pending_snapshot" -eq 1 ] && [ "$DRY_RUN" -eq 1 ] && [ -n "${SNAPSHOT_DIR:-}" ]; then
+        case "$(basename -- "$SNAPSHOT_DIR")" in
+          ????????T??????Z)
+            printf '%s\n' "$SNAPSHOT_DIR"
+            ;;
+        esac
+      fi
+    } | sort -u
+  )
 
   while [ "${#snapshots[@]}" -gt "$KEEP_COUNT" ]; do
     snapshot="${snapshots[0]}"
@@ -658,9 +700,15 @@ prune_old_snapshots() {
 run_backup() {
   need find
   need git
-  need mktemp
-  need tar
+  if [ "$DRY_RUN" -eq 0 ]; then
+    need mktemp
+    need tar
+  fi
+  validate_safe_host_path "$BACKUP_ROOT" "backup root"
   validate_directory_path "$BACKUP_ROOT" "backup root"
+  validate_optional_source_dir_path "$WRKFLO_CONFIG_DIR" "wrkflo config"
+  validate_optional_source_dir_path "$USER_BIN_DIR" "user bin"
+  validate_optional_source_dir_path "$SSH_DIR" "SSH keys"
 
   SNAPSHOT_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
   ARCHIVE_PATH="${BACKUP_ROOT}/$(archive_basename_for_timestamp "$TIMESTAMP")"
@@ -675,9 +723,11 @@ run_backup() {
     rm -rf -- "$SNAPSHOT_DIR"
     rm -f -- "$ARCHIVE_PATH"
     mkdir -p -- "$BACKUP_ROOT" "$SNAPSHOT_DIR"
+    STAGE_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/dws-backup.${TIMESTAMP}.XXXXXX")
+  else
+    STAGE_ROOT=""
+    say "would create snapshot dir: ${SNAPSHOT_DIR}"
   fi
-
-  STAGE_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/dws-backup.${TIMESTAMP}.XXXXXX")
 
   copy_stage_tree "$WRKFLO_CONFIG_DIR" "home/.config/wrkflo" "wrkflo config"
   copy_stage_tree "$USER_BIN_DIR" "home/bin" "user bin"
@@ -687,11 +737,13 @@ run_backup() {
   backup_git_metadata
   write_metadata
   create_archive
-  if ! run_archive_verification 0 0 "Backup verification"; then
+  if [ "$DRY_RUN" -eq 1 ]; then
+    say "would verify backup archive: ${ARCHIVE_PATH}"
+  elif ! run_archive_verification 0 0 "Backup verification"; then
     die "backup verification failed: ${ARCHIVE_PATH}"
   fi
   set_latest_symlink
-  prune_old_snapshots
+  prune_old_snapshots "$DRY_RUN"
 
   say
   say "Backup complete"
@@ -710,6 +762,8 @@ run_restore() {
   ARCHIVE_ROOT=$(archive_root_from_path "$ARCHIVE_PATH")
   if [ -n "$RESTORE_TARGET" ]; then
     target_root="$RESTORE_TARGET"
+  elif [ "$DRY_RUN" -eq 1 ]; then
+    target_root="${TMPDIR:-/tmp}/dws-restore.${TIMESTAMP}.<tempdir>"
   else
     need mktemp
     target_root=$(mktemp -d "${TMPDIR:-/tmp}/dws-restore.${TIMESTAMP}.XXXXXX")
@@ -827,8 +881,9 @@ done
 
 is_int "$KEEP_COUNT" || die "--keep must be an integer"
 [ "$KEEP_COUNT" -ge 1 ] || die "--keep must be at least 1"
-[ -n "$BACKUP_ROOT" ] || die "--root requires a value"
-[ -n "$VERIFY_ROOT" ] || die "--verify-root requires a value"
+validate_nonempty_path "$BACKUP_ROOT" "backup root"
+validate_nonempty_path "$VERIFY_ROOT" "verify root"
+validate_safe_host_path "$VERIFY_ROOT" "verify root"
 validate_nonempty_path "$TIMESTAMP" "timestamp"
 case "$KEEP_VERIFY_DIR" in
   0|1) ;;

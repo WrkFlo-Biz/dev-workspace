@@ -215,6 +215,41 @@ test_backup_exits_non_zero_when_backup_root_is_invalid() {
   trap - EXIT
 }
 
+test_backup_exits_non_zero_when_source_path_is_not_directory() {
+  local output invalid_source
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  invalid_source="${FIXTURE_ROOT}/not-a-dir"
+  printf 'not a directory\n' >"${invalid_source}"
+
+  if output=$(DWS_WRKFLO_CONFIG_DIR="${invalid_source}" "${SCRIPT}" backup 2>&1); then
+    fail "expected backup with non-directory source path to fail"
+  fi
+
+  assert_contains "${output}" "wrkflo config is not a directory: ${invalid_source}"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
+test_backup_exits_non_zero_when_source_path_is_unsafe() {
+  local output
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  if output=$(DWS_SSH_DIR='/' "${SCRIPT}" backup 2>&1); then
+    fail "expected backup with unsafe source path to fail"
+  fi
+
+  assert_contains "${output}" "SSH keys path must not be /"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
 test_backup_dry_run_reports_actions_without_writing_files() {
   local output snapshot archive archive_root
 
@@ -227,14 +262,20 @@ test_backup_dry_run_reports_actions_without_writing_files() {
 
   output=$("${SCRIPT}" backup --dry-run 2>&1)
 
+  assert_contains "${output}" "would create snapshot dir: ${snapshot}"
   assert_contains "${output}" "would back up wrkflo config: ${DWS_WRKFLO_CONFIG_DIR} -> ${archive_root}/home/.config/wrkflo"
   assert_contains "${output}" "would create archive: ${archive}"
+  assert_contains "${output}" "would verify backup archive: ${archive}"
   assert_contains "${output}" "would refresh latest symlink: ${DWS_BACKUP_ROOT}/latest -> ${snapshot}"
+  assert_contains "${output}" "old snapshot prune: none"
   assert_contains "${output}" "Backup complete"
 
   [ ! -e "${snapshot}" ] || fail "expected dry-run not to create snapshot dir"
   [ ! -e "${archive}" ] || fail "expected dry-run not to create archive"
   [ ! -L "${DWS_BACKUP_ROOT}/latest" ] || fail "expected dry-run not to create latest symlink"
+  if find "${TMPDIR}" -maxdepth 1 -type d -name "dws-backup.${DWS_BACKUP_TIMESTAMP}.*" | grep -q .; then
+    fail "expected dry-run not to create a backup staging dir"
+  fi
 
   cleanup_fixture
   trap - EXIT
@@ -260,6 +301,61 @@ test_restore_and_verify_use_latest_snapshot_metadata() {
   assert_contains "${output}" "Verify restore complete"
   assert_contains "${output}" "verified manifest entries:"
   assert_contains "${output}" "(removed)"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
+test_restore_dry_run_reports_actions_without_creating_temp_dir() {
+  local output archive archive_root restore_prefix
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  "${SCRIPT}" backup >/dev/null
+  archive="${DWS_BACKUP_ROOT}/dws-backup-${DWS_BACKUP_TIMESTAMP}.tar.gz"
+  archive_root="dws-backup-${DWS_BACKUP_TIMESTAMP}"
+  restore_prefix="${TMPDIR}/dws-restore.${DWS_BACKUP_TIMESTAMP}."
+
+  output=$("${SCRIPT}" restore latest --dry-run 2>&1)
+
+  assert_contains "${output}" "Restore dry-run"
+  assert_contains "${output}" "archive:     ${archive}"
+  assert_contains "${output}" "target_root: ${restore_prefix}<tempdir>"
+  assert_contains "${output}" "extracted:   ${restore_prefix}<tempdir>/${archive_root}"
+  if find "${TMPDIR}" -maxdepth 1 -type d -name "dws-restore.${DWS_BACKUP_TIMESTAMP}.*" | grep -q .; then
+    fail "expected dry-run not to create a restore temp dir"
+  fi
+
+  cleanup_fixture
+  trap - EXIT
+}
+
+test_backup_dry_run_reports_pending_prune_without_deleting_old_snapshots() {
+  local output oldest_archive oldest_snapshot timestamp
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  for timestamp in \
+    20260418T000000Z \
+    20260419T000000Z \
+    20260420T000000Z \
+    20260421T000000Z \
+    20260422T000000Z
+  do
+    DWS_BACKUP_TIMESTAMP="${timestamp}" "${SCRIPT}" backup >/dev/null
+  done
+
+  DWS_BACKUP_TIMESTAMP=20260423T000000Z
+  oldest_snapshot="${DWS_BACKUP_ROOT}/20260418T000000Z"
+  oldest_archive="${DWS_BACKUP_ROOT}/dws-backup-20260418T000000Z.tar.gz"
+  output=$("${SCRIPT}" backup --dry-run 2>&1)
+
+  assert_contains "${output}" "would prune old snapshot: ${oldest_snapshot}"
+  assert_contains "${output}" "would prune old archive: ${oldest_archive}"
+  [ -d "${oldest_snapshot}" ] || fail "expected dry-run to keep oldest snapshot dir"
+  [ -f "${oldest_archive}" ] || fail "expected dry-run to keep oldest archive"
 
   cleanup_fixture
   trap - EXIT
@@ -297,7 +393,11 @@ test_backup_prunes_to_last_five_snapshots() {
 test_backup_creates_tarball_with_expected_contents
 test_backup_skips_missing_optional_dirs_gracefully
 test_backup_exits_non_zero_when_backup_root_is_invalid
+test_backup_exits_non_zero_when_source_path_is_not_directory
+test_backup_exits_non_zero_when_source_path_is_unsafe
 test_backup_dry_run_reports_actions_without_writing_files
 test_restore_and_verify_use_latest_snapshot_metadata
+test_restore_dry_run_reports_actions_without_creating_temp_dir
+test_backup_dry_run_reports_pending_prune_without_deleting_old_snapshots
 test_backup_prunes_to_last_five_snapshots
 printf 'ok\n'

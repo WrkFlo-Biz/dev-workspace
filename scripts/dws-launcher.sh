@@ -705,6 +705,7 @@ refresh_health_status() {
 
 status_tool_path() {
   local candidate
+  [ -z "${DWS_LAUNCHER_INTERNAL_STATUS_ONLY:-}" ] || return 1
   for candidate in "${DWS_STATUS_TOOL:-}" "$LAUNCHER_DIR/dws-status.sh" "$STATUS_TOOL_REPO"; do
     [ -n "$candidate" ] || continue
     if [ -x "$candidate" ]; then
@@ -1002,8 +1003,13 @@ status_page_orchestrator() {
 # ── tmux session management ──
 
 list_sessions() {
+  local rows
   if [ -x "$SESSIONS_TOOL" ]; then
-    "$SESSIONS_TOOL" list 2>/dev/null || true
+    rows=$("$SESSIONS_TOOL" list 2>/dev/null || true)
+    case "$rows" in
+      ''|'no tmux sessions') return 0 ;;
+    esac
+    printf '%s\n' "$rows"
     return 0
   fi
 
@@ -1013,21 +1019,15 @@ list_sessions() {
 }
 
 session_count() {
-  local count
-
-  count=$(list_sessions | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ' || true)
-  case "$count" in
-    ''|*[!0-9]*) printf '0\n' ;;
-    *) printf '%s\n' "$count" ;;
-  esac
-}
-
-session_names() {
-  if [ -x "$SESSIONS_TOOL" ]; then
-    list_sessions | awk '{print $1}'
+  if ! tmux_available; then
+    printf '0\n'
     return 0
   fi
 
+  tmux ls -F '#{session_name}' 2>/dev/null | wc -l | tr -d ' '
+}
+
+session_names() {
   if tmux_available; then
     tmux ls -F '#{session_name}' 2>/dev/null || true
   fi

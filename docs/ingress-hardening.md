@@ -1,13 +1,15 @@
 # Ingress Hardening
 
 This document records the live ingress posture of the dev-workspace VM as
-audited on 2026-04-23.
+audited on 2026-04-24.
 
 The intended primary ingress control is the tailnet policy: Tailscale ACLs gate
 who can reach the VM over its Tailscale addresses. On the VM itself, host-level
 firewall enforcement is currently minimal:
 
-- `ufw` is installed but inactive.
+- `bin/dws-firewall.sh` exists, but neither `ufw` nor `iptables` is currently
+  installed on this VM, so the repo-managed host firewall policy has not been
+  applied.
 - The only active kernel filter rules are the Tailscale-managed `ts-input` and
   `ts-forward` chains.
 - `sshd` is hardened through
@@ -19,7 +21,7 @@ firewall enforcement is currently minimal:
 | --- | --- | --- |
 | Tailscale ACLs | Primary intended ingress control | Access to the Tailscale IPs is governed by tailnet policy, not by this repo. |
 | Tailscale host rules | Active `ts-input` / `ts-forward` chains | Accepts traffic arriving on `tailscale0`, accepts `udp/41641`, and drops spoofed `100.64.0.0/10` traffic that does not arrive via `tailscale0`. |
-| UFW | Installed, but `sudo ufw status verbose` returns `Status: inactive` | No UFW policy is currently filtering inbound traffic. The `ufw.service` unit being enabled only means the unit ran at boot; it does not mean UFW is enforcing rules right now. |
+| Repo firewall backend availability | `bin/dws-firewall.sh` is present, but `command -v ufw` and `command -v iptables` both fail on this VM | The repo-managed firewall policy cannot be applied until one supported backend is installed. |
 | nftables / iptables base policy | `INPUT` policy is `ACCEPT` and the only explicit `INPUT` rule is a jump to `ts-input` | Services bound to `0.0.0.0` or `[::]` are not restricted by a host firewall deny policy. Any restriction beyond Tailscale must come from the application itself or an upstream network perimeter. |
 | SSH daemon hardening | `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf` | Disables password and keyboard-interactive auth, disables root login, requires pubkeys, and sets client keepalives. |
 
@@ -85,6 +87,62 @@ What it does **not** currently do:
 Operationally, that means Tailscale ACLs are the primary intended ingress
 control, but the VM is not currently enforcing a Tailscale-only posture with a
 host firewall.
+
+## Repo Firewall Script Readiness
+
+`bin/dws-firewall.sh` is a wrapper around `scripts/dws-firewall.sh`. The script
+supports `--dry-run`, `--verify`, and `--rollback`, and the repo test suite
+currently passes for both the `ufw` and `iptables` code paths
+(`bash tests/test_dws_firewall.sh`).
+
+The intended repo-managed policy is:
+
+- default deny incoming, default allow outgoing
+- allow `udp/41641` from anywhere for Tailscale peer traffic
+- allow `tcp/22` only from `100.64.0.0/10`
+- allow `tcp/8080`, `tcp/9222`, and `tcp/3000` only from `100.64.0.0/10`
+- deny all other inbound traffic
+
+Important nuance: the script does **not** restrict `udp/41641` to
+`100.64.0.0/10`. It intentionally leaves that UDP port globally open so direct
+Tailscale peers and NAT traversal keep working. That means the script is ready
+for Tailscale SSH on `tcp/22` from `100.64.0.0/10`, but the Tailscale WireGuard
+listener stays broader by design.
+
+Readiness findings from the 2026-04-24 review:
+
+- `bin/dws-firewall.sh --dry-run --backend ufw` currently exits with
+  `requested firewall backend is not installed: ufw`
+- `bin/dws-firewall.sh --dry-run` currently exits with
+  `neither ufw nor iptables is installed`
+- because neither supported backend is installed, the script logic looks ready
+  but the host is not yet ready to apply it safely
+
+### Safe Enablement Checklist
+
+Do not enable the firewall from a single fragile session. Before the first real
+apply, all of the following should be true:
+
+1. Install one supported backend first. If the operational choice is UFW, make
+   sure `command -v ufw` succeeds on the VM before relying on the wrapper.
+2. Keep one Tailscale SSH session open and keep a second recovery path
+   available, such as Azure serial console or a second shell.
+3. Confirm Tailscale and SSH are already healthy before touching ingress:
+   `tailscale status`, `systemctl is-active ssh ssh.socket`, and a live SSH
+   login over the Tailscale path.
+4. Run a dry-run after the backend is installed:
+   `~/projects/dev-workspace/bin/dws-firewall.sh --dry-run --backend ufw`
+5. Snapshot the pre-change state so rollback is simple:
+   `sudo ufw status verbose` or `sudo iptables-save`, depending on the chosen
+   backend.
+6. Apply only from the known-good Tailscale session:
+   `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw`
+7. Verify immediately after apply:
+   `sudo ~/projects/dev-workspace/bin/dws-firewall.sh --backend ufw --verify`
+8. Re-test SSH on `22/tcp` over Tailscale and confirm the required dev ports
+   still behave as expected from the tailnet.
+9. Keep the rollback steps in [troubleshooting.md](troubleshooting.md)
+   available before closing the last surviving session.
 
 ## Audit Commands
 
