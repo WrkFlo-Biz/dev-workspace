@@ -85,12 +85,12 @@ On the VM, use the helper instead of raw `curl` when you want AppleScript or
 GUI actions from Linux:
 
 ```bash
-~/dev-workspace/scripts/control-mac-gui.py focused
-~/dev-workspace/scripts/control-mac-gui.py open "Terminal"
-~/dev-workspace/scripts/control-mac-gui.py osascript \
+~/projects/dev-workspace/scripts/control-mac-gui.py focused
+~/projects/dev-workspace/scripts/control-mac-gui.py open "Terminal"
+~/projects/dev-workspace/scripts/control-mac-gui.py osascript \
   'tell application "Terminal" to do script "pwd" in front window'
-~/dev-workspace/scripts/control-mac-gui.py click-menu "Safari" "File" "New Window"
-~/dev-workspace/scripts/control-mac-gui.py screenshot --out /tmp/mac-screen.png
+~/projects/dev-workspace/scripts/control-mac-gui.py click-menu "Safari" "File" "New Window"
+~/projects/dev-workspace/scripts/control-mac-gui.py screenshot --out /tmp/mac-screen.png
 ```
 
 ## Debugging

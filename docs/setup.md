@@ -436,9 +436,9 @@ From your Mac checkout of this repo, if you want the Mac on the same mesh and
 want the VM to reach back into it:
 
 ```bash
-./mac-setup/bootstrap.sh
+~/projects/dev-workspace/mac-setup/bootstrap.sh
 open -a Tailscale
-./mac-setup/authorize-vm.sh
+~/projects/dev-workspace/mac-setup/authorize-vm.sh
 ```
 
 That enables Remote Login on the Mac, installs Tailscale.app, and authorizes

@@ -156,8 +156,37 @@ EOF
   trap - EXIT
 }
 
+test_dry_run_does_not_modify_crontab() {
+  local output crontab_after
+
+  make_fixture
+  trap cleanup_fixture EXIT
+
+  export DWS_CRON_LOG_DIR="${FIXTURE_ROOT}/var/log/dws"
+  cat >"${DWS_TEST_CRONTAB_PATH}" <<'EOF'
+MAILTO=ops@example.com
+5 * * * * echo keep-me
+EOF
+
+  output=$(bash "${SCRIPT}" --dry-run 2>&1)
+  crontab_after=$(cat "${DWS_TEST_CRONTAB_PATH}")
+
+  assert_contains "${output}" "PASS dry-run: would create cron log dir: ${DWS_CRON_LOG_DIR}"
+  assert_contains "${output}" "PASS dry-run: would install managed dev-workspace cron block"
+  assert_contains "${output}" "PASS dry-run: skipped installed-state verification"
+  assert_contains "${output}" "5 * * * * echo keep-me"
+  assert_contains "${output}" "# >>> dev-workspace managed cron >>>"
+  assert_contains "${output}" "30 2 * * 0 \"${DWS_LOG_ROTATE_SCRIPT}\" --keep-weeks 4 >>\"${DWS_CRON_LOG_DIR}/log-rotate.log\" 2>&1 # dws-log-rotate"
+  assert_contains "${crontab_after}" "5 * * * * echo keep-me"
+  assert_not_contains "${crontab_after}" "# >>> dev-workspace managed cron >>>"
+
+  cleanup_fixture
+  trap - EXIT
+}
+
 test_show_defaults_to_var_log_dws
 test_show_uses_repo_rotate_helper_when_env_is_unset
 test_install_replaces_legacy_tmp_health_check_block
+test_dry_run_does_not_modify_crontab
 
 printf 'PASS: %s\n' "$(basename "$0")"

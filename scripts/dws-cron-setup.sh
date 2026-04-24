@@ -283,20 +283,23 @@ verify_jobs() {
 }
 
 MODE=install
-case "${1:-}" in
-  '') ;;
-  --check) MODE=check ;;
-  --remove) MODE=remove ;;
-  --show) MODE=show ;;
-  -h|--help)
-    usage
-    exit 0
-    ;;
-  *)
-    usage >&2
-    exit 1
-    ;;
-esac
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --check) MODE=check ;;
+    --remove) MODE=remove ;;
+    --show) MODE=show ;;
+    --dry-run) DRY_RUN=1 ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
 
 have crontab || die "crontab is required"
 validate_config
@@ -308,7 +311,11 @@ case "$MODE" in
     validate_targets
     install_jobs
     verify_cron_service
-    verify_jobs
+    if [ "$DRY_RUN" -eq 1 ]; then
+      pass "dry-run: skipped installed-state verification"
+    else
+      verify_jobs
+    fi
     ;;
   check)
     validate_targets

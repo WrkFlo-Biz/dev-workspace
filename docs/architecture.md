@@ -575,7 +575,7 @@ tail -n 40 /tmp/socat-9223.log
 Recovery on the Mac:
 
 ```bash
-bash ~/dev-workspace/mac-setup/mac-bridges.sh
+bash ~/projects/dev-workspace/mac-setup/mac-bridges.sh
 ```
 
 If `9223` still fails, verify Hammerspoon has Accessibility, Screen Recording,

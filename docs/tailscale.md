@@ -29,7 +29,7 @@ existing key-based auth still works).
 ### Mac
 
 ```bash
-./mac-setup/bootstrap.sh   # installs Tailscale.app + enables sharing services
+~/projects/dev-workspace/mac-setup/bootstrap.sh   # installs Tailscale.app + enables sharing services
 open -a Tailscale           # log in via the menu bar
 ```
 

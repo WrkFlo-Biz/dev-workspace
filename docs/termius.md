@@ -48,7 +48,7 @@ Save these as snippets for quick access:
 | Name | Command |
 |------|---------|
 | Status | ssh moses@dev-workspace-vm "tmux ls 2>/dev/null \|\| echo 'no sessions'" |
-| Health | ssh moses@dev-workspace-vm "~/bin/dws-health.sh" |
+| Health | ssh moses@dev-workspace-vm "~/projects/dev-workspace/scripts/dws-health.sh" |
 | Kill all | ssh moses@dev-workspace-vm "tmux kill-server" |
 
 ## Tips
