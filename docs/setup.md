@@ -1,18 +1,20 @@
 # From-Scratch Setup Guide
 
 This guide takes a fresh Ubuntu Azure VM to a working `dev-workspace` install
-with:
+for a new operator. It covers the current expected setup path for:
 
-- Azure VM provisioned from `infra/dev-workspace-vm.bicep`
-- Tailscale online with MagicDNS and optional Tailscale SSH
-- SSH hardened for key-only access
-- repo scripts deployed into `~/bin`
-- optional user `systemd` services installed
-- cron installed for health checks, plus the optional managed cron block
-- phone access through Termius
+- Azure VM provisioning
+- repo checkout under `~/projects/dev-workspace`
+- Azure Foundry credentials
+- Tailscale join and MagicDNS access
+- current SSH hardening at `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf`
+- repo script layout and `~/bin` deployment convention
+- repo-managed user `systemd` services
+- cron, Mac-side access, and Termius setup
 
 The current expected VM user is `moses` and the current hostname is
-`dev-workspace-vm`. Adjust those if you intentionally diverge.
+`dev-workspace-vm`. Adjust usernames, resource groups, and hostnames if you are
+intentionally building a different environment.
 
 ## 1. Prerequisites
 
@@ -61,7 +63,7 @@ ssh moses@<public-ip>
 Important: the Bicep file intentionally leaves public SSH open. Do not treat
 the VM as finished until Tailscale and SSH hardening are in place.
 
-## 3. Clone the Repo and Run the VM Bootstrap
+## 3. Clone the Repo and Run the Bootstrap
 
 On the VM, get this repo into `~/projects/dev-workspace` with any authenticated
 clone method. Example if GitHub SSH is already configured on the VM:
@@ -82,17 +84,26 @@ What `vm-setup.sh` does today:
 - installs Ubuntu packages such as `tmux`, `openssh-server`, `cron`, `jq`,
   Python, Node.js, `gh`, `az`, and unattended upgrades
 - installs Tailscale, Codex CLI, and Claude Code
+- enables `tailscaled` and `cron`
 - generates an SSH key if the VM does not already have one
-- writes SSH hardening to
-  `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf`
+- writes an older SSH drop-in at
+  `/etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf`
 - clones the sibling Wrk-Flo repos into `~/projects`
 - copies `config/tmux.conf` to `~/.tmux.conf`
-- deploys `dws-launcher.sh`, `dws-health.sh`, `dws-health-check.sh`, and
+- copies `dws-launcher.sh`, `dws-health.sh`, `dws-health-check.sh`, and
   `dws-notify.sh` into `~/bin`
-- updates `~/.bash_profile` so interactive SSH logins land in the launcher
-- installs the simple 15-minute health-check cron entry
+- updates `~/.bash_profile` so interactive SSH logins source the launcher
+- creates the base 15-minute health-check cron entry
 - installs any `wrkflo-orchestrator` user units found under
   `~/projects/wrkflo-orchestrator/ops/systemd`
+
+What `vm-setup.sh` does **not** finish for you:
+
+- it does not install the current live SSH hardening file used on this VM
+- it does not install the repo-managed `dws-sessions-init.service` and
+  `dws-task-monitor.service`
+- it does not provide `~/bin/task-monitor.sh` because that script is
+  operator-managed and not stored in this repo
 
 The script is idempotent. If it stops because `gh` is not authenticated yet,
 run `gh auth login` and rerun the same command.
@@ -137,20 +148,24 @@ codex --version
 claude --version
 gh auth status
 az account show >/dev/null && echo "az ok"
+test -f ~/.config/wrkflo/foundry.env && echo "foundry env ok"
 ```
 
 ## 5. Bring Up Tailscale
 
-Install and enablement happen in `vm-setup.sh`; the remaining step is joining
-the tailnet:
+Install and base enablement happen in `vm-setup.sh`; the remaining step is
+joining the tailnet:
 
 ```bash
+sudo systemctl enable --now tailscaled
 sudo tailscale up --ssh --operator="$USER" --hostname=dev-workspace-vm
 ```
 
 Approve the auth URL that command prints, then verify:
 
 ```bash
+systemctl is-enabled tailscaled
+systemctl is-active tailscaled
 tailscale status
 tailscale ip -4
 hostname
@@ -165,56 +180,84 @@ Expected result:
 Operational rule: once Tailscale is working, use `ssh moses@dev-workspace-vm`
 as the primary access path. Keep the public IP only as a fallback.
 
-## 6. Confirm SSH Hardening
+If MagicDNS is missing on a client later, run `tailscale up --accept-dns=true`
+on that client.
 
-`vm-setup.sh` writes the current hardening drop-in to:
+## 6. Install the Current SSH Hardening File
+
+The current live SSH hardening path on this VM is:
 
 ```text
 /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
 ```
 
-The managed settings are:
+The checked-in repo baseline at `config/ssh/zz-dws-hardening.conf` is close,
+but the current live host also disables X11 forwarding, caps auth retries, and
+uses the `01-wrkflo-hardening.conf` path. For a new build, install the current
+live drop-in explicitly:
 
-- `PasswordAuthentication no`
-- `KbdInteractiveAuthentication no`
-- `ChallengeResponseAuthentication no`
-- `PermitRootLogin no`
-- `PubkeyAuthentication yes`
-- `X11Forwarding no`
-- `MaxAuthTries 3`
-- `ClientAliveInterval 30`
-- `ClientAliveCountMax 3`
+```bash
+sudo install -d -m 0755 /etc/ssh/sshd_config.d
+
+sudo tee /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf >/dev/null <<'EOF'
+# dev-workspace SSH hardening drop-in.
+#
+# Source file in the repo. Install to the VM's live path:
+#   /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
+
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PubkeyAuthentication yes
+PermitRootLogin no
+X11Forwarding no
+MaxAuthTries 3
+
+# Favor fast failure detection for mobile operators while keeping sessions alive
+# across transient network issues.
+ClientAliveInterval 30
+ClientAliveCountMax 3
+EOF
+
+sudo rm -f /etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf
+sudo sshd -t
+sudo systemctl reload ssh || sudo systemctl restart ssh
+```
 
 Before you close the original public-IP session:
 
-1. Confirm the config parses cleanly.
+1. Confirm `sudo sshd -t` succeeds.
 2. Open a second session over Tailscale or the public IP.
 3. Only close the original shell after the second login succeeds.
 
-Commands:
+Verify the installed settings:
 
 ```bash
-sudo sshd -t
+grep -E 'PasswordAuthentication|KbdInteractiveAuthentication|ChallengeResponseAuthentication|PubkeyAuthentication|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax' \
+  /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
 sudo systemctl status ssh --no-pager || sudo systemctl status sshd --no-pager
 ```
 
-Optional but recommended after Tailscale is proven: restrict inbound access to
-the Tailscale subnet at the host firewall layer.
+Optional but recommended after Tailscale is proven: inspect the firewall path
+before applying any host-level restrictions:
 
 ```bash
 sudo ~/projects/dev-workspace/bin/dws-firewall.sh --dry-run
-sudo ~/projects/dev-workspace/bin/dws-firewall.sh
 ```
 
-Do that only after you have already confirmed the Tailscale path works.
+## 7. Understand the Script Layout
 
-## 7. Deploy Repo Scripts into `~/bin`
+The repo script convention is:
 
-The script layout matters:
+- `scripts/` is the canonical source for shell scripts
+- `bin/` contains thin repo-local wrappers that `exec` into `scripts/`
+- `~/bin/` on the VM is for live entrypoints that must work outside the repo
+  checkout, including login hooks and `systemd` service entrypoints
 
-- `scripts/` is the canonical source
-- `bin/` is only a repo-local wrapper layer
-- `~/bin/` is for scripts that must exist outside the repo checkout
+Important rule: do **not** symlink repo `bin/` wrappers into `~/bin`. Those
+wrappers resolve `../scripts` relative to their invocation path and can break
+when called through a `~/bin` symlink. For `~/bin`, point directly at
+`scripts/...` or install a real copy.
 
 `vm-setup.sh` already copies these into `~/bin`:
 
@@ -223,50 +266,59 @@ The script layout matters:
 - `dws-health-check.sh`
 - `dws-notify.sh`
 
-For other scripts that must live in `~/bin`, symlink directly to `scripts/`,
-not to repo `bin/`. The repo wrappers use relative paths and will break if you
-symlink them into `~/bin`.
-
-Useful symlinks:
+Install the additional live symlinks you want for day-2 operations:
 
 ```bash
 mkdir -p ~/bin
 
 ln -sf ~/projects/dev-workspace/scripts/dws-sessions-init.sh ~/bin/dws-sessions-init.sh
-ln -sf ~/projects/dev-workspace/scripts/dws-cron-setup.sh ~/bin/dws-cron-setup.sh
+ln -sf ~/projects/dev-workspace/scripts/dws-sessions.sh ~/bin/dws-sessions.sh
 ln -sf ~/projects/dev-workspace/scripts/dws-status.sh ~/bin/dws-status.sh
 ln -sf ~/projects/dev-workspace/scripts/dws-doctor.sh ~/bin/dws-doctor.sh
+ln -sf ~/projects/dev-workspace/scripts/dws-cron-setup.sh ~/bin/dws-cron-setup.sh
+ln -sf ~/projects/dev-workspace/scripts/dws-log-viewer.sh ~/bin/dws-log-viewer.sh
+ln -sf ~/projects/dev-workspace/scripts/dws-backup.sh ~/bin/dws-backup.sh
+ln -sf ~/projects/dev-workspace/scripts/dws-tailscale-diag.sh ~/bin/dws-tailscale-diag.sh
+ln -sf ~/projects/dev-workspace/scripts/dws-termius-setup.sh ~/bin/dws-termius-setup.sh
 ```
 
-When you update the repo later, refresh the files `vm-setup.sh` deployed with:
+`scripts/dws-update.sh` only refreshes the files `vm-setup.sh` originally
+copied into `~/bin` plus `~/.tmux.conf`. For the symlinked helpers above, repo
+updates are picked up automatically because the symlink already points at
+`scripts/...`.
 
-```bash
-~/projects/dev-workspace/scripts/dws-update.sh --force
-```
-
-## 8. Optional User `systemd` Services
+## 8. Install the Repo-Managed User Services
 
 The repo-managed user units are:
 
 - `dws-sessions-init.service`
 - `dws-task-monitor.service`
 
+Tracked templates live in `config/systemd-user/`, and the installer is:
+
+```bash
+~/projects/dev-workspace/bin/dws-systemd-user-setup.sh
+```
+
 Their purpose:
 
-- `dws-sessions-init.service` starts the expected tmux sessions at boot
+- `dws-sessions-init.service` recreates the managed `tmux` pool at boot
 - `dws-task-monitor.service` runs `~/bin/task-monitor.sh`
 
 Prerequisites before you install them:
 
 - `~/bin/dws-sessions-init.sh` exists and is executable
 - `~/bin/task-monitor.sh` exists and is executable
+- `codex` works
+- `~/.config/wrkflo/foundry.env` exists
 - `~/projects/wrkflo-orchestrator` exists
-- `codex` works and `~/.config/wrkflo/foundry.env` is present
 
 `~/bin/task-monitor.sh` is not stored in this repo. It is operator-managed
-runtime code. If you do not have that script yet, skip this section.
+runtime code. If you do not have that script yet, skip `dws-task-monitor.service`
+until you do.
 
-Install and start the units:
+Install and enable linger so the services survive reboot without an active
+login:
 
 ```bash
 sudo loginctl enable-linger "$USER"
@@ -275,13 +327,27 @@ systemctl --user start dws-sessions-init.service
 systemctl --user start dws-task-monitor.service
 ```
 
-Verify:
+Verify the user-service install:
 
 ```bash
+loginctl show-user "$USER" -p Linger
+systemctl --user is-enabled dws-sessions-init.service dws-task-monitor.service
+systemctl --user show dws-sessions-init.service -p ExecStart -p FragmentPath -p UnitFileState
+systemctl --user show dws-task-monitor.service -p ExecStart -p FragmentPath -p UnitFileState
+ls -l ~/.config/systemd/user/default.target.wants/dws-sessions-init.service \
+      ~/.config/systemd/user/default.target.wants/dws-task-monitor.service
 systemctl --user status dws-sessions-init.service --no-pager
 systemctl --user status dws-task-monitor.service --no-pager
 tmux ls
 ```
+
+Expected `ExecStart` after specifier expansion for the `moses` account:
+
+- `/usr/bin/bash /home/moses/bin/dws-sessions-init.sh`
+- `/usr/bin/bash /home/moses/bin/task-monitor.sh`
+
+If you intentionally use a different username, the home-directory portion of
+those paths will change accordingly.
 
 Note: `vm-setup.sh` separately installs any user units shipped by the sibling
 `wrkflo-orchestrator` repo. Those units are in addition to the two repo-managed
@@ -303,6 +369,7 @@ Verify it with:
 
 ```bash
 crontab -l
+systemctl is-enabled cron
 systemctl is-active cron
 ```
 
@@ -314,27 +381,16 @@ systemctl is-active cron
 - weekly log rotation at `30 2 * * 0`
 - daily session cleanup at `0 4 * * *`
 
-Install it only after all target scripts exist. The installer requires:
-
-- a health-check script
-- a cleanup script
-- a log-rotation script
-
-The repo already provides:
+The repo now provides all of the required targets:
 
 - `scripts/dws-health-check.sh`
 - `scripts/dws-cleanup.sh`
 - `scripts/dws-rotate-logs.sh`
 
-By default the managed cron block uses the repo rotate helper and writes its
-cron logs under `/var/log/dws`.
-
-If you need a different rotate helper, override it with
-`DWS_LOG_ROTATE_SCRIPT`. Example:
+Install the managed block once those scripts are present:
 
 ```bash
-DWS_LOG_ROTATE_SCRIPT="$HOME/bin/dws-rotate-logs.sh" \
-  ~/projects/dev-workspace/bin/dws-cron-setup.sh
+~/projects/dev-workspace/bin/dws-cron-setup.sh
 ```
 
 Useful verification commands:
@@ -345,7 +401,9 @@ Useful verification commands:
 crontab -l
 ```
 
-## 10. Mac and Tailscale Client Setup
+By default the managed cron block writes its logs under `/var/log/dws`.
+
+## 10. Mac and Tailnet Client Setup
 
 From your Mac checkout of this repo, if you want the Mac on the same mesh and
 want the VM to reach back into it:
@@ -357,7 +415,7 @@ open -a Tailscale
 ```
 
 That enables Remote Login on the Mac, installs Tailscale.app, and authorizes
-the VM's SSH public key for VM -> Mac access.
+the VM's SSH public key for VM-to-Mac access.
 
 ## 11. Termius Setup
 
@@ -370,14 +428,14 @@ On iPhone or desktop Termius:
 You can print the current recommended settings from the VM or Mac with:
 
 ```bash
-DWS_TERMIUS_HOSTNAME=dev-workspace-vm \
-  ~/projects/dev-workspace/bin/dws-termius-setup.sh
+~/projects/dev-workspace/bin/dws-termius-setup.sh
+DWS_TERMIUS_HOSTNAME=dev-workspace-vm ~/projects/dev-workspace/bin/dws-termius-setup.sh
 ```
 
 Use these settings:
 
 - label: `Dev Workspace VM`
-- hostname: `dev-workspace-vm`
+- hostname: `dev-workspace-vm` or the Tailscale IP
 - port: `22`
 - username: `moses`
 - authentication: SSH key
@@ -392,7 +450,7 @@ First-connect workflow:
 
 1. Connect to the host in Termius.
 2. Let the login shell run normally so `~/bin/dws-launcher.sh` starts.
-3. Pick a project and model, or press `r` to reconnect to an existing tmux
+3. Pick a project and model, or press `r` to reconnect to an existing `tmux`
    session.
 4. Detach with `Ctrl-a d` before closing the app if you want the session to
    keep running.
@@ -402,23 +460,32 @@ First-connect workflow:
 Run these checks before you declare the VM ready:
 
 ```bash
-ssh moses@dev-workspace-vm 'tailscale status >/dev/null && echo tailscale-ok'
-ssh moses@dev-workspace-vm 'sudo sshd -t && echo ssh-ok'
-ssh moses@dev-workspace-vm '~/bin/dws-health.sh'
+ssh moses@dev-workspace-vm 'systemctl is-active tailscaled && tailscale status >/dev/null && tailscale ip -4'
+ssh moses@dev-workspace-vm 'sudo sshd -t && grep -E "PasswordAuthentication|KbdInteractiveAuthentication|ChallengeResponseAuthentication|PubkeyAuthentication|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax" /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf'
+ssh moses@dev-workspace-vm '~/projects/dev-workspace/scripts/dws-health.sh --json | jq ".services, .security, .tailnet"'
 ssh moses@dev-workspace-vm '~/projects/dev-workspace/bin/dws-status.sh'
 ssh moses@dev-workspace-vm 'crontab -l'
 ssh moses@dev-workspace-vm 'tmux ls || echo "no tmux sessions yet"'
 ```
 
-If you installed the user services, also verify:
+If you installed the repo-managed user services, also verify:
 
 ```bash
-ssh moses@dev-workspace-vm 'systemctl --user list-units --type=service --state=running --no-pager'
+ssh moses@dev-workspace-vm '
+  loginctl show-user moses -p Linger &&
+  systemctl --user is-enabled dws-sessions-init.service dws-task-monitor.service &&
+  systemctl --user show dws-sessions-init.service -p ExecStart -p FragmentPath -p UnitFileState &&
+  systemctl --user show dws-task-monitor.service -p ExecStart -p FragmentPath -p UnitFileState &&
+  systemctl --user status dws-sessions-init.service --no-pager &&
+  systemctl --user status dws-task-monitor.service --no-pager
+'
 ```
 
 ## 13. Related Docs
 
 - `docs/foundry.md` for Azure Foundry wiring and model mappings
 - `docs/tailscale.md` for mesh-specific notes
+- `docs/script-layout.md` for the script layout convention
 - `docs/termius-setup.md` for a Termius-only walkthrough
 - `docs/troubleshooting.md` for SSH, Tailscale, tmux, and monitor recovery
+- `docs/runbook.md` for operator procedures after setup
