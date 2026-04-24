@@ -14,6 +14,7 @@ defaults:
 
 jobs:
   tests:
+    name: Shell Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -24,76 +25,57 @@ jobs:
         run: |
           set -euo pipefail
 
-          tests=(
-            tests/test_bin_wrappers.sh
-            tests/test_dws_backup.sh
-            tests/test_dws_boot_verify.sh
-            tests/test_dws_cleanup.sh
-            tests/test_dws_cron_setup.sh
-            tests/test_dws_doctor.sh
-            tests/test_dws_firewall.sh
-            tests/test_dws_health.sh
-            tests/test_dws_health_full.sh
-            tests/test_dws_launcher_status.sh
-            tests/test_dws_log_viewer.sh
-            tests/test_dws_motd.sh
-            tests/test_dws_rotate_logs.sh
-            tests/test_dws_sessions_init.sh
-            tests/test_dws_sessions_metadata.sh
-            tests/test_dws_status_header.sh
-            tests/test_dws_sync_mac.sh
-            tests/test_dws_tailscale_diag.sh
-            tests/test_dws_termius_setup.sh
-            tests/test_vm_setup_cron.sh
-            tests/test_vm_setup_sshd_hardening.sh
-          )
           expected_tests=21
+          summary_file="${GITHUB_STEP_SUMMARY:-}"
+          mapfile -t tests < <(find tests -maxdepth 1 -type f -name 'test_*.sh' | sort)
 
-          mapfile -t actual_tests < <(find tests -maxdepth 1 -type f -name 'test_*.sh' | sort)
-
-          printf 'Configured %s test files\n' "${#tests[@]}"
-          printf 'Discovered %s test files\n' "${#actual_tests[@]}"
+          printf 'Discovered %s test files\n' "${#tests[@]}"
 
           if [ "${#tests[@]}" -ne "${expected_tests}" ]; then
-            printf 'Expected %s configured test files, found %s\n' "${expected_tests}" "${#tests[@]}" >&2
+            printf 'Expected %s test files in tests/, found %s\n' "${expected_tests}" "${#tests[@]}" >&2
             exit 1
           fi
-
-          if [ "${#actual_tests[@]}" -ne "${expected_tests}" ]; then
-            printf 'Expected %s discovered test files, found %s\n' "${expected_tests}" "${#actual_tests[@]}" >&2
-            exit 1
-          fi
-
-          for i in "${!tests[@]}"; do
-            if [ "${tests[$i]}" != "${actual_tests[$i]}" ]; then
-              printf 'Configured test manifest drift at index %s: expected %s, found %s\n' \
-                "$i" "${tests[$i]}" "${actual_tests[$i]}" >&2
-              exit 1
-            fi
-          done
 
           failures=0
+          failed_tests=()
+
+          if [ -n "$summary_file" ]; then
+            {
+              printf '| Test File | Result |\n'
+              printf '| --- | --- |\n'
+            } >>"$summary_file"
+          fi
 
           for test_file in "${tests[@]}"; do
             printf '\n==> %s\n' "$test_file"
-            if [ ! -f "$test_file" ]; then
-              printf 'FAIL %s (missing file)\n' "$test_file" >&2
-              failures=$((failures + 1))
-              continue
-            fi
 
             if bash "$test_file"; then
               printf 'PASS %s\n' "$test_file"
+              if [ -n "$summary_file" ]; then
+                printf '| `%s` | PASS |\n' "$test_file" >>"$summary_file"
+              fi
             else
               status=$?
               printf 'FAIL %s (exit %s)\n' "$test_file" "$status" >&2
+              failed_tests+=("${test_file} (exit ${status})")
               failures=$((failures + 1))
+              if [ -n "$summary_file" ]; then
+                printf '| `%s` | FAIL (exit %s) |\n' "$test_file" "$status" >>"$summary_file"
+              fi
             fi
           done
 
           if [ "$failures" -ne 0 ]; then
-            printf '\n%s test file(s) failed\n' "$failures" >&2
+            printf '\nFailed test files (%s):\n' "$failures" >&2
+            printf ' - %s\n' "${failed_tests[@]}" >&2
+            if [ -n "$summary_file" ]; then
+              printf '\nFailed test files (%s):\n' "$failures" >>"$summary_file"
+              printf '%s\n' "${failed_tests[@]}" | sed 's/^/- /' >>"$summary_file"
+            fi
             exit 1
           fi
 
           printf '\nAll %s test files passed\n' "${#tests[@]}"
+          if [ -n "$summary_file" ]; then
+            printf '\nAll %s test files passed\n' "${#tests[@]}" >>"$summary_file"
+          fi
