@@ -86,12 +86,12 @@ What `vm-setup.sh` does today:
 - installs Tailscale, Codex CLI, and Claude Code
 - enables `tailscaled` and `cron`
 - generates an SSH key if the VM does not already have one
-- writes an older SSH drop-in at
-  `/etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf`
+- writes the current SSH hardening drop-in at
+  `/etc/ssh/sshd_config.d/01-wrkflo-hardening.conf`
 - clones the sibling Wrk-Flo repos into `~/projects`
 - copies `config/tmux.conf` to `~/.tmux.conf`
-- copies `dws-launcher.sh`, `dws-health.sh`, `dws-health-check.sh`, and
-  `dws-notify.sh` into `~/bin`
+- copies `dws-launcher.sh`, `dws-health.sh`, `dws-health-check.sh`,
+  `dws-rotate-logs.sh`, and `dws-notify.sh` into `~/bin`
 - updates `~/.bash_profile` so interactive SSH logins source the launcher
 - creates the base 15-minute health-check cron entry
 - installs any `wrkflo-orchestrator` user units found under
@@ -99,7 +99,8 @@ What `vm-setup.sh` does today:
 
 What `vm-setup.sh` does **not** finish for you:
 
-- it does not install the current live SSH hardening file used on this VM
+- it does not run `tailscale up`, so the VM is not joined to the tailnet yet
+- it does not authenticate `gh` or `az` for you
 - it does not install the repo-managed `dws-sessions-init.service` and
   `dws-task-monitor.service`
 - it does not provide `~/bin/task-monitor.sh` because that script is
@@ -183,42 +184,41 @@ as the primary access path. Keep the public IP only as a fallback.
 If MagicDNS is missing on a client later, run `tailscale up --accept-dns=true`
 on that client.
 
-## 6. Install the Current SSH Hardening File
+## 6. Verify the Current SSH Hardening File
 
-The current live SSH hardening path on this VM is:
+On a fresh build, `vm-setup.sh` should already install the current SSH
+hardening file to:
 
 ```text
 /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
 ```
 
-The checked-in repo baseline at `config/ssh/zz-dws-hardening.conf` is close,
-but the current live host also disables X11 forwarding, caps auth retries, and
-uses the `01-wrkflo-hardening.conf` path. For a new build, install the current
-live drop-in explicitly:
+The repo source of truth is:
+
+```text
+~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf
+```
+
+The expected effective values are:
+
+- `PasswordAuthentication no`
+- `KbdInteractiveAuthentication no`
+- `ChallengeResponseAuthentication no`
+- `PubkeyAuthentication yes`
+- `PermitRootLogin no`
+- `X11Forwarding no`
+- `MaxAuthTries 3`
+- `ClientAliveInterval 30`
+- `ClientAliveCountMax 3`
+
+If the live host is missing the file or you detect drift, reinstall it from the
+repo copy:
 
 ```bash
 sudo install -d -m 0755 /etc/ssh/sshd_config.d
-
-sudo tee /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf >/dev/null <<'EOF'
-# dev-workspace SSH hardening drop-in.
-#
-# Source file in the repo. Install to the VM's live path:
-#   /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
-
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-ChallengeResponseAuthentication no
-PubkeyAuthentication yes
-PermitRootLogin no
-X11Forwarding no
-MaxAuthTries 3
-
-# Favor fast failure detection for mobile operators while keeping sessions alive
-# across transient network issues.
-ClientAliveInterval 30
-ClientAliveCountMax 3
-EOF
-
+sudo install -m 0644 \
+  ~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf \
+  /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
 sudo rm -f /etc/ssh/sshd_config.d/99-dev-workspace-hardening.conf
 sudo sshd -t
 sudo systemctl reload ssh || sudo systemctl restart ssh
@@ -235,6 +235,7 @@ Verify the installed settings:
 ```bash
 grep -E 'PasswordAuthentication|KbdInteractiveAuthentication|ChallengeResponseAuthentication|PubkeyAuthentication|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax' \
   /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
+sudo sshd -T | grep -E '^(passwordauthentication|kbdinteractiveauthentication|challengeresponseauthentication|pubkeyauthentication|permitrootlogin|maxauthtries|x11forwarding|clientaliveinterval|clientalivecountmax) '
 sudo systemctl status ssh --no-pager || sudo systemctl status sshd --no-pager
 ```
 
@@ -249,21 +250,25 @@ sudo ~/projects/dev-workspace/bin/dws-firewall.sh --dry-run
 
 The repo script convention is:
 
-- `scripts/` is the canonical source for shell scripts
-- `bin/` contains thin repo-local wrappers that `exec` into `scripts/`
-- `~/bin/` on the VM is for live entrypoints that must work outside the repo
-  checkout, including login hooks and `systemd` service entrypoints
+- `scripts/` is the canonical source for repo shell entrypoints
+- most files in `bin/` are thin repo-local wrappers that `exec` into
+  `scripts/`
+- `bin/dws-systemd-user-setup.sh` and `bin/dws-boot-verify.sh` are
+  repo-owned standalone entrypoints rather than wrappers
+- `~/bin/` on the VM is the live runtime path for login hooks, cron targets,
+  `systemd` entrypoints, and operator-managed helpers
 
-Important rule: do **not** symlink repo `bin/` wrappers into `~/bin`. Those
-wrappers resolve `../scripts` relative to their invocation path and can break
-when called through a `~/bin` symlink. For `~/bin`, point directly at
-`scripts/...` or install a real copy.
+Important rule: do **not** symlink the thin-wrapper subset from repo `bin/`
+into `~/bin`. Those wrappers resolve `../scripts` relative to their invocation
+path and can break when called through a `~/bin` symlink. For `~/bin`, either
+install a real copy or symlink directly to `~/projects/dev-workspace/scripts/...`.
 
 `vm-setup.sh` already copies these into `~/bin`:
 
 - `dws-launcher.sh`
 - `dws-health.sh`
 - `dws-health-check.sh`
+- `dws-rotate-logs.sh`
 - `dws-notify.sh`
 
 Install the additional live symlinks you want for day-2 operations:
@@ -282,12 +287,34 @@ ln -sf ~/projects/dev-workspace/scripts/dws-tailscale-diag.sh ~/bin/dws-tailscal
 ln -sf ~/projects/dev-workspace/scripts/dws-termius-setup.sh ~/bin/dws-termius-setup.sh
 ```
 
-`scripts/dws-update.sh` only refreshes the files `vm-setup.sh` originally
-copied into `~/bin` plus `~/.tmux.conf`. For the symlinked helpers above, repo
-updates are picked up automatically because the symlink already points at
+`scripts/dws-update.sh` currently refreshes `~/.tmux.conf`,
+`~/bin/dws-health.sh`, `~/bin/dws-health-check.sh`,
+`~/bin/dws-rotate-logs.sh`, and `~/bin/dws-notify.sh`. It does **not**
+currently refresh `~/bin/dws-launcher.sh`, so reinstall that file manually or
+rerun `vm-setup.sh` after launcher changes. For the symlinked helpers above,
+repo updates are picked up automatically because the symlink already points at
 `scripts/...`.
 
-## 8. Install the Repo-Managed User Services
+## 8. Install and Verify Services
+
+After bootstrap and `tailscale up`, the expected long-lived services are:
+
+- system: `ssh` or `sshd`, `tailscaled`, and `cron`
+- user: `dws-sessions-init.service` and, when you have the operator script,
+  `dws-task-monitor.service`
+- additional user units from `~/projects/wrkflo-orchestrator/ops/systemd`
+  if that repo ships them
+
+Verify the base system services first:
+
+```bash
+systemctl is-enabled tailscaled cron
+systemctl is-active tailscaled cron
+systemctl is-enabled ssh 2>/dev/null || systemctl is-enabled sshd
+systemctl is-active ssh 2>/dev/null || systemctl is-active sshd
+```
+
+Then install the repo-managed user services.
 
 The repo-managed user units are:
 
@@ -461,6 +488,7 @@ Run these checks before you declare the VM ready:
 
 ```bash
 ssh moses@dev-workspace-vm 'systemctl is-active tailscaled && tailscale status >/dev/null && tailscale ip -4'
+ssh moses@dev-workspace-vm 'systemctl is-active cron && (systemctl is-active ssh || systemctl is-active sshd)'
 ssh moses@dev-workspace-vm 'sudo sshd -t && grep -E "PasswordAuthentication|KbdInteractiveAuthentication|ChallengeResponseAuthentication|PubkeyAuthentication|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax" /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf'
 ssh moses@dev-workspace-vm '~/projects/dev-workspace/scripts/dws-health.sh --json | jq ".services, .security, .tailnet"'
 ssh moses@dev-workspace-vm '~/projects/dev-workspace/bin/dws-status.sh'
