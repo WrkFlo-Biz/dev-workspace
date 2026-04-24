@@ -49,12 +49,28 @@ jobs:
           )
           expected_tests=21
 
+          mapfile -t actual_tests < <(find tests -maxdepth 1 -type f -name 'test_*.sh' | sort)
+
           printf 'Configured %s test files\n' "${#tests[@]}"
+          printf 'Discovered %s test files\n' "${#actual_tests[@]}"
 
           if [ "${#tests[@]}" -ne "${expected_tests}" ]; then
             printf 'Expected %s configured test files, found %s\n' "${expected_tests}" "${#tests[@]}" >&2
             exit 1
           fi
+
+          if [ "${#actual_tests[@]}" -ne "${expected_tests}" ]; then
+            printf 'Expected %s discovered test files, found %s\n' "${expected_tests}" "${#actual_tests[@]}" >&2
+            exit 1
+          fi
+
+          for i in "${!tests[@]}"; do
+            if [ "${tests[$i]}" != "${actual_tests[$i]}" ]; then
+              printf 'Configured test manifest drift at index %s: expected %s, found %s\n' \
+                "$i" "${tests[$i]}" "${actual_tests[$i]}" >&2
+              exit 1
+            fi
+          done
 
           failures=0
 
