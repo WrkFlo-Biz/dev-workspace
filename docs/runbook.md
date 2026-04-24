@@ -76,6 +76,8 @@ DWS_MONITOR_LOG_PATH=/var/log/dws/monitor.log \
   ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
 systemctl --user daemon-reload
 systemctl --user enable dws-sessions-init.service dws-task-monitor.service
+systemctl --user show dws-sessions-init.service -p ExecStart -p FragmentPath -p UnitFileState
+systemctl --user show dws-task-monitor.service -p ExecStart -p FragmentPath -p UnitFileState
 systemctl --user restart dws-sessions-init.service
 systemctl --user restart dws-task-monitor.service
 systemctl --user status dws-sessions-init.service --no-pager
@@ -88,7 +90,8 @@ systemctl --user status dws-task-monitor.service --no-pager
 DWS_MONITOR_LOG=/var/log/dws/monitor.log \
   ~/projects/dev-workspace/bin/dws-sessions.sh list
 ~/projects/dev-workspace/bin/dws-sessions.sh reconnect
-SESSION=$(tmux list-sessions -F '#{session_name}' | sed -n '1p')
+SESSION=$(DWS_MONITOR_LOG=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-sessions.sh list | awk 'NR == 2 { print $1 }')
 DWS_MONITOR_LOG=/var/log/dws/monitor.log \
   ~/projects/dev-workspace/bin/dws-sessions.sh show "$SESSION"
 DWS_MONITOR_LOG=/var/log/dws/monitor.log \
@@ -116,6 +119,7 @@ systemctl --user status dws-task-monitor.service --no-pager
 
 ```bash
 systemctl --user stop dws-task-monitor.service
+systemctl --user stop dws-phone-server.service 2>/dev/null || true
 ~/projects/dev-workspace/bin/dws-sessions.sh kill-all
 systemctl --user stop dws-sessions-init.service || true
 tmux list-sessions 2>/dev/null || echo "no tmux sessions"
@@ -126,8 +130,10 @@ tmux list-sessions 2>/dev/null || echo "no tmux sessions"
 ```bash
 systemctl --user start dws-sessions-init.service
 systemctl --user start dws-task-monitor.service
+systemctl --user start dws-phone-server.service 2>/dev/null || true
 DWS_MONITOR_LOG=/var/log/dws/monitor.log \
   ~/projects/dev-workspace/bin/dws-sessions.sh list
+~/projects/dev-workspace/scripts/dws-launcher.sh status
 ```
 
 ## Backup
@@ -158,10 +164,11 @@ find ~/backups/dev-workspace -maxdepth 1 -type f -name 'dws-backup-*.tar.gz' | s
 ### Extract the latest backup into a restore directory
 
 ```bash
-mkdir -p ~/restore
-~/projects/dev-workspace/bin/dws-backup.sh restore latest --target ~/restore
-RESTORE_NOTE=$(find ~/restore -maxdepth 2 -name RESTORE.txt -print | sort | tail -1)
-RESTORE_ROOT=$(dirname "$RESTORE_NOTE")
+RESTORE_TARGET="$HOME/restore/$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$RESTORE_TARGET"
+~/projects/dev-workspace/bin/dws-backup.sh restore latest --target "$RESTORE_TARGET"
+RESTORE_ROOT=$(find "$RESTORE_TARGET" -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
+RESTORE_NOTE="$RESTORE_ROOT/RESTORE.txt"
 printf '%s\n' "$RESTORE_NOTE"
 printf '%s\n' "$RESTORE_ROOT"
 sed -n '1,160p' "$RESTORE_NOTE"
@@ -170,8 +177,6 @@ sed -n '1,160p' "$RESTORE_NOTE"
 ### Restore the backed-up home data after extraction
 
 ```bash
-RESTORE_NOTE=$(find ~/restore -maxdepth 2 -name RESTORE.txt -print | sort | tail -1)
-RESTORE_ROOT=$(dirname "$RESTORE_NOTE")
 mkdir -p ~/.config/wrkflo && cp -a "$RESTORE_ROOT/home/.config/wrkflo/." ~/.config/wrkflo/
 mkdir -p ~/bin && cp -a "$RESTORE_ROOT/home/bin/." ~/bin/
 mkdir -p ~/.ssh && chmod 700 ~/.ssh && cp -a "$RESTORE_ROOT/home/.ssh/." ~/.ssh/
@@ -205,7 +210,11 @@ DWS_MONITOR_LOG=/var/log/dws/monitor.log \
 ```bash
 cd ~/projects/dev-workspace
 git status --short
-git pull --ff-only
+if [ -z "$(git status --porcelain)" ] && git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
+  git pull --ff-only
+else
+  echo "skip git pull (repo dirty or no upstream); use the dirty-tree flow below"
+fi
 ~/projects/dev-workspace/scripts/dws-update.sh --dry-run
 ~/projects/dev-workspace/scripts/dws-update.sh --force
 ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh check || \
@@ -289,9 +298,9 @@ systemctl is-active ssh ssh.socket sshd sshd.socket 2>/dev/null || true
 ss -tlnp | grep -E '[:.]22[[:space:]]'
 sudo sh -c 'for f in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*; do [ -e "$f" ] || continue; echo "--- $f ---"; sed -n "1,160p" "$f"; done'
 journalctl -u ssh --since '24 hours ago' --no-pager | tail -n 40
-sudo grep -E 'PasswordAuthentication|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax' \
+sudo grep -E 'PasswordAuthentication|PubkeyAuthentication|KbdInteractiveAuthentication|ChallengeResponseAuthentication|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax' \
   /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
-sudo sshd -T | rg '^(passwordauthentication|permitrootlogin|x11forwarding|maxauthtries|clientaliveinterval|clientalivecountmax) '
+sudo sshd -T | rg '^(passwordauthentication|pubkeyauthentication|kbdinteractiveauthentication|challengeresponseauthentication|permitrootlogin|x11forwarding|maxauthtries|clientaliveinterval|clientalivecountmax) '
 sudo sshd -t
 sudo systemctl reload ssh || sudo systemctl restart ssh
 ```
@@ -315,9 +324,9 @@ sudo install -d -m 0755 /etc/ssh/sshd_config.d
 sudo install -m 0644 \
   ~/projects/dev-workspace/config/ssh/zz-dws-hardening.conf \
   /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
-sudo grep -E 'PasswordAuthentication|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax' \
+sudo grep -E 'PasswordAuthentication|PubkeyAuthentication|KbdInteractiveAuthentication|ChallengeResponseAuthentication|PermitRootLogin|X11Forwarding|MaxAuthTries|ClientAliveInterval|ClientAliveCountMax' \
   /etc/ssh/sshd_config.d/01-wrkflo-hardening.conf
-sudo sshd -T | rg '^(passwordauthentication|permitrootlogin|x11forwarding|maxauthtries|clientaliveinterval|clientalivecountmax) '
+sudo sshd -T | rg '^(passwordauthentication|pubkeyauthentication|kbdinteractiveauthentication|challengeresponseauthentication|permitrootlogin|x11forwarding|maxauthtries|clientaliveinterval|clientalivecountmax) '
 sudo sshd -t
 sudo systemctl reload ssh || sudo systemctl restart ssh
 ```
@@ -379,7 +388,8 @@ ssh -i "$DWS_TERMIUS_KEY" -o BatchMode=yes -o ConnectTimeout=5 moses@dev-workspa
 DWS_MONITOR_LOG=/var/log/dws/monitor.log \
   ~/projects/dev-workspace/bin/dws-sessions.sh list
 ~/projects/dev-workspace/bin/dws-sessions.sh reconnect
-SESSION=$(tmux list-sessions -F '#{session_name}' | sed -n '1p')
+SESSION=$(DWS_MONITOR_LOG=/var/log/dws/monitor.log \
+  ~/projects/dev-workspace/bin/dws-sessions.sh list | awk 'NR == 2 { print $1 }')
 DWS_MONITOR_LOG=/var/log/dws/monitor.log \
   ~/projects/dev-workspace/bin/dws-sessions.sh show "$SESSION"
 DWS_MONITOR_LOG=/var/log/dws/monitor.log \

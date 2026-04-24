@@ -201,13 +201,15 @@ PY
 }
 
 read_ssh_banner_tcp() {
-  timeout "$SSH_TIMEOUT_SECONDS" bash -c '
-    exec 3<>"/dev/tcp/$1/$2" || exit 1
-    IFS= read -r line <&3 || exit 1
-    printf "%s\n" "$line"
-    exec 3<&-
-    exec 3>&-
-  ' _ "$SSH_HOST" "$SSH_PORT"
+  local tcp_script
+
+  tcp_script=$'exec 3<>"/dev/tcp/$1/$2" || exit 1\n'
+  tcp_script+=$'IFS= read -r line <&3 || exit 1\n'
+  tcp_script+=$'printf "%s\\n" "$line"\n'
+  tcp_script+=$'exec 3<&-\n'
+  tcp_script+=$'exec 3>&-\n'
+
+  timeout "$SSH_TIMEOUT_SECONDS" bash -c "$tcp_script" _ "$SSH_HOST" "$SSH_PORT"
 }
 
 read_ssh_banner() {
