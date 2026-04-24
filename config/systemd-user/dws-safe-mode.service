@@ -1,0 +1,20 @@
+[Unit]
+Description=Dev Workspace Safe Mode Profile
+After=network-online.target
+Wants=network-online.target
+Before=dws-sessions-init.service dws-task-monitor.service
+Conflicts=dws-sessions-init.service dws-task-monitor.service
+ConditionPathExists=%h/projects/dev-workspace/bin/dws-safe-mode.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash %h/projects/dev-workspace/bin/dws-safe-mode.sh --service-start
+ExecStop=/usr/bin/bash %h/projects/dev-workspace/bin/dws-safe-mode.sh --service-stop
+ExecStopPost=/usr/bin/bash %h/projects/dev-workspace/bin/dws-safe-mode.sh --service-post-stop
+RemainAfterExit=yes
+Environment=HOME=%h
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:%h/.local/bin
+WorkingDirectory=%h/projects/dev-workspace
+
+[Install]
+WantedBy=default.target

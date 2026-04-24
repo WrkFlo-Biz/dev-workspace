@@ -24,6 +24,18 @@ skip() {
   exit 0
 }
 
+isolated_tmux_socket_available() {
+  local probe_session="dws-probe-$$"
+
+  if ! tmux -L "$SOCKET" new-session -d -s "$probe_session" 'sleep 1' >/dev/null 2>&1; then
+    return 1
+  fi
+
+  tmux -L "$SOCKET" kill-session -t "$probe_session" >/dev/null 2>&1 || true
+  tmux -L "$SOCKET" kill-server >/dev/null 2>&1 || true
+  return 0
+}
+
 assert_contains() {
   local haystack="${1:-}" needle="${2:-}"
   printf '%s\n' "$haystack" | grep -F -- "$needle" >/dev/null || fail "missing output: $needle"
@@ -38,6 +50,7 @@ trap cleanup EXIT
 
 command -v tmux >/dev/null 2>&1 || skip "tmux unavailable"
 [ -x "$SESSION_TOOL" ] || fail "missing session tool: $SESSION_TOOL"
+isolated_tmux_socket_available || skip "isolated tmux socket unavailable"
 
 export DWS_TMUX_SOCKET="$SOCKET"
 export DWS_SESSION_META_DIR="$META_DIR"

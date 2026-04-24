@@ -2,8 +2,8 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
 
 permissions:
   contents: read
@@ -13,14 +13,22 @@ defaults:
     shell: bash
 
 jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Lint scripts
+        run: shellcheck scripts/*.sh bin/*.sh
+
   tests:
     name: Shell Tests
     runs-on: ubuntu-latest
-
+    needs: shellcheck
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Run test files
         run: |
           set -euo pipefail
@@ -51,18 +59,17 @@ jobs:
           summary_file="${GITHUB_STEP_SUMMARY:-}"
           expected_tests=21
 
-          printf 'Configured %s test files\n' "${#tests[@]}"
-
+          printf "Configured %s test files\n" "${#tests[@]}"
           if [ "${#tests[@]}" -ne "${expected_tests}" ]; then
-            printf 'Expected %s configured test files, found %s\n' "${expected_tests}" "${#tests[@]}" >&2
+            printf "Expected %s configured test files, found %s\n" "${expected_tests}" "${#tests[@]}" >&2
             exit 1
           fi
 
           if [ -n "${summary_file}" ]; then
             {
-              printf '## Shell Test Results\n\n'
-              printf '| Test File | Result |\n'
-              printf '| --- | --- |\n'
+              printf "## Shell Test Results\n\n"
+              printf "| Test File | Result |\n"
+              printf "| --- | --- |\n"
             } >>"${summary_file}"
           fi
 
@@ -70,50 +77,33 @@ jobs:
           failed_tests=()
 
           for test_file in "${tests[@]}"; do
-            printf '\n==> %s\n' "${test_file}"
-
+            printf "\n==> %s\n" "${test_file}"
             if [ ! -f "${test_file}" ]; then
-              printf 'FAIL %s (missing file)\n' "${test_file}" >&2
+              printf "FAIL %s (missing file)\n" "${test_file}" >&2
               failed_tests+=("${test_file} (missing file)")
               failures=$((failures + 1))
-
-              if [ -n "${summary_file}" ]; then
-                printf '| `%s` | FAIL (missing file) |\n' "${test_file}" >>"${summary_file}"
-              fi
-
+              [ -n "${summary_file}" ] && printf "| \`%s\` | FAIL (missing file) |\n" "${test_file}" >>"${summary_file}"
               continue
             fi
 
-            if bash "${test_file}"; then
-              printf 'PASS %s\n' "${test_file}"
-              if [ -n "${summary_file}" ]; then
-                printf '| `%s` | PASS |\n' "${test_file}" >>"${summary_file}"
-              fi
+            if timeout 60 bash "${test_file}"; then
+              printf "PASS %s\n" "${test_file}"
+              [ -n "${summary_file}" ] && printf "| \`%s\` | PASS |\n" "${test_file}" >>"${summary_file}"
             else
               status=$?
-              printf 'FAIL %s (exit %s)\n' "${test_file}" "${status}" >&2
+              printf "FAIL %s (exit %s)\n" "${test_file}" "${status}" >&2
               failed_tests+=("${test_file} (exit ${status})")
               failures=$((failures + 1))
-
-              if [ -n "${summary_file}" ]; then
-                printf '| `%s` | FAIL (exit %s) |\n' "${test_file}" "${status}" >>"${summary_file}"
-              fi
+              [ -n "${summary_file}" ] && printf "| \`%s\` | FAIL (exit %s) |\n" "${test_file}" "${status}" >>"${summary_file}"
             fi
           done
 
           if [ "${failures}" -ne 0 ]; then
-            printf '\nFailed test files (%s):\n' "${failures}" >&2
-            printf ' - %s\n' "${failed_tests[@]}" >&2
-
-            if [ -n "${summary_file}" ]; then
-              printf '\nFailed test files (%s):\n' "${failures}" >>"${summary_file}"
-              printf '%s\n' "${failed_tests[@]}" | sed 's/^/- /' >>"${summary_file}"
-            fi
-
+            printf "\nFailed test files (%s):\n" "${failures}" >&2
+            printf " - %s\n" "${failed_tests[@]}" >&2
+            [ -n "${summary_file}" ] && { printf "\nFailed test files (%s):\n" "${failures}"; printf "%s\n" "${failed_tests[@]}" | sed "s/^/- /"; } >>"${summary_file}"
             exit 1
           fi
 
-          printf '\nAll %s test files passed\n' "${#tests[@]}"
-          if [ -n "${summary_file}" ]; then
-            printf '\nAll %s test files passed\n' "${#tests[@]}" >>"${summary_file}"
-          fi
+          printf "\nAll %s test files passed\n" "${#tests[@]}"
+          [ -n "${summary_file}" ] && printf "\nAll %s test files passed\n" "${#tests[@]}" >>"${summary_file}"

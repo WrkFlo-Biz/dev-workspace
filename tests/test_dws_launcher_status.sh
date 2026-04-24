@@ -87,6 +87,21 @@ EOF
   chmod +x "${FAKE_BIN}/tmux"
 }
 
+isolated_tmux_socket_available() {
+  local probe_session="dws-probe-$$"
+
+  [ -n "${REAL_TMUX_BIN:-}" ] || return 1
+  [ -n "${REAL_TMUX_SOCKET:-}" ] || return 1
+
+  if ! "${REAL_TMUX_BIN}" -S "${REAL_TMUX_SOCKET}" new-session -d -s "${probe_session}" 'sleep 1' >/dev/null 2>&1; then
+    return 1
+  fi
+
+  "${REAL_TMUX_BIN}" -S "${REAL_TMUX_SOCKET}" kill-session -t "${probe_session}" >/dev/null 2>&1 || true
+  "${REAL_TMUX_BIN}" -S "${REAL_TMUX_SOCKET}" kill-server >/dev/null 2>&1 || true
+  return 0
+}
+
 run_real_tmux_status_integration_test() {
   local integration_output integration_plain_output session_block
 
@@ -96,6 +111,11 @@ run_real_tmux_status_integration_test() {
   fi
 
   install_real_tmux_wrapper
+  if ! isolated_tmux_socket_available; then
+    skip "isolated tmux socket unavailable; skipping launcher integration test"
+    return 0
+  fi
+
   "${REAL_TMUX_BIN}" -S "${REAL_TMUX_SOCKET}" new-session -d -s test-session-1 'sleep 300'
   "${REAL_TMUX_BIN}" -S "${REAL_TMUX_SOCKET}" new-session -d -s test-session-2 'sleep 300'
 

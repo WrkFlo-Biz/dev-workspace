@@ -12,18 +12,10 @@ MONITOR_LOG_PATH="${DWS_REBOOT_DRILL_MONITOR_LOG_PATH:-/var/log/dws/monitor.log}
 PHONE_HEALTH_URL="${DWS_REBOOT_DRILL_PHONE_HEALTH_URL:-http://127.0.0.1:8081/health}"
 ORCHESTRATOR_HEALTH_URL="${DWS_REBOOT_DRILL_ORCHESTRATOR_HEALTH_URL:-http://127.0.0.1:8100/v1/workspace/health}"
 
-EXPECTED_TMUX_SESSIONS=(
-  dws-a
-  dws-b
-  worker-c
-  worker-d
-  worker-e
-  worker-f
-  worker-g
-  worker-h
-  worker-i
-  orchestrator
-)
+# On-demand model: there is no fixed repo-owned tmux boot pool to enforce here.
+# The drill still captures active sessions before and after reboot for operator
+# visibility and pre/post comparison.
+EXPECTED_TMUX_SESSIONS=()
 
 TARGET_USER_UNITS=(
   dws-sessions-init.service
@@ -356,6 +348,8 @@ tmux_missing_expected_csv() {
   local session
   local missing=()
 
+  [ "${#EXPECTED_TMUX_SESSIONS[@]}" -gt 0 ] || return 0
+
   for session in "${EXPECTED_TMUX_SESSIONS[@]}"; do
     if ! grep -Fx -- "$session" "$path" >/dev/null 2>&1; then
       missing+=("$session")
@@ -370,6 +364,8 @@ tmux_missing_expected_csv() {
 tmux_extra_csv() {
   local path="$1"
   local session
+
+  [ "${#EXPECTED_TMUX_SESSIONS[@]}" -gt 0 ] || return 0
 
   awk 'NF { print }' "$path" 2>/dev/null | while IFS= read -r session; do
     case " ${EXPECTED_TMUX_SESSIONS[*]} " in
@@ -1151,7 +1147,9 @@ verify_mode() {
   verify_optional_service "dws_phone_server_ready" "dws-phone-server.service" "$PHONE_HEALTH_URL" "$pre_user_table" "$post_user_table"
   verify_optional_service "wrkflo_orchestrator_api_ready" "wrkflo-orchestrator-api.service" "$ORCHESTRATOR_HEALTH_URL" "$pre_user_table" "$post_user_table"
 
-  if [ -z "${POST[TMUX_MISSING_MANAGED_CSV]:-}" ]; then
+  if [ "${#EXPECTED_TMUX_SESSIONS[@]}" -eq 0 ]; then
+    pass "tmux_sessions_captured" "${POST[TMUX_COUNT]:-0} sessions present (on-demand model)"
+  elif [ -z "${POST[TMUX_MISSING_MANAGED_CSV]:-}" ]; then
     pass "tmux_managed_sessions_ready" "${POST[TMUX_COUNT]:-0} sessions present"
   else
     fail "tmux_managed_sessions_ready" "missing ${POST[TMUX_MISSING_MANAGED_CSV]}"
