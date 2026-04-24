@@ -10,7 +10,10 @@
   repo-owned entrypoints, not wrappers.
 - `~/bin/` on the VM is the live runtime install path for copied scripts,
   direct symlinks into `scripts/`, and host-local copies of some repo-tracked
-  scripts such as `task-monitor.sh`.
+  scripts.
+- `scripts/task-monitor.sh` remains in the repo as a host-local runtime source
+  snapshot and compatibility reference. It is not wired to a current
+  repo-managed user unit.
 
 ## Wrapper Pattern
 
@@ -66,7 +69,8 @@ High-traffic canonical scripts:
 - `dws-service-map.sh`
 - `dws-summary.sh`
 - `dws-worker-exec.sh`
-- `task-monitor.sh`
+- `task-monitor.sh` (host-local legacy/runtime snapshot, not a repo-managed
+  service entrypoint)
 - `vm-setup.sh`
 
 High-traffic repo `bin/` wrappers:

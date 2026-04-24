@@ -15,25 +15,29 @@ live-path guidance, prefer `docs/logging.md` and `docs/runtime-boot-truth.md`.
 
 ## What Passed
 
-- `bash tests/test_*.sh` passes on the current tree.
+- The targeted verification files for the on-demand-model cleanup pass:
+  `bash tests/test_bin_wrappers.sh` and `bash tests/test_dws_boot_verify.sh`.
 - All current `bin/*.sh` entrypoints are syntactically valid under `bash -n`.
 - Wrapper audit: the repo `bin/` entrypoints that delegate into `scripts/` all resolve to existing targets.
 - Repo-relative doc references to tracked files are mostly clean; the defects below came from doc-to-code drift, not from a broad set of broken local links.
 
 ## Findings
 
-### Resolved Since This Review: `dws-boot-verify.sh` now uses the repo-managed task-monitor unit
+### High: docs still describe a retired repo-managed `dws-task-monitor.service`
 
 Evidence:
 
-- The current `bin/dws-boot-verify.sh:8` defaults `TASK_MONITOR_UNIT` to `dws-task-monitor.service`.
-- The current `bin/dws-boot-verify.sh:44-53` describes the check as “the configured task-monitor service”.
-- `config/systemd-user/dws-task-monitor.service:1-17` defines the repo-managed unit as `dws-task-monitor.service`.
-- The operator docs also use `dws-task-monitor.service`, for example `docs/runbook.md:14`, `docs/runbook.md:39-47`, and `docs/reboot-recovery-test.md:17`, `docs/reboot-recovery-test.md:135-142`.
+- `bin/dws-systemd-user-setup.sh` now installs only `dws-sessions-init.service`
+  and `dws-safe-mode.service`, and explicitly retires `dws-task-monitor.service`.
+- `config/systemd-user/` now contains only the repo-owned `dws-sessions-init`
+  and `dws-safe-mode` units.
+- Older operator docs still referred to `dws-task-monitor.service` as if the
+  repo installed and enabled it.
 
 Impact:
 
-- This specific mismatch no longer applies on the current tree; keep the note only as historical context when comparing older snapshots or hosts with drifted `~/bin` copies.
+- Operators can follow the wrong setup or reboot-recovery path and mistake
+  host-local runtime drift for a repo regression.
 
 ### Medium: legacy queue-path defaults still exist in some repo tools
 
@@ -51,9 +55,12 @@ Impact:
 
 Evidence:
 
-- Docs treat `/var/log/dws/monitor.log` as the live monitor log in `docs/architecture.md:233-260`, `docs/runbook.md:16`, `docs/runbook.md:41-47`, `docs/runbook.md:91-107`, and `docs/troubleshooting.md:13-18`, `docs/troubleshooting.md:202-217`.
+- Docs treat `/var/log/dws/monitor.log` as the live monitor log in multiple
+  runbook and troubleshooting paths.
 - Repo readers still default to `/tmp/monitor-log.txt` in `scripts/dws-doctor.sh:28-30` and `scripts/dws-sessions.sh:6-8`.
-- The actual monitor writer is still external to this repo via `%h/bin/task-monitor.sh` in `config/systemd-user/dws-task-monitor.service:5-14`, so the repo itself cannot prove `/var/log/dws/monitor.log` without a host-local script check.
+- Any actual monitor writer is now external to the repo-owned unit set via a
+  host-local `~/bin/task-monitor.sh`, so the repo itself cannot prove
+  `/var/log/dws/monitor.log` without a host-local script check.
 
 Impact:
 

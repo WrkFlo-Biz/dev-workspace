@@ -22,6 +22,17 @@ is_standalone_bin_program() {
   esac
 }
 
+expected_wrapper_comment_line() {
+  case "${1:-}" in
+    dws-sessions-init.sh)
+      printf '# Wrapper — on-demand session bootstrap lives in scripts/%s\n' "$1"
+      ;;
+    *)
+      printf '# Wrapper — canonical source is scripts/%s\n' "$1"
+      ;;
+  esac
+}
+
 test_bin_wrappers_exec_matching_scripts() {
   local wrapper_rel wrapper name expected exec_lines
 
@@ -59,7 +70,7 @@ test_bin_wrappers_use_consistent_base_dir_contract() {
     fi
 
     assert_exact_line "$wrapper" 'set -euo pipefail'
-    expected_comment_line=$(printf '# Wrapper — canonical source is scripts/%s' "$name")
+    expected_comment_line=$(expected_wrapper_comment_line "$name")
     assert_exact_line "$wrapper" "$expected_comment_line"
     assert_exact_line "$wrapper" 'BASE_DIR="${BASH_SOURCE[0]%/*}"'
     assert_exact_line "$wrapper" '[ "$BASE_DIR" != "${BASH_SOURCE[0]}" ] || BASE_DIR='\''.'\'''

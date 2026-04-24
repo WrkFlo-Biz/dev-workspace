@@ -12,9 +12,9 @@ The drill validates that after a clean reboot (`sudo reboot`), the following com
 |---|---|---|
 | Tailscale mesh | `tailscaled.service` (system) | active, VM IP `100.117.16.63`, Mac + iPhone visible |
 | SSH | `ssh.socket` (socket-activated) | `ssh.socket` active, `ssh.service` starts on first connection |
-| systemd user services | linger + `default.target.wants/` | 2 repo-managed user services active, plus optional host-local services if installed |
+| systemd user services | linger + `default.target.wants/` | `dws-sessions-init.service` enabled and active; `dws-safe-mode.service` installed and disabled; optional host-local services can also exist |
 | dws-sessions-init.service | `~/bin/dws-sessions-init.sh` (oneshot) | on-demand session model boot prep completes successfully |
-| dws-task-monitor.service | `~/bin/task-monitor.sh` (simple, Restart=on-failure) | active, writing `/var/log/dws/monitor.log` |
+| optional host-local dws-task-monitor.service | `~/bin/task-monitor.sh` when separately installed | if present: active, writing `/var/log/dws/monitor.log` |
 | dws-phone-server.service | optional host-local `~/bin/dws-phone-server.py` | if installed: active, Restart=always |
 | wrkflo-orchestrator-api.service | optional sibling-repo FastAPI on `127.0.0.1:8100` | if installed: active, `/v1/workspace/health` returns 200 |
 | tmux sessions | operator/runtime state | `tmux list-sessions` works; active sessions are visible for comparison before/after reboot |
@@ -117,24 +117,25 @@ Fail: `ssh.socket` inactive → `sudo systemctl start ssh.socket`. Verify harden
 ```bash
 ssh moses@dev-workspace-vm '
   loginctl show-user moses -p Linger &&
-  systemctl --user is-enabled dws-sessions-init.service dws-task-monitor.service &&
-  systemctl --user is-active dws-sessions-init.service dws-task-monitor.service &&
+  systemctl --user is-enabled dws-sessions-init.service dws-safe-mode.service &&
+  systemctl --user is-active dws-sessions-init.service &&
   systemctl --user show dws-sessions-init.service -p ExecStart -p FragmentPath -p UnitFileState &&
-  systemctl --user show dws-task-monitor.service -p ExecStart -p FragmentPath -p UnitFileState &&
-  ls -l ~/.config/systemd/user/default.target.wants/dws-sessions-init.service \
-        ~/.config/systemd/user/default.target.wants/dws-task-monitor.service &&
+  systemctl --user show dws-safe-mode.service -p ExecStart -p ExecStop -p FragmentPath -p UnitFileState &&
+  ls -l ~/.config/systemd/user/default.target.wants/dws-sessions-init.service &&
+  ls -l ~/.config/systemd/user/dws-safe-mode.service &&
   systemctl --user list-units --state=running --type=service
 '
 ```
 
-Pass: `Linger=yes`; both `dws-sessions-init.service` and
-`dws-task-monitor.service` are `enabled`; both are active after login manager
-startup; `ExecStart` resolves to `/usr/bin/bash /home/moses/bin/dws-sessions-init.sh`
-and `/usr/bin/bash /home/moses/bin/task-monitor.sh`; and both
-`~/.config/systemd/user/default.target.wants/` symlinks are present. If this
-host also installs `dws-phone-server.service` and/or
+Pass: `Linger=yes`; `dws-sessions-init.service` is `enabled` and active after
+login manager startup; `dws-safe-mode.service` is installed and `disabled`;
+`ExecStart` resolves to `/usr/bin/bash /home/moses/bin/dws-sessions-init.sh`
+for the bootstrap unit and to the repo `dws-safe-mode.sh` wrapper for the safe
+mode profile; and the `dws-sessions-init.service` symlink under
+`~/.config/systemd/user/default.target.wants/` is present. If this host also
+installs `dws-task-monitor.service`, `dws-phone-server.service`, and/or
 `wrkflo-orchestrator-api.service`, those units should appear in the running
-user-service list too.
+user-service list separately.
 Fail: `Linger=no` → user services did not auto-start on boot; run `sudo loginctl enable-linger moses` and reboot again.
 
 Current live verification snapshot on `2026-04-23 23:52:44 UTC`:
@@ -143,22 +144,21 @@ Current live verification snapshot on `2026-04-23 23:52:44 UTC`:
 |---|---|
 | `loginctl show-user moses -p Linger` | `Linger=yes` |
 | `systemctl --user is-enabled dws-sessions-init.service` | `enabled` |
-| `systemctl --user is-enabled dws-task-monitor.service` | `enabled` |
+| `systemctl --user is-enabled dws-safe-mode.service` | `disabled` |
 | `systemctl --user is-active dws-sessions-init.service` | `active` |
-| `systemctl --user is-active dws-task-monitor.service` | `active` |
 | `dws-sessions-init.service` `ExecStart` | `/usr/bin/bash /home/moses/bin/dws-sessions-init.sh` |
-| `dws-task-monitor.service` `ExecStart` | `/usr/bin/bash /home/moses/bin/task-monitor.sh` |
-| `default.target.wants/` symlinks | present for both services |
+| `dws-safe-mode.service` `ExecStart` | `/usr/bin/bash /home/moses/projects/dev-workspace/bin/dws-safe-mode.sh --service-start` |
+| `default.target.wants/` symlinks | present for `dws-sessions-init.service` only |
 
 Note: the installed live unit files under `~/.config/systemd/user/` currently
-drift from the repo templates under `config/systemd-user/`. The live copies
-hardcode `/home/moses`, and the live `dws-task-monitor.service` additionally
-appends stdout/stderr to `/var/log/dws/monitor.log`. The observed `ExecStart`
-values above are the current source of truth for reboot verification.
+can drift from the repo templates under `config/systemd-user/`. The observed
+`ExecStart` values above are the current source of truth for reboot
+verification. Treat any `dws-task-monitor.service` found on the host as
+optional host-local runtime, not a repo-owned service contract.
 
 ### 3.4 dws-sessions-init.service
 
-Runs once at boot before `dws-task-monitor.service` and should finish cleanly for the on-demand session model.
+Runs once at boot and should finish cleanly for the on-demand session model.
 
 ```bash
 ssh moses@dev-workspace-vm 'systemctl --user status dws-sessions-init.service --no-pager | head -15; journalctl --user -u dws-sessions-init.service -n 30 --no-pager'
@@ -167,7 +167,9 @@ ssh moses@dev-workspace-vm 'systemctl --user status dws-sessions-init.service --
 Pass: `Active: active (exited)`, `Main PID: ... (code=exited, status=0/SUCCESS)`; log contains the on-demand completion message.
 Fail: non-zero exit → `journalctl --user -u dws-sessions-init.service -b` for root cause; rerun manually with `systemctl --user start dws-sessions-init.service`.
 
-### 3.5 dws-task-monitor.service
+### 3.5 Optional host-local dws-task-monitor.service
+
+Run this only on hosts that still install the legacy/host-local monitor service.
 
 ```bash
 ssh moses@dev-workspace-vm 'systemctl --user is-active dws-task-monitor.service; tail -n 20 /var/log/dws/monitor.log'
@@ -256,8 +258,8 @@ Fail: any script exits non-zero → section-specific recovery above, then rerun 
 The drill is green when **all** of the following hold:
 
 - `~/projects/dev-workspace/bin/dws-boot-verify.sh` reports `overall: PASS` and `0 failed`.
-- Sections 3.1 – 3.5 and 3.8 – 3.11 each show their pass criterion.
-- Sections 3.6 and 3.7 either pass or are explicitly skipped because the
+- Sections 3.1 – 3.4 and 3.8 – 3.11 each show their pass criterion.
+- Sections 3.5 – 3.7 either pass or are explicitly skipped because the
   optional service is not installed on that host.
 - `tmux list-sessions` responds and any required operator sessions are present.
 - `~/projects/dev-workspace/scripts/dws-health.sh --json` returns healthy service state after the reboot.

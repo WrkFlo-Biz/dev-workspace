@@ -3,30 +3,30 @@
 This document records the logging layout as audited on 2026-04-23.
 
 `/var/log/dws` is the intended central log directory, but the VM is only
-partially migrated:
+partially migrated and the repo-owned/runtime-owned boundary matters:
 
-- the live task monitor writes `/var/log/dws/monitor.log`
 - the live task queue is
   `~/projects/dev-workspace/.state/task-queue.json`
+- optional host-local monitors can still write `/var/log/dws/monitor.log`
 - several health, cron, planner, and legacy artifacts still live under `/tmp`
 - some service output only exists in `journald`
 
-One important constraint: the live task monitor entrypoint is
-`~/bin/task-monitor.sh` on the VM. This repo now tracks a source snapshot at
-`scripts/task-monitor.sh`, but the installed `~/bin` copy is still the live
-authority. The repo wires that host-local entrypoint into systemd, and the live
-host confirms that it writes `/var/log/dws/monitor.log` and updates
-`~/projects/dev-workspace/.state/task-queue.json`.
+One important constraint: this repo no longer installs a repo-managed
+`dws-task-monitor.service`. If a host still runs `~/bin/task-monitor.sh`, treat
+it as host-local runtime drift. The repo keeps `scripts/task-monitor.sh` as a
+source snapshot and compatibility reference, not as a current repo-owned unit
+entrypoint.
 
 ## `/var/log/dws` Layout
 
-The live directory currently contains only `monitor.log`, but the tracked repo
-now expects more of the centralized logging story to land here.
+The live directory can still contain `monitor.log`, but that file now belongs
+to optional host-local monitor setups rather than the checked-in repo-managed
+unit set.
 
 | Path | Producer / owner | Live on this VM | Notes |
 | --- | --- | --- | --- |
 | `/var/log/dws/` | `bin/dws-systemd-user-setup.sh install` | yes | Created with owner `$USER:$(id -gn)` and mode `0775`. `bin/dws-boot-verify.sh` treats it as required boot-time state. |
-| `/var/log/dws/monitor.log` | `~/bin/task-monitor.sh` via `dws-task-monitor.service` | yes | Authoritative cycle log for the live task monitor. |
+| `/var/log/dws/monitor.log` | optional host-local `~/bin/task-monitor.sh` | host-dependent | Only present when a host-local monitor is still installed. |
 | `/var/log/dws/health-check.log` | `scripts/dws-cron-setup.sh` managed cron block | not currently | The tracked installer now defaults this cron capture log into `/var/log/dws`, but the currently installed crontab on this VM still writes to `/tmp/dws-health-check.cron.log`. |
 | `/var/log/dws/log-rotate.log` | `scripts/dws-cron-setup.sh` managed cron block | not currently | Same drift as above. The tracked installer would prefer `scripts/dws-rotate-logs.sh`, but the live crontab still logs a fallback `dws-cleanup.sh` job to `/tmp/dws-log-rotate.cron.log`. |
 | `/var/log/dws/session-cleanup.log` | `scripts/dws-cron-setup.sh` managed cron block | not currently | Same drift as above; the live crontab still writes to `/tmp/dws-session-cleanup.cron.log`. |
@@ -38,7 +38,7 @@ now expects more of the centralized logging story to land here.
 
 | Path | Producer | Main readers / dependents | Notes |
 | --- | --- | --- | --- |
-| `/var/log/dws/monitor.log` | live `~/bin/task-monitor.sh` | `docs/runbook.md`, `docs/troubleshooting.md`, `docs/reboot-recovery-test.md`, operators tailing the monitor directly | This is the only confirmed live file log under `/var/log/dws` on 2026-04-23. |
+| `/var/log/dws/monitor.log` | optional host-local `~/bin/task-monitor.sh` | `docs/runbook.md`, `docs/troubleshooting.md`, `docs/reboot-recovery-test.md`, operators tailing the monitor directly | This is runtime-specific and should not be treated as a repo-owned unit guarantee. |
 
 ### `/tmp` file logs on the VM
 
@@ -61,7 +61,7 @@ same services.
 
 | Path | Producer | Main readers / dependents | Notes |
 | --- | --- | --- | --- |
-| `~/projects/dev-workspace/.state/task-queue.json` | live `~/bin/task-monitor.sh` | runbooks, troubleshooting, direct queue inspection | This is the verified live task queue path on the VM. |
+| `~/projects/dev-workspace/.state/task-queue.json` | repo-owned orchestration state, optionally read or updated by host-local runtime | runbooks, troubleshooting, direct queue inspection | This is the verified repo-owned live task queue path on the VM. |
 | `/tmp/dws-cleanup.last-success` | `scripts/dws-cleanup.sh` | `scripts/dws-doctor.sh` | Written after successful cleanup runs. |
 | `/tmp/monitor-status.json` | no live producer confirmed on this VM | `scripts/dws-doctor.sh` | Legacy monitor-status path still referenced by repo tooling. |
 | `/tmp/task-queue.json` | legacy default still assumed by some repo scripts | `scripts/dws-launcher.sh`, `scripts/dws-status.sh`, `scripts/dws-motd.sh` | Not the verified live queue path. |
@@ -85,14 +85,15 @@ These are relevant to the overall workspace, but they are not part of the VM's
 
 ## Journald-Backed Service Output
 
-The tracked user units in `config/systemd-user/` do not set
-`StandardOutput=` or `StandardError=`. The host-local phone server and
-orchestrator API units also leave stdout/stderr in the user journal.
+The tracked repo-owned user units in `config/systemd-user/` do not set
+`StandardOutput=` or `StandardError=`. Optional host-local services also leave
+stdout/stderr in the user journal unless they manage their own file logs.
 
 | Unit | Primary log surface | Notes |
 | --- | --- | --- |
 | `dws-sessions-init.service` | `journalctl --user -u dws-sessions-init.service` | No file log is configured in the tracked unit. |
-| `dws-task-monitor.service` | `journalctl --user -u dws-task-monitor.service` plus `/var/log/dws/monitor.log` | The unit launches `~/bin/task-monitor.sh`, which also writes its own file log. |
+| `dws-safe-mode.service` | `journalctl --user -u dws-safe-mode.service` | No file log is configured in the tracked unit. |
+| optional host-local `dws-task-monitor.service` | `journalctl --user -u dws-task-monitor.service` plus `/var/log/dws/monitor.log` | Present only on hosts that still install the legacy monitor path. |
 | `dws-phone-server.service` | `journalctl --user -u dws-phone-server.service` | Host-local phone-control unit. `~/bin/dws-phone-server.py` prints startup logs to stdout and request logs to stderr via `log_message()`. This repo does not provision the unit. |
 | `wrkflo-orchestrator-api.service` | `journalctl --user -u wrkflo-orchestrator-api.service` | Host-local or sibling-repo unit that runs the local API on `127.0.0.1:8100`; no file log path is configured by this repo. |
 
@@ -126,14 +127,15 @@ journalctl --user -u dws-task-monitor.service -u dws-phone-server.service -u wrk
 
 ## Practical Takeaway
 
-The authoritative live surfaces on 2026-04-23 are:
+The authoritative repo-owned surfaces on 2026-04-24 are:
 
-1. `/var/log/dws/monitor.log` for the task-monitor cycle log.
-2. `~/projects/dev-workspace/.state/task-queue.json` for live queue state.
+1. `~/projects/dev-workspace/.state/task-queue.json` for live queue state.
+2. `journald` for repo-managed user services such as `dws-sessions-init.service`
+   and `dws-safe-mode.service`.
 3. `/tmp` for health-check logs, installed cron capture logs, planner artifacts,
    alert spools, and several legacy paths still referenced by repo tooling.
-4. `journald` for service stdout/stderr when the process does not manage its own
-   file log.
+4. `/var/log/dws/monitor.log` only when an optional host-local monitor is still
+   installed on that VM.
 
 Treat the current state as a partial migration toward `/var/log/dws`, not a
 fully centralized logging setup.

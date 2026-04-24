@@ -102,10 +102,11 @@ What `vm-setup.sh` does **not** finish for you:
 - it does not run `tailscale up`, so the VM is not joined to the tailnet yet
 - it does not authenticate `gh` or `az` for you
 - it does not install the repo-managed `dws-sessions-init.service` and
-  `dws-task-monitor.service`
-- it does not provide a live `~/bin/task-monitor.sh`; the service entrypoint is
-  still host-local even though this repo now tracks a source copy at
-  `scripts/task-monitor.sh`
+  `dws-safe-mode.service`
+- it does not provision a live `~/bin/task-monitor.sh`; any remaining
+  `dws-task-monitor.service` is host-local runtime outside the repo-managed
+  unit set even though this repo still tracks `scripts/task-monitor.sh` as a
+  source snapshot
 
 The script is idempotent. If it stops because `gh` is not authenticated yet,
 run `gh auth login` and rerun the same command.
@@ -310,8 +311,9 @@ assume the deployment is current.
 After bootstrap and `tailscale up`, the expected long-lived services are:
 
 - system: `ssh` or `sshd`, `tailscaled`, and `cron`
-- user: `dws-sessions-init.service` and, when you have the operator script,
-  `dws-task-monitor.service`
+- user: `dws-sessions-init.service`
+- installed-but-disabled user profile: `dws-safe-mode.service`
+- optional host-local user service: `dws-task-monitor.service`
 - additional user units from `~/projects/wrkflo-orchestrator/ops/systemd`
   if that repo ships them
 
@@ -329,7 +331,7 @@ Then install the repo-managed user services.
 The repo-managed user units are:
 
 - `dws-sessions-init.service`
-- `dws-task-monitor.service`
+- `dws-safe-mode.service`
 
 Tracked templates live in `config/systemd-user/`, and the installer is:
 
@@ -342,21 +344,21 @@ Their purpose:
 - `dws-sessions-init.service` performs lightweight boot-time prep for the
   on-demand session model and can start the orchestrator API if that sibling
   unit is installed
-- `dws-task-monitor.service` runs `~/bin/task-monitor.sh`
+- `dws-safe-mode.service` installs the safe-mode profile and stays disabled by
+  default until you intentionally enable it
 
 Prerequisites before you install them:
 
 - `~/bin/dws-sessions-init.sh` exists and is executable
-- `~/bin/task-monitor.sh` exists and is executable
+- `~/projects/dev-workspace/bin/dws-safe-mode.sh` exists and is executable
 - `codex` works
 - `~/.config/wrkflo/foundry.env` exists
 - `~/projects/wrkflo-orchestrator` exists
 
-The live `~/bin/task-monitor.sh` entrypoint is still host-local runtime code.
-This repo tracks `scripts/task-monitor.sh` as a source snapshot, but the
-installed `~/bin` copy can drift until the service is fully repo-managed. If
-you do not have a working `~/bin/task-monitor.sh` yet, skip
-`dws-task-monitor.service` until you do.
+If the host still uses `~/bin/task-monitor.sh`, treat that monitor as host-local
+runtime code. This repo tracks `scripts/task-monitor.sh` as a source snapshot,
+but `bin/dws-systemd-user-setup.sh` no longer installs or enables
+`dws-task-monitor.service`.
 
 Install and enable linger so the services survive reboot without an active
 login:
@@ -365,34 +367,34 @@ login:
 sudo loginctl enable-linger "$USER"
 ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
 systemctl --user start dws-sessions-init.service
-systemctl --user start dws-task-monitor.service
 ```
 
 Verify the user-service install:
 
 ```bash
 loginctl show-user "$USER" -p Linger
-systemctl --user is-enabled dws-sessions-init.service dws-task-monitor.service
+systemctl --user is-enabled dws-sessions-init.service dws-safe-mode.service
 systemctl --user show dws-sessions-init.service -p ExecStart -p FragmentPath -p UnitFileState
-systemctl --user show dws-task-monitor.service -p ExecStart -p FragmentPath -p UnitFileState
-ls -l ~/.config/systemd/user/default.target.wants/dws-sessions-init.service \
-      ~/.config/systemd/user/default.target.wants/dws-task-monitor.service
+systemctl --user show dws-safe-mode.service -p ExecStart -p ExecStop -p FragmentPath -p UnitFileState
+ls -l ~/.config/systemd/user/default.target.wants/dws-sessions-init.service
+ls -l ~/.config/systemd/user/dws-safe-mode.service
 systemctl --user status dws-sessions-init.service --no-pager
-systemctl --user status dws-task-monitor.service --no-pager
+systemctl --user status dws-safe-mode.service --no-pager
 tmux ls
 ```
 
 Expected `ExecStart` after specifier expansion for the `moses` account:
 
 - `/usr/bin/bash /home/moses/bin/dws-sessions-init.sh`
-- `/usr/bin/bash /home/moses/bin/task-monitor.sh`
+- `/usr/bin/bash /home/moses/projects/dev-workspace/bin/dws-safe-mode.sh --service-start`
 
 If you intentionally use a different username, the home-directory portion of
 those paths will change accordingly.
 
 Note: `vm-setup.sh` separately installs any user units shipped by the sibling
 `wrkflo-orchestrator` repo. Those units are in addition to the two repo-managed
-`dws-*` services above.
+`dws-*` services above. If a host still has `dws-task-monitor.service`, treat
+it as optional host-local runtime outside the repo-managed install path.
 
 ## 9. Cron
 
@@ -515,11 +517,11 @@ If you installed the repo-managed user services, also verify:
 ```bash
 ssh moses@dev-workspace-vm '
   loginctl show-user moses -p Linger &&
-  systemctl --user is-enabled dws-sessions-init.service dws-task-monitor.service &&
+  systemctl --user is-enabled dws-sessions-init.service dws-safe-mode.service &&
   systemctl --user show dws-sessions-init.service -p ExecStart -p FragmentPath -p UnitFileState &&
-  systemctl --user show dws-task-monitor.service -p ExecStart -p FragmentPath -p UnitFileState &&
+  systemctl --user show dws-safe-mode.service -p ExecStart -p ExecStop -p FragmentPath -p UnitFileState &&
   systemctl --user status dws-sessions-init.service --no-pager &&
-  systemctl --user status dws-task-monitor.service --no-pager
+  systemctl --user status dws-safe-mode.service --no-pager
 '
 ```
 

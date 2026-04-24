@@ -177,7 +177,8 @@ The checked-in repo is now aligned to an on-demand `tmux` model:
 
 - `dws-sessions-init.service` performs lightweight boot prep and does not spawn
   a fixed Codex session pool.
-- `dws-task-monitor.service` is a user service, not a dedicated `tmux` pane.
+- `dws-safe-mode.service` is the repo-managed pause profile and stays disabled
+  by default.
 - `orchestrator` may still exist as a live session on hosts that run the
   sibling API/runtime, but it is no longer a repo-guaranteed boot-time session.
 - Additional ad hoc sessions can exist during live operation and are expected.
@@ -195,7 +196,7 @@ not `planner`.
 Service installation is defined by:
 
 - [`config/systemd-user/dws-sessions-init.service`](../config/systemd-user/dws-sessions-init.service)
-- [`config/systemd-user/dws-task-monitor.service`](../config/systemd-user/dws-task-monitor.service)
+- [`config/systemd-user/dws-safe-mode.service`](../config/systemd-user/dws-safe-mode.service)
 - [`bin/dws-systemd-user-setup.sh`](../bin/dws-systemd-user-setup.sh)
 
 Managed units:
@@ -203,16 +204,18 @@ Managed units:
 | Unit | ExecStart | Role |
 | --- | --- | --- |
 | `dws-sessions-init.service` | `/usr/bin/bash %h/bin/dws-sessions-init.sh` | oneshot bootstrap for the on-demand session model |
-| `dws-task-monitor.service` | `/usr/bin/bash %h/bin/task-monitor.sh` | long-running monitor loop that starts after `dws-sessions-init.service` |
+| `dws-safe-mode.service` | `/usr/bin/bash %h/projects/dev-workspace/bin/dws-safe-mode.sh --service-start` | installed-but-disabled safe-mode profile that conflicts with `dws-sessions-init.service` when intentionally enabled |
 
 The installed `~/bin` copies are the live service entrypoints. The repo files
 are the source used to install or redeploy them.
 
-## Task monitor
+## Optional host-local task monitor
 
-Current live entrypoint: `~/bin/task-monitor.sh`
+Some hosts still carry a host-local monitor outside the repo-managed unit set.
 
-Current service: `dws-task-monitor.service`
+Typical live entrypoint: `~/bin/task-monitor.sh`
+
+Typical live service: `dws-task-monitor.service`
 
 Current runtime characteristics:
 
@@ -237,17 +240,25 @@ Behavior:
 - Writes the operator-visible cycle log to `/var/log/dws/monitor.log`.
 
 Some repo tooling still defaults to legacy `/tmp/monitor-*` or `/tmp/task-queue`
-artifacts. Treat the user-service state, the managed queue under `.state/`, and
-`/var/log/dws/monitor.log` as the authoritative runtime surfaces.
+artifacts. Treat the repo-managed queue under `.state/` and the active
+user-service graph as authoritative first; use `/var/log/dws/monitor.log` only
+when a host-local monitor is actually installed.
 
 The quickest runtime truth checks are:
 
 ```bash
 systemctl --user status dws-sessions-init.service --no-pager
-systemctl --user status dws-task-monitor.service --no-pager
-tail -n 40 /var/log/dws/monitor.log
+systemctl --user status dws-safe-mode.service --no-pager
+~/projects/dev-workspace/bin/dws-service-map.sh
 sed -n '1,220p' ~/projects/dev-workspace/.state/task-queue.json
 tmux list-sessions
+```
+
+Optional host-local monitor checks when installed:
+
+```bash
+systemctl --user status dws-task-monitor.service --no-pager
+tail -n 40 /var/log/dws/monitor.log
 ```
 
 `bin/dws-status.sh` and `scripts/dws-launcher.sh status` summarize the same
@@ -526,7 +537,7 @@ Use the session tool instead of guessing:
 ~/projects/dev-workspace/bin/dws-sessions.sh relaunch <session>
 ```
 
-### Monitor looks stale
+### Optional host-local monitor looks stale
 
 Checks:
 
@@ -545,6 +556,9 @@ systemctl --user restart dws-task-monitor.service
 systemctl --user status dws-task-monitor.service --no-pager
 tail -n 40 /var/log/dws/monitor.log
 ```
+
+Use this section only on hosts that still install the host-local
+`dws-task-monitor.service`.
 
 The monitor will recreate the `orchestrator` session on its next cycle if that
 session is missing.

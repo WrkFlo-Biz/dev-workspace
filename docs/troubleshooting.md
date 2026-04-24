@@ -10,13 +10,14 @@ When something looks wrong, start here before editing queue state or restarting 
 ~/projects/dev-workspace/bin/dws-status.sh
 ~/projects/dev-workspace/bin/dws-doctor.sh
 ~/projects/dev-workspace/bin/dws-sessions.sh list
-systemctl --user status dws-task-monitor.service --no-pager
-tail -n 40 /var/log/dws/monitor.log
+systemctl --user status dws-sessions-init.service dws-safe-mode.service --no-pager
+~/projects/dev-workspace/bin/dws-service-map.sh
+~/projects/dev-workspace/bin/dws-boot-verify.sh
 ```
 
-If those disagree with each other, trust the user-service state and
-`/var/log/dws/monitor.log` first. Inspect the raw queue only after the service
-log and `tmux` state line up:
+If those disagree with each other, trust the user-service state and the repo
+`.state` files first. Inspect the raw queue only after the service graph and
+`tmux` state line up:
 
 ```bash
 jq -r '.tasks[]? | select(.status=="in_progress") | [.id,.assigned,.repo] | @tsv' \
@@ -190,12 +191,14 @@ If it keeps happening:
 2. Move long logs or giant pasted blobs out of the active conversation
 3. Prefer `gpt-5.4` for harder recovery work if the smaller profile is struggling
 
-## Task-Monitor Restart
+## Optional Host-Local Task-Monitor Restart
 
 Symptoms:
 - `~/projects/dev-workspace/bin/dws-doctor.sh` reports stale or failed monitor artifacts
 - `dws-task-monitor.service` is inactive or `/var/log/dws/monitor.log` stops advancing
 - Queue-backed workers stop relaunching even though the queue still has work
+
+Use this section only on hosts that still install `dws-task-monitor.service`.
 
 Fix:
 1. Check the runtime before the restart:
@@ -225,20 +228,20 @@ systemctl --user restart dws-sessions-init.service
 tmux list-sessions
 ```
 
-4. If the installed units are missing or stale, reinstall them and rerun both services:
+4. If the installed repo-owned units are missing or stale, reinstall them and rerun the bootstrap service:
 
 ```bash
 ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
 systemctl --user daemon-reload
 systemctl --user restart dws-sessions-init.service
-systemctl --user restart dws-task-monitor.service
 ```
 
 5. Re-run `~/projects/dev-workspace/bin/dws-status.sh` and `~/projects/dev-workspace/bin/dws-doctor.sh` until the runtime artifacts go fresh again.
 
 Notes:
-- The normal monitor recovery path is the user service, not a dedicated `monitor` `tmux` session.
-- `scripts/dws-doctor.sh` still reads some legacy `/tmp/*` artifacts by default, so let `systemctl --user` plus `/var/log/dws/monitor.log` break ties if the tools disagree.
+- `dws-safe-mode.service` stays disabled by default; clear it with `~/projects/dev-workspace/bin/dws-safe-mode.sh off` if you enabled it during maintenance.
+- Any `dws-task-monitor.service` still present on the host is optional host-local runtime, not a repo-managed unit.
+- `scripts/dws-doctor.sh` still reads some legacy `/tmp/*` artifacts by default, so let `systemctl --user` plus the repo `.state` files break ties if the tools disagree.
 
 ## Firewall Rollback
 
@@ -385,8 +388,8 @@ Notes:
 ~/projects/dev-workspace/scripts/dws-launcher.sh status
 ~/projects/dev-workspace/scripts/dws-health.sh --json
 ~/projects/dev-workspace/scripts/dws-quick.sh gs codex
-systemctl --user status dws-task-monitor.service --no-pager
-tail -n 40 /var/log/dws/monitor.log
+systemctl --user status dws-sessions-init.service dws-safe-mode.service --no-pager
+~/projects/dev-workspace/bin/dws-service-map.sh
 ```
 
 See also `docs/runbook.md`, `docs/live-access-truth.md`, `docs/termius.md`, `docs/termius-setup.md`, and `docs/tailscale.md`.

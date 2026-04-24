@@ -100,8 +100,8 @@ if [ "${1:-}" = "is-active" ]; then
     system:tailscaled.service|system:tailscaled|system:ssh.socket|system:ssh.service|system:cron.service|system:cron)
       exit 0
       ;;
-    user:dws-task-monitor.service|user:dws-task-monitor)
-      if [ "${FAKE_TASK_MONITOR_ACTIVE:-1}" = "1" ]; then
+    user:dws-sessions-init.service|user:dws-sessions-init)
+      if [ "${FAKE_SESSIONS_INIT_ACTIVE:-1}" = "1" ]; then
         exit 0
       fi
       exit 3
@@ -153,7 +153,7 @@ cleanup_fixture() {
     FAKE_TAILSCALE_IP \
     FAKE_SSH_BANNER_MODE \
     FAKE_SSH_BANNER \
-    FAKE_TASK_MONITOR_ACTIVE
+    FAKE_SESSIONS_INIT_ACTIVE
 
   if [ -n "${FIXTURE_ROOT:-}" ] && [ -d "${FIXTURE_ROOT}" ]; then
     rm -rf -- "${FIXTURE_ROOT}"
@@ -175,7 +175,7 @@ test_boot_verify_passes_when_all_checks_are_ready() {
   assert_contains "${output}" "PASS tmux available (10 sessions: dws-a, dws-b, worker-c, worker-d, worker-e, worker-f, worker-g, worker-h, worker-i, orchestrator)"
   assert_contains "${output}" "PASS cron loaded (cron.service; 2 active crontab entries)"
   assert_contains "${output}" "PASS log directory present (${DWS_BOOT_VERIFY_LOG_DIR}; 1 entries)"
-  assert_contains "${output}" "PASS task-monitor service active (user dws-task-monitor.service)"
+  assert_contains "${output}" "PASS sessions-init service active (user dws-sessions-init.service)"
   assert_contains "${output}" "overall: PASS (6 passed, 0 failed)"
   assert_not_contains "${output}" "FAIL "
 
@@ -183,19 +183,19 @@ test_boot_verify_passes_when_all_checks_are_ready() {
   trap - EXIT
 }
 
-test_boot_verify_fails_when_task_monitor_is_inactive() {
+test_boot_verify_fails_when_sessions_init_is_inactive() {
   local output
 
   make_fixture
   trap cleanup_fixture EXIT
 
-  export FAKE_TASK_MONITOR_ACTIVE=0
+  export FAKE_SESSIONS_INIT_ACTIVE=0
 
   if output=$("${SCRIPT}" 2>&1); then
     fail "expected dws-boot-verify.sh to fail"
   fi
 
-  assert_contains "${output}" "FAIL task-monitor service not active (dws-task-monitor.service)"
+  assert_contains "${output}" "FAIL sessions-init service not active (dws-sessions-init.service)"
   assert_contains "${output}" "overall: FAIL (5 passed, 1 failed)"
 
   cleanup_fixture
@@ -247,7 +247,7 @@ exit 1
 }
 
 test_boot_verify_passes_when_all_checks_are_ready
-test_boot_verify_fails_when_task_monitor_is_inactive
+test_boot_verify_fails_when_sessions_init_is_inactive
 test_boot_verify_passes_when_no_tmux_sessions_are_active
 test_boot_verify_reports_ad_hoc_session_names_verbatim
 

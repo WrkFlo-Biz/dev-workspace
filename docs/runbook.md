@@ -11,9 +11,10 @@ Operational procedures for the `dev-workspace-vm` multi-agent environment.
 | Repo wrappers | `~/projects/dev-workspace/bin/` |
 | Repo scripts | `~/projects/dev-workspace/scripts/` |
 | VM-local service entrypoints | `~/bin/` |
-| User services | `~/.config/systemd/user/dws-sessions-init.service`, `~/.config/systemd/user/dws-task-monitor.service` |
+| Repo-managed user services | `~/.config/systemd/user/dws-sessions-init.service`, `~/.config/systemd/user/dws-safe-mode.service` |
+| Optional host-local services | `dws-task-monitor.service`, `wrkflo-orchestrator-api.service` when installed |
 | Service installer | `~/projects/dev-workspace/bin/dws-systemd-user-setup.sh` |
-| Monitor log | `/var/log/dws/monitor.log` |
+| Optional host-local monitor log | `/var/log/dws/monitor.log` when a host-local monitor is installed |
 | Boot verifier | `~/projects/dev-workspace/bin/dws-boot-verify.sh` |
 | Launcher status | `~/projects/dev-workspace/scripts/dws-launcher.sh status` |
 | `dws-summary` | `~/projects/dev-workspace/bin/dws-summary.sh` |
@@ -49,15 +50,25 @@ The service-managed boot path is:
 
 1. `dws-sessions-init.service` performs lightweight boot-time prep for the
    on-demand session model.
-2. `dws-task-monitor.service` starts the monitor loop after session init.
+2. `dws-safe-mode.service` stays installed but disabled unless the operator
+   explicitly enables it.
+3. Optional host-local units such as `dws-task-monitor.service` or
+   `wrkflo-orchestrator-api.service` may start afterwards if the host installs
+   them.
 
 Verify the stack with:
 
 ```bash
-systemctl --user status dws-sessions-init.service --no-pager
+systemctl --user status dws-sessions-init.service dws-safe-mode.service --no-pager
+~/projects/dev-workspace/bin/dws-service-map.sh
+~/projects/dev-workspace/bin/dws-boot-verify.sh
+```
+
+Optional host-local monitor checks when installed:
+
+```bash
 systemctl --user status dws-task-monitor.service --no-pager
 tail -n 20 /var/log/dws/monitor.log
-~/projects/dev-workspace/bin/dws-boot-verify.sh
 ```
 
 ### Manual repair
@@ -73,32 +84,36 @@ If the units are installed but the runtime needs to be rebuilt:
 
 ```bash
 systemctl --user restart dws-sessions-init.service
-systemctl --user restart dws-task-monitor.service
 ```
 
-Use the user services as the normal control surface. Do not launch
-`~/bin/task-monitor.sh` in a dedicated `tmux` session unless you are debugging
-the service path itself.
+`dws-safe-mode.service` stays disabled by default. If you intentionally enabled
+safe mode earlier, clear it with `~/projects/dev-workspace/bin/dws-safe-mode.sh off`.
+
+Optional host-local units such as `dws-task-monitor.service` remain outside the
+repo installer. Restart them only if the host actually installs them.
 
 ## Stop
 
-### Graceful stop (keep worker sessions)
+### Pause repo-managed session/bootstrap behavior
 
 ```bash
-systemctl --user stop dws-task-monitor.service
+~/projects/dev-workspace/bin/dws-safe-mode.sh on
 ```
 
-### Full stop (stop monitor and kill currently active sessions if needed)
+### Full stop (pause repo-managed boot flow and kill currently active sessions if needed)
 
 ```bash
-systemctl --user stop dws-task-monitor.service
+~/projects/dev-workspace/bin/dws-safe-mode.sh on
 tmux list-sessions -F '#{session_name}' 2>/dev/null | while read -r s; do
   [ -n "$s" ] || continue
   tmux kill-session -t "$s" 2>/dev/null || true
 done
 ```
 
-## Monitor Management
+## Optional Host-Local Monitor
+
+Use this section only on hosts that still install `dws-task-monitor.service`
+and `~/bin/task-monitor.sh`.
 
 ### Check status
 
@@ -129,9 +144,8 @@ tail -f /var/log/dws/monitor.log
 ~/projects/dev-workspace/bin/dws-pause-dispatch.sh off
 ```
 
-This creates `/tmp/dws-dispatch-paused`. While that flag exists,
-`task-monitor.sh` continues checking workers but skips new task dispatch and
-retry sends until the flag is removed.
+This creates `/tmp/dws-dispatch-paused`. It only affects hosts that still run
+the host-local `task-monitor.sh`.
 
 ### Export an incident bundle
 
@@ -140,8 +154,9 @@ retry sends until the flag is removed.
 ```
 
 The archive lands at `/tmp/dws-incident-TIMESTAMP.tar.gz` and includes the last
-200 lines of `/var/log/dws/monitor.log`, the current queue JSON, `tmux list-sessions`,
-`systemctl --user status`, `tailscale status`, `ufw status`, `df -h`,
+200 lines of `/var/log/dws/monitor.log` when present, the current queue JSON,
+`tmux list-sessions`, `systemctl --user status`, `tailscale status`,
+`ufw status`, `df -h`,
 `free -h`, and `uptime`.
 
 ## Ops Hardening
@@ -154,13 +169,13 @@ manual incident.
 | --- | --- |
 | `~/projects/dev-workspace/bin/dws-alerting.sh` | Append alerts to `/var/log/dws/alerts.log` for monitor restart loops, repeated rate limits, missing Tailscale peers, disk pressure, and recent cron failures. |
 | `~/projects/dev-workspace/bin/dws-queue-inspector.sh` | Summarize queue depth, per-worker assignment counts, and completion rates; use `--json` when piping into other tooling. |
-| `~/projects/dev-workspace/bin/dws-service-map.sh` | Show the current user-systemd boot order, dependency tree, and runtime state for `dws-sessions-init.service` and `dws-task-monitor.service`. |
-| `~/projects/dev-workspace/bin/dws-pause-dispatch.sh` | Create or clear `/tmp/dws-dispatch-paused` so the monitor keeps running but stops sending new work. |
-| `~/projects/dev-workspace/bin/dws-incident-export.sh` | Capture an incident bundle under `/tmp/dws-incident-TIMESTAMP.tar.gz` with monitor, queue, tmux, service, network, disk, memory, and uptime snapshots. |
+| `~/projects/dev-workspace/bin/dws-service-map.sh` | Show the current user-systemd boot order and runtime state for repo-managed units, plus optional host-local units when they are installed. |
+| `~/projects/dev-workspace/bin/dws-pause-dispatch.sh` | Create or clear `/tmp/dws-dispatch-paused` for hosts that still run the host-local `task-monitor.sh`. |
+| `~/projects/dev-workspace/bin/dws-incident-export.sh` | Capture an incident bundle under `/tmp/dws-incident-TIMESTAMP.tar.gz` with queue, tmux, service, network, disk, memory, uptime, and optional monitor snapshots. |
 | `~/projects/dev-workspace/scripts/dws-worker-exec.sh` | Execute a single queued task JSON, write `.state/results/<task-id>.log` and `.json`, and mark the queue item `completed` or `failed`. |
 | `~/projects/dev-workspace/bin/dws-termius-mac-fix.sh` | Repair macOS SSH pubkey settings and file permissions when Termius key auth breaks on the Mac side. |
 | `~/projects/dev-workspace/bin/dws-safe-mode.sh` | Stop worker dispatch and session management while leaving SSH, Tailscale, health checks, and log rotation available. |
-| `~/projects/dev-workspace/bin/dws-worker-utilization.sh` | Parse `/var/log/dws/monitor.log` into per-worker completions, rate-limit hits, idle percentage, and average task duration. |
+| `~/projects/dev-workspace/bin/dws-worker-utilization.sh` | Parse `/var/log/dws/monitor.log` into per-worker completions, rate-limit hits, idle percentage, and average task duration when that host-local monitor log exists. |
 | `~/projects/dev-workspace/bin/dws-termius-verify.sh` | Validate the phone access path before relying on Termius during recovery drills or off-Mac operations. |
 
 Use `dws-maintenance-mode.sh` before planned interventions to stop new task
@@ -329,8 +344,9 @@ See `docs/termius-setup.md` for the full setup flow.
 
 | Symptom | Fix |
 | --- | --- |
-| Monitor down | `systemctl --user restart dws-task-monitor.service` |
+| Optional host-local monitor down | `systemctl --user restart dws-task-monitor.service` |
 | Managed sessions missing | `systemctl --user restart dws-sessions-init.service` |
+| Safe mode still enabled | `~/projects/dev-workspace/bin/dws-safe-mode.sh off` |
 | Queue looks wrong | inspect `~/projects/dev-workspace/.state/task-queue.json` and compare against `dws-sessions.sh list` |
 | Need an incident handoff bundle | `~/projects/dev-workspace/bin/dws-incident-export.sh` |
 | SSH dropped | reconnect and use `dws-sessions.sh reconnect` |
@@ -370,8 +386,8 @@ DWS_CRON_LOG_DIR=/var/log/dws ~/projects/dev-workspace/bin/dws-cron-setup.sh
 
 ```text
 Layer 3: Tailscale + SSH reconnect         -> operator reconnects to an existing session
-Layer 2: dws-task-monitor.service          -> manages the live queue and recreates host-defined managed sessions
-Layer 1: dws-sessions-init.service         -> boot-time prep for the on-demand session model
+Layer 2: optional host-local task monitor  -> may manage queue/worker recreation on drifted hosts
+Layer 1: dws-sessions-init.service         -> repo-managed boot-time prep for the on-demand session model
 ```
 
 ## Mac Reconnect Agent
@@ -388,13 +404,15 @@ launchctl load ~/Library/LaunchAgents/com.wrkflo.terminal-reconnect.plist
 launchctl unload ~/Library/LaunchAgents/com.wrkflo.terminal-reconnect.plist
 ```
 
-Default: **disabled**. The VM-side systemd services (`dws-sessions-init`, `dws-task-monitor`)
-handle worker lifecycle independently. The Mac agent is only needed when you want the Mac
-to maintain persistent SSH windows for visual monitoring.
+Default: **disabled**. The VM-side repo-managed service is `dws-sessions-init`,
+and some hosts may also run optional host-local services such as
+`dws-task-monitor`. The Mac agent is only needed when you want the Mac to
+maintain persistent SSH windows for visual monitoring.
 
 ## Rate-Aware Dispatch
 
-The task monitor includes global rate-limit awareness:
+Hosts that still run the host-local task monitor include global rate-limit
+awareness:
 
 - **Per-worker**: exponential backoff (30s → 60s → 120s) on rate limit detection
 - **Global throttle**: if 3+ workers hit rate limits within a 5-minute window, all

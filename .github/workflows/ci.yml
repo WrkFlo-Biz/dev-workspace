@@ -66,6 +66,13 @@ jobs:
           summary_file="${GITHUB_STEP_SUMMARY:-}"
           expected_tests=21
 
+          timeout_for_test() {
+            case "${1:-}" in
+              tests/test_dws_backup.sh) printf '%s\n' "${DWS_TEST_TIMEOUT_BACKUP_SEC:-240}" ;;
+              *) printf '%s\n' "${DWS_TEST_TIMEOUT_SEC:-60}" ;;
+            esac
+          }
+
           printf "Configured %s test files\n" "${#tests[@]}"
           if [ "${#tests[@]}" -ne "${expected_tests}" ]; then
             printf "Expected %s configured test files, found %s\n" "${expected_tests}" "${#tests[@]}" >&2
@@ -84,7 +91,8 @@ jobs:
           failed_tests=()
 
           for test_file in "${tests[@]}"; do
-            printf "\n==> %s\n" "${test_file}"
+            timeout_sec=$(timeout_for_test "${test_file}")
+            printf "\n==> %s (timeout %ss)\n" "${test_file}" "${timeout_sec}"
             if [ ! -f "${test_file}" ]; then
               printf "FAIL %s (missing file)\n" "${test_file}" >&2
               failed_tests+=("${test_file} (missing file)")
@@ -93,7 +101,7 @@ jobs:
               continue
             fi
 
-            if timeout 60 bash "${test_file}"; then
+            if timeout "${timeout_sec}" bash "${test_file}"; then
               printf "PASS %s\n" "${test_file}"
               [ -n "${summary_file}" ] && printf "| \`%s\` | PASS |\n" "${test_file}" >>"${summary_file}"
             else

@@ -5,13 +5,14 @@ Updated for the checked-in repo state on 2026-04-24 UTC.
 This file records the live runtime and boot behavior currently in use on the
 VM, not just the checked-in repo intent.
 
-## Session truth
+## Repo-owned session truth
 
 The checked-in repo now describes an on-demand session model:
 
 - `scripts/dws-sessions-init.sh` does not spawn a fixed Codex worker pool.
-- `dws-task-monitor.service` remains a user service, not a dedicated `tmux`
-  pane.
+- Repo-managed user-unit templates are:
+  - `dws-sessions-init.service`
+  - `dws-safe-mode.service`
 - `tmux` sessions present on the VM are operator/runtime state, not a
   repo-guaranteed boot contract.
 
@@ -22,13 +23,16 @@ Historical note:
 - those snapshots are still useful for incident archaeology, but they are not
   the current repo truth
 
-## Task monitor truth
+## Optional host-local monitor truth
 
-Current live entrypoint:
+Some hosts still carry a host-local monitor outside the checked-in repo-owned
+unit set.
+
+Typical live entrypoint on those hosts:
 
 - `~/bin/task-monitor.sh`
 
-Current live service:
+Typical live service:
 
 - `dws-task-monitor.service`
 
@@ -44,21 +48,27 @@ Current runtime behavior:
 
 Important note:
 
+- this behavior is host-local legacy/runtime context, not a repo-managed unit
+  contract
 - some repo tooling and older docs still reference `/tmp/monitor-log.txt`,
   `/tmp/monitor-status.json`, or `/tmp/task-queue.json`
-- those are legacy assumptions, not the authoritative live task-monitor outputs
+- those are legacy assumptions, not the authoritative repo-owned state files
 
 ## Queue truth
 
-The live queue is:
+The repo-owned coordination queue is:
 
 - source of truth: `~/projects/dev-workspace/.state/task-queue.json`
-- primary monitor log: `/var/log/dws/monitor.log`
+- keep only active `pending` / `in_progress` work in the live queue
+- keep historical dumps and monitor snapshots out of repo-owned `.state/`
 
 Operational implication:
 
-- if `dws-status.sh` or `dws-doctor.sh` disagree with the service state, trust
-  `systemctl --user`, `/var/log/dws/monitor.log`, and the `.state` queue first
+- if `dws-status.sh` or `dws-doctor.sh` disagree with the checked-in repo
+  truth, trust `systemctl --user`, `bin/dws-service-map.sh`, and the repo
+  `.state` files first
+- if a host-local task monitor is installed, its journal and
+  `/var/log/dws/monitor.log` are runtime context, not repo-owned state
 
 ## Systemd user service truth
 
@@ -66,13 +76,14 @@ User lingering is enabled:
 
 - `loginctl show-user "$USER" -p Linger` -> `Linger=yes`
 
-Repo-managed user services observed:
+Repo-managed user services:
 
 - `dws-sessions-init.service`
-- `dws-task-monitor.service`
+- `dws-safe-mode.service`
 
 Additional host-local or sibling-repo services observed on this VM:
 
+- `dws-task-monitor.service`
 - `dws-phone-server.service`
 - `wrkflo-orchestrator-api.service`
 
@@ -82,11 +93,14 @@ Service definitions:
   - runs `%h/bin/dws-sessions-init.sh`
   - oneshot bootstrap for the on-demand session model
   - remains `active (exited)` after success
-- `dws-task-monitor.service`
+- `dws-safe-mode.service`
+  - runs `%h/projects/dev-workspace/bin/dws-safe-mode.sh`
+  - is installed but disabled by default
+  - conflicts with `dws-sessions-init.service` when intentionally enabled
+- optional host-local `dws-task-monitor.service`
   - runs `%h/bin/task-monitor.sh`
-  - starts after `dws-sessions-init.service`
-  - restart policy: `on-failure`
-  - keeps the monitor loop alive independently of interactive logins
+  - can still exist on drifted hosts
+  - is not installed by `bin/dws-systemd-user-setup.sh`
 
 ## Boot truth
 
@@ -97,9 +111,11 @@ What already recovers on reboot:
 - `cron`
 - user systemd services because `Linger=yes`
   - `dws-sessions-init.service`
+  - `dws-safe-mode.service` remains installed but disabled unless the operator
+    explicitly enabled it
+  - additional host-local or sibling-repo services can also recover if they are
+    installed on the VM, for example:
   - `dws-task-monitor.service`
-  - additional host-local or sibling-repo services can also recover if they
-    are installed on the VM, for example:
   - `dws-phone-server.service`
   - `wrkflo-orchestrator-api.service`
 
@@ -125,18 +141,27 @@ Operational rule:
   live runtime truth
 - treat the repo `bin/`, `scripts/`, and `config/systemd-user/` files as the
   source used to redeploy or reconcile the host
+- distinguish repo-managed units from optional host-local services before you
+  assume a reboot or setup regression belongs to this repo
 
 ## Verification commands
 
 ```bash
 tmux list-sessions
 systemctl --user status dws-sessions-init.service --no-pager
-systemctl --user status dws-task-monitor.service --no-pager
-tail -n 40 /var/log/dws/monitor.log
+systemctl --user status dws-safe-mode.service --no-pager
+~/projects/dev-workspace/bin/dws-service-map.sh
 sed -n '1,220p' ~/projects/dev-workspace/.state/task-queue.json
 systemctl --user list-units --type=service --state=running --no-pager
 loginctl show-user "$USER" -p Linger -p RuntimePath -p State
 crontab -l
 ~/projects/dev-workspace/bin/dws-boot-verify.sh
 ~/projects/dev-workspace/scripts/dws-launcher.sh status
+```
+
+Optional host-local monitor checks when installed:
+
+```bash
+systemctl --user status dws-task-monitor.service --no-pager
+tail -n 40 /var/log/dws/monitor.log
 ```
