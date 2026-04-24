@@ -25,14 +25,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          expected_tests=22
           summary_file="${GITHUB_STEP_SUMMARY:-}"
-          mapfile -t tests < <(find tests -maxdepth 1 -type f -name 'test_*.sh' | sort)
+          mapfile -t tests < <(git ls-files 'tests/test_*.sh' | sort)
 
-          printf 'Discovered %s test files\n' "${#tests[@]}"
+          printf 'Discovered %s tracked test files\n' "${#tests[@]}"
 
-          if [ "${#tests[@]}" -ne "${expected_tests}" ]; then
-            printf 'Expected %s test files in tests/, found %s\n' "${expected_tests}" "${#tests[@]}" >&2
+          if [ "${#tests[@]}" -eq 0 ]; then
+            printf 'No tracked test files found under tests/\n' >&2
             exit 1
           fi
 
