@@ -10,7 +10,7 @@ retention, and audit requirements.
 | --- | --- | --- | --- |
 | Redis | hot coordination, leases, TTL caches, ephemeral runtime state | task claims, approval pending indexes, rate limits, circuit state | durable system of record |
 | Durable relational DB | immutable truth, approvals, lineage, audit, terminal run history | approval receipts, state transitions, workflow lineage, audit evidence | disposable cache |
-| Vector or retrieval store | semantic lookup over reusable knowledge | embedded documents, client memory retrieval, domain playbook search, policy lookup | authoritative ledger of record |
+| Vector or retrieval store | semantic lookup over reusable knowledge, implemented as `pgvector` on PostgreSQL | embedded documents, client memory retrieval, domain playbook search, policy lookup | authoritative ledger of record |
 
 ## Logical Memory Tiers
 
@@ -34,13 +34,26 @@ Today, some bootstrap state still lives in local SQLite files, append-only logs,
 and repo-local artifacts. Treat those as transitional implementation details for
 the current operator environment.
 
+The target production implementation is Azure-first:
+
+- Azure Database for PostgreSQL Flexible Server is the durable data platform
+- relational schemas hold approvals, lineage, immutable workflow state, and
+  audit records
+- the same PostgreSQL estate uses the `pgvector` extension for retrieval and
+  semantic lookup
+- Redis remains the hot coordination layer only
+
 The target boundary is:
 
 - Redis for hot coordination and ephemeral state
-- durable relational storage for approvals, lineage, immutable history, and
-  audit
-- vector or retrieval storage for semantic memory lookup across client, domain,
-  and platform tiers
+- PostgreSQL on Azure Database for PostgreSQL Flexible Server for approvals,
+  lineage, immutable history, and audit
+- `pgvector` on that PostgreSQL platform for semantic memory lookup across
+  client, domain, and platform tiers
+
+That means the logical storage roles remain distinct even when the production
+deployment uses one PostgreSQL platform for both durable truth and vector
+retrieval. The separation is architectural, not necessarily physical.
 
 Redis should accelerate the system; it should not become the source of truth for
 approvals, audit, or long-term memory.
