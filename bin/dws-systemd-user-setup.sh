@@ -128,7 +128,7 @@ check_units() {
   for unit in "${RETIRED_UNITS[@]}"; do
     state=$(systemctl --user is-enabled "$unit" 2>/dev/null || true)
     case "$state" in
-      ''|disabled|masked|indirect|static|generated|linked|linked-runtime|transient) ;;
+      ''|not-found|disabled|masked|indirect|static|generated|linked|linked-runtime|transient) ;;
       *)
         printf 'expected retired unit to be disabled or absent, got %s for %s\n' "${state:-unknown}" "$unit" >&2
         rc=1
