@@ -65,6 +65,13 @@ if [ -f "$HANDOFF_FILE" ]; then
     green "Loaded handoff from previous session"
 fi
 
+WORKLOAD_FILE="$PROJECTS_DIR/dev-workspace/.state/terminal-workload.md"
+WORKLOAD_CONTEXT=""
+if [ -f "$WORKLOAD_FILE" ]; then
+    WORKLOAD_CONTEXT=$(cat "$WORKLOAD_FILE")
+    green "Loaded live workload"
+fi
+
 # Build orchestrator prompt
 cat > "$PROMPT_FILE" << ORCHESTRATOR_PROMPT
 You are the ORCHESTRATOR for this dev workspace VM. You do not write code. You monitor and manage worker Codex sessions.
@@ -96,26 +103,32 @@ YOUR LOOP (run continuously, every 60 seconds):
 4. If not "Working" after send-keys, press Enter and check again
 5. Log each cycle to $LOG with timestamp
 
-TASK BACKLOG (assign to idle workers, one repo per worker):
-- Run full test suite and fix failures
-- Shellcheck scripts/ and fix warnings
-- Update docs/ to match current architecture
-- Clean stale .state/ files
-- Fix bin/ wrapper inconsistencies
-- Consolidate CI workflows
-- Remove deprecated task-monitor refs from systemd configs
+	LIVE WORKLOAD (primary source of truth for current assignments, standby state, and commit boundaries):
+	$WORKLOAD_CONTEXT
 
-RULES:
-- Never assign same file to two workers
-- One repo per worker at a time
-- ALWAYS use ~/bin/tmux-send to dispatch tasks (never raw tmux send-keys). It auto-presses Enter and verifies.
-- Read /tmp/agent-coordination.md for file boundaries
+	FALLBACK BACKLOG (use only if the workload file leaves an idle worker unassigned):
+	- Run full test suite and fix failures
+	- Shellcheck scripts/ and fix warnings
+	- Update docs/ to match current architecture
+	- Clean stale .state/ files
+	- Fix bin/ wrapper inconsistencies
+	- Consolidate CI workflows
+	- Remove deprecated task-monitor refs from systemd configs
 
-PREVIOUS SESSION HANDOFF (read this first — it tells you what was built and what still needs work):
-$HANDOFF_CONTEXT
+	RULES:
+	- Never assign same file to two workers
+	- One repo per worker at a time
+	- ALWAYS use ~/bin/tmux-send to dispatch tasks (never raw tmux send-keys). It auto-presses Enter and verifies.
+	- Read /tmp/agent-coordination.md for short progress notes
+	- Read $WORKLOAD_FILE before assigning or reassigning any worker
+	- Update $WORKLOAD_FILE before you send a worker onto a new lane
 
-Start by reading the handoff above. Prioritize the "What Still Needs Work" items as your task backlog.
-Then begin your monitoring scan.
+	PREVIOUS SESSION HANDOFF (longer-lived repo context and boundaries):
+	$HANDOFF_CONTEXT
+
+	Start by reading the live workload above. If it conflicts with older pane text or the fallback backlog, the workload file wins.
+	Then read the handoff above for broader repo context.
+	Then begin your monitoring scan.
 ORCHESTRATOR_PROMPT
 
 green "Prompt ready ($(wc -c < "$PROMPT_FILE" | tr -d ' ') bytes)"
