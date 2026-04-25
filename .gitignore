@@ -1,5 +1,6 @@
 # Secrets, keys, and any local-only env files
 *.env
+.mcp.json
 *.pem
 *.key
 *.pub
