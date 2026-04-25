@@ -12,8 +12,11 @@ Operational procedures for the `dev-workspace-vm` multi-agent environment.
 | Repo scripts | `~/projects/dev-workspace/scripts/` |
 | VM-local service entrypoints | `~/bin/` |
 | Repo-managed user services | `~/.config/systemd/user/dws-sessions-init.service`, `~/.config/systemd/user/dws-safe-mode.service` |
-| Optional host-local services | `dws-task-monitor.service`, `wrkflo-orchestrator-api.service` when installed |
+| Installed sibling-repo user service | `~/.config/systemd/user/wrkflo-orchestrator-api.service` |
+| Orchestrator unit source | `~/projects/wrkflo-orchestrator/ops/systemd/wrkflo-orchestrator-api.service` |
+| Optional host-local services | `dws-task-monitor.service` when installed |
 | Service installer | `~/projects/dev-workspace/bin/dws-systemd-user-setup.sh` |
+| Orchestrator API base URL | `http://127.0.0.1:8100` |
 | Optional host-local monitor log | `/var/log/dws/monitor.log` when a host-local monitor is installed |
 | Boot verifier | `~/projects/dev-workspace/bin/dws-boot-verify.sh` |
 | Launcher status | `~/projects/dev-workspace/scripts/dws-launcher.sh status` |
@@ -46,23 +49,62 @@ Operational procedures for the `dev-workspace-vm` multi-agent environment.
 
 ### After reboot (automatic)
 
-The service-managed boot path is:
+The service-managed boot path on the live VM is:
 
-1. `dws-sessions-init.service` performs lightweight boot-time prep for the
-   on-demand session model.
-2. `dws-safe-mode.service` stays installed but disabled unless the operator
-   explicitly enables it.
-3. Optional host-local units such as `dws-task-monitor.service` or
-   `wrkflo-orchestrator-api.service` may start afterwards if the host installs
-   them.
+1. `dws-sessions-init.service` is enabled at boot and finishes
+   `active (exited)` with `Result=success`.
+2. `wrkflo-orchestrator-api.service` is enabled at boot and remains
+   `active (running)` on `127.0.0.1:8100`.
+3. `dws-safe-mode.service` is installed, matches the repo unit, and stays
+   disabled unless the operator intentionally enables maintenance mode.
+4. `dws-task-monitor.service` remains optional and may be absent on healthy
+   hosts.
 
-Verify the stack with:
+Verify the steady-state stack with:
 
 ```bash
-systemctl --user status dws-sessions-init.service dws-safe-mode.service --no-pager
+systemctl --user is-enabled \
+  dws-sessions-init.service \
+  wrkflo-orchestrator-api.service \
+  dws-safe-mode.service
+systemctl --user show -p ActiveState -p SubState -p Result \
+  dws-sessions-init.service \
+  wrkflo-orchestrator-api.service \
+  dws-safe-mode.service
+systemctl --user status \
+  dws-sessions-init.service \
+  wrkflo-orchestrator-api.service \
+  dws-safe-mode.service \
+  --no-pager
+~/projects/dev-workspace/bin/dws-systemd-user-setup.sh check
 ~/projects/dev-workspace/bin/dws-service-map.sh
 ~/projects/dev-workspace/bin/dws-boot-verify.sh
+cmp -s ~/projects/dev-workspace/config/systemd-user/dws-safe-mode.service \
+  ~/.config/systemd/user/dws-safe-mode.service \
+  && echo "dws-safe-mode.service matches repo"
+cmp -s ~/projects/wrkflo-orchestrator/ops/systemd/wrkflo-orchestrator-api.service \
+  ~/.config/systemd/user/wrkflo-orchestrator-api.service \
+  && echo "wrkflo-orchestrator-api.service matches sibling repo"
+base=http://127.0.0.1:8100
+for path in \
+  /healthz \
+  /readyz \
+  /v1/workspace/health \
+  /v1/workers \
+  /v1/projects \
+  /v1/workspace/projects \
+  /v1/tasks/history
+do
+  code=$(curl -sS -o /dev/null -w '%{http_code}' "$base$path")
+  printf '%s  %s\n' "$code" "$path"
+done
 ```
+
+Expected steady state:
+`dws-sessions-init.service` = `enabled`, `active`, `exited`, `success`;
+`wrkflo-orchestrator-api.service` = `enabled`, `active`, `running`,
+`success`; `dws-safe-mode.service` = `disabled`, `inactive`; every listed HTTP
+endpoint returns `200`.
 
 Optional host-local monitor checks when installed:
 
@@ -73,24 +115,33 @@ tail -n 20 /var/log/dws/monitor.log
 
 ### Manual repair
 
-If the user units are missing or stale:
+If the dev-workspace user units are missing or stale:
 
 ```bash
 ~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install
+install -D -m 0644 \
+  ~/projects/wrkflo-orchestrator/ops/systemd/wrkflo-orchestrator-api.service \
+  ~/.config/systemd/user/wrkflo-orchestrator-api.service
 systemctl --user daemon-reload
+systemctl --user enable --now wrkflo-orchestrator-api.service
 ```
 
 If the units are installed but the runtime needs to be rebuilt:
 
 ```bash
+systemctl --user restart wrkflo-orchestrator-api.service
 systemctl --user restart dws-sessions-init.service
 ```
 
 `dws-safe-mode.service` stays disabled by default. If you intentionally enabled
 safe mode earlier, clear it with `~/projects/dev-workspace/bin/dws-safe-mode.sh off`.
+Normal steady state is `installed + disabled`; do not enable the unit during
+routine boot.
 
-Optional host-local units such as `dws-task-monitor.service` remain outside the
-repo installer. Restart them only if the host actually installs them.
+The dev-workspace installer manages only the `dws-*` user units. The
+orchestrator control-plane unit is installed from the sibling
+`wrkflo-orchestrator` repo, and `dws-task-monitor.service` remains optional.
+Restart the monitor only if the host actually installs it.
 
 ## Stop
 
@@ -345,6 +396,7 @@ See `docs/termius-setup.md` for the full setup flow.
 | Symptom | Fix |
 | --- | --- |
 | Optional host-local monitor down | `systemctl --user restart dws-task-monitor.service` |
+| Orchestrator API unhealthy | `systemctl --user restart wrkflo-orchestrator-api.service` and rerun the `127.0.0.1:8100` curl sweep from Start / Resume |
 | Managed sessions missing | `systemctl --user restart dws-sessions-init.service` |
 | Safe mode still enabled | `~/projects/dev-workspace/bin/dws-safe-mode.sh off` |
 | Queue looks wrong | inspect `~/projects/dev-workspace/.state/task-queue.json` and compare against `dws-sessions.sh list` |
@@ -385,8 +437,9 @@ DWS_CRON_LOG_DIR=/var/log/dws ~/projects/dev-workspace/bin/dws-cron-setup.sh
 ## Self-Healing Stack
 
 ```text
-Layer 3: Tailscale + SSH reconnect         -> operator reconnects to an existing session
-Layer 2: optional host-local task monitor  -> may manage queue/worker recreation on drifted hosts
+Layer 4: Tailscale + SSH reconnect         -> operator reconnects to an existing session
+Layer 3: optional host-local task monitor  -> may manage queue/worker recreation on drifted hosts
+Layer 2: wrkflo-orchestrator-api.service   -> enabled user service serving the local control plane on 127.0.0.1:8100
 Layer 1: dws-sessions-init.service         -> repo-managed boot-time prep for the on-demand session model
 ```
 
@@ -404,10 +457,11 @@ launchctl load ~/Library/LaunchAgents/com.wrkflo.terminal-reconnect.plist
 launchctl unload ~/Library/LaunchAgents/com.wrkflo.terminal-reconnect.plist
 ```
 
-Default: **disabled**. The VM-side repo-managed service is `dws-sessions-init`,
-and some hosts may also run optional host-local services such as
-`dws-task-monitor`. The Mac agent is only needed when you want the Mac to
-maintain persistent SSH windows for visual monitoring.
+Default: **disabled**. The VM-side steady-state user services are
+`dws-sessions-init.service` and `wrkflo-orchestrator-api.service`, and some
+hosts may also run optional host-local services such as `dws-task-monitor`.
+The Mac agent is only needed when you want the Mac to maintain persistent SSH
+windows for visual monitoring.
 
 ## Rate-Aware Dispatch
 
@@ -423,9 +477,11 @@ To check throttle state: `tail -20 /var/log/dws/monitor.log | grep -i rate`
 
 ## Safe Mode
 
-Safe mode stops all worker dispatch and session management while keeping SSH,
-Tailscale, health checks, and log rotation running. Use for upgrades, incident
-response, or debugging.
+Safe mode stops `dws-sessions-init.service` and
+`wrkflo-orchestrator-api.service`. The safe-mode wrapper also stops any
+installed `dws-task-monitor.service` while keeping SSH, Tailscale, health
+checks, and log rotation running. Use for upgrades, incident response, or
+debugging.
 
 ```bash
 # Enter safe mode
