@@ -83,7 +83,6 @@ Repo-managed user services:
 
 Additional host-local or sibling-repo services observed on this VM:
 
-- `dws-task-monitor.service`
 - `dws-phone-server.service`
 - `wrkflo-orchestrator-api.service`
 
@@ -114,10 +113,10 @@ What already recovers on reboot:
   - `dws-safe-mode.service` remains installed but disabled unless the operator
     explicitly enabled it
   - additional host-local or sibling-repo services can also recover if they are
-    installed on the VM, for example:
-  - `dws-task-monitor.service`
-  - `dws-phone-server.service`
-  - `wrkflo-orchestrator-api.service`
+    installed on the VM
+  - on this VM that currently includes `dws-phone-server.service` and
+    `wrkflo-orchestrator-api.service`
+  - on other hosts this can also include `dws-task-monitor.service`
 
 What still needs explicit proof:
 

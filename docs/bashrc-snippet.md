@@ -11,6 +11,6 @@ fi
 
 This only loads the interactive shell helpers from
 `scripts/dws-bashrc.sh`. It does not install the repo-managed user
-services (`dws-sessions-init.service` and `dws-task-monitor.service`);
+services (`dws-sessions-init.service` and `dws-safe-mode.service`);
 install those separately with
 `~/projects/dev-workspace/bin/dws-systemd-user-setup.sh install`.

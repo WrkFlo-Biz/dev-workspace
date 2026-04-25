@@ -74,7 +74,6 @@ Evidence:
 - `docs/phone-control.md:46-64` and `docs/phone-control.md:101-118` instruct the operator to run `push-phone`, but there is no tracked `push-phone` script in this repo.
 - The repo does contain `scripts/dws-phone-server.py:1-39`, but there is no tracked phone-server wrapper under repo `bin/` and no tracked `dws-phone-server.service` unit.
 - The repo installers only deploy launcher/health/notifier-related files: `scripts/vm-setup.sh:811-815` and `scripts/dws-update.sh:6-10`.
-- Reboot docs also assume the missing service exists, for example `docs/reboot-recovery-test.md:18`, `docs/reboot-recovery-test.md:121`, and `docs/reboot-recovery-test.md:144-151`.
 
 Impact:
 
