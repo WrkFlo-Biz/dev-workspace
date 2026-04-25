@@ -12,7 +12,7 @@ separate architecture views:
 | --- | --- | --- |
 | Canonical product architecture | Provider-agnostic product model and seven public layers | [wrkflo-7layer-vision.md](./wrkflo-7layer-vision.md) |
 | Current implementation stack | Live Azure-first operator environment and bootstrap | this document, [implementation-substrate.md](./implementation-substrate.md), [secrets-boundary.md](./secrets-boundary.md) |
-| Target production topology | Planned control-plane, governance, memory, and public-surface boundaries | [governance.md](./governance.md), [memory-architecture.md](./memory-architecture.md), [implementation-substrate.md](./implementation-substrate.md) |
+| Target production topology | Planned control-plane, governance, memory, and public-surface boundaries | [current-implementation-vs-canonical.md](./current-implementation-vs-canonical.md), [governance.md](./governance.md), [memory-architecture.md](./memory-architecture.md), [implementation-substrate.md](./implementation-substrate.md) |
 
 ## Architecture framing
 

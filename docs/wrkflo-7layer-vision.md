@@ -22,6 +22,13 @@ Wrk.Flo is an **implementation-grade AI workflow OS for SMBs**: a multi-agent, m
 3. Target production topology: public surfaces, control-plane services, memory
    stores, and governance controls deployed with clear boundaries
 
+Reference docs:
+
+- [current-implementation-vs-canonical.md](./current-implementation-vs-canonical.md)
+- [implementation-substrate.md](./implementation-substrate.md)
+- [governance.md](./governance.md)
+- [memory-architecture.md](./memory-architecture.md)
+
 ## Canonical 7 Layers
 
 1. **Interfaces**: chat, voice, dashboards, widgets, operator console, API/CLI
@@ -54,6 +61,24 @@ outside the canonical seven layers:
 - Front Door or Application Gateway may be added later if public routing or WAF
   needs increase
 - Cloudflare is not part of the current Azure-first path
+
+## Memory Boundary
+
+Wrk-Flo separates storage roles from logical memory tiers:
+
+- Redis handles hot coordination, leases, caches, and ephemeral runtime state
+- durable relational storage handles approvals, immutable history, lineage, and
+  audit evidence
+- vector or retrieval stores handle semantic lookup across reusable memory
+
+The logical tiers remain:
+
+- client-level memory
+- domain-level memory
+- platform-level memory
+
+See [memory-architecture.md](./memory-architecture.md) for the storage and tier
+boundary in detail.
 
 ## Moat Layers
 

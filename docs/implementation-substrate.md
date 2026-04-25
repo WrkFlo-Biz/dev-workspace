@@ -1,46 +1,49 @@
-# Wrk-Flo Implementation Substrate
+# Implementation Substrate
 
-This document describes the current infrastructure runtime beneath the canonical
-Wrk-Flo seven-layer product architecture.
+This document describes the current Azure-first runtime substrate beneath the
+canonical Wrk-Flo seven-layer product architecture. It is not a public "Layer
+0"; it is the deployment and infrastructure boundary that supports the layers.
 
-It is intentionally separate from the public seven layers. There is no new
-public "Layer 0" in the canonical model.
+## Core Rules
 
-## Current Azure-first substrate
+- Keep the canonical seven layers provider-agnostic.
+- Put cloud, networking, runtime, and deployment decisions here.
+- Keep GitHub Enterprise as the governance and deployment spine.
+- Keep runtime secrets in Azure Key Vault with managed identities.
 
-| Area | Current path | Notes |
-| --- | --- | --- |
-| Operator workspace | Azure VM + Ubuntu + Tailscale + `tmux` | Current development and operator entrypoint |
-| Model access | Azure AI Foundry | Current model-routing and provider access path |
-| Governance and deployment | GitHub Enterprise + GitHub Actions | GitHub Secrets stays CI/CD-scoped |
-| Runtime identity and secrets | Azure managed identities + Azure Key Vault | Target runtime authority for live services |
-| Public application surface | Azure App Service | Current planned first hosted public-surface step |
-| Edge / WAF / global routing | Front Door or Application Gateway later if required | Not a current requirement for the Azure-first path |
+## Current Azure-First Path
 
-Cloudflare is not part of the current implementation path.
+| Area | Current direction |
+| --- | --- |
+| Operator access | Tailscale, MagicDNS, SSH, and `tmux` on the Azure VM |
+| Source and release control | GitHub Enterprise with workflow and environment gates |
+| Model/runtime bootstrap | Azure AI Foundry-backed profiles in the operator environment |
+| Control plane | `wrkflo-orchestrator` HTTP API and worker runtime |
+| Workflow authoring | Langflow for template and builder workflows |
+| Public application surface | Azure App Service is the current planned first hosted step |
+| Hot coordination | Redis for queue state, leases, TTL caches, and ephemeral coordination |
+| Durable truth | relational storage for approvals, lineage, immutable history, and audit |
+| Retrieval memory | vector or retrieval store for semantic lookup across reusable memory |
 
-## Why this stays separate from the canonical seven layers
+## Public Surface Boundary
 
-The seven layers describe product responsibilities. The implementation substrate
-describes where and how those responsibilities are currently deployed.
+- Azure App Service is the current planned public-surface step.
+- Front Door or Application Gateway may be added later if WAF, routing, or
+  broader public exposure requires them.
+- Cloudflare is not part of the current Azure-first implementation path.
 
-Changing the substrate should not force a rewrite of the canonical product
-architecture unless the product behavior itself changes.
+## Execution Boundary
 
-## Target production topology
+- `tmux` is a current operator/runtime adapter, not the product architecture.
+- External runtimes such as OpenClaw integrate through APIs rather than joining
+  the local worker fleet as first-class tmux sessions.
+- The current VM and session fleet prove orchestration patterns, but the target
+  runtime contract is typed services plus hosted workers, not a permanent VM
+  dependency.
 
-The expected production shape separates:
+## What Stays Out Of The Canonical 7 Layers
 
-- user-facing application surfaces
-- orchestration and workflow control-plane services
-- Redis-backed coordination and short-lived runtime state
-- durable relational history, approvals, and lineage
-- retrieval and vector indexes for memory lookup
-
-This separation is important for reliability, auditability, and future vendor
-portability even while the near-term implementation path stays Azure-first.
-
-## Repo boundary
-
-`dev-workspace` documents the operator environment and the platform narrative.
-Sibling repos own concrete service contracts and implementation ADRs.
+- vendor names and cloud products
+- VM topology and session-management details
+- CI/CD and environment-promotion mechanics
+- secrets-storage implementation details

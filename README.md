@@ -12,8 +12,10 @@ Wrk-Flo keeps three architecture views separate:
 - Current implementation stack: the live operator environment in
   [docs/architecture.md](docs/architecture.md) and the Azure-first substrate in
   [docs/implementation-substrate.md](docs/implementation-substrate.md)
-- Target production topology: platform governance and memory/storage boundaries
-  in [docs/governance.md](docs/governance.md) and
+- Target production topology: the side-by-side architecture boundary in
+  [docs/current-implementation-vs-canonical.md](docs/current-implementation-vs-canonical.md),
+  plus the governance and memory/storage boundaries in
+  [docs/governance.md](docs/governance.md) and
   [docs/memory-architecture.md](docs/memory-architecture.md)
 
 GitHub Enterprise is the governance and deployment spine. GitHub Secrets is

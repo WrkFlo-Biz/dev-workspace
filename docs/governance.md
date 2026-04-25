@@ -1,53 +1,52 @@
-# Wrk-Flo Governance Architecture
+# Governance
 
-This document defines the platform-level governance boundary for Wrk-Flo. It is
-separate from implementation details inside sibling runtime repos.
+Wrk-Flo separates governance and deployment control from runtime execution
+control. Repository settings, CI pipelines, and runtime secrets should not be
+collapsed into one trust boundary.
 
-## Governance spine
+## Governance Spine
 
-GitHub Enterprise is the canonical governance and deployment spine:
+GitHub Enterprise is the governance and deployment spine for the platform.
 
-- repositories, pull requests, and review policy live there
-- Actions and environment controls govern CI/CD flow
-- branch protection and release approval live there
-- GitHub Secrets is CI/CD-scoped only
-
-Runtime secrets do not belong in GitHub Secrets. Live services should obtain
-runtime credentials through Azure Key Vault plus managed identities.
-
-## Governance responsibilities
-
-| Area | Primary system | Notes |
+| Plane | Primary system | Responsibility |
 | --- | --- | --- |
-| Source control and review | GitHub Enterprise | Canonical change history and approval boundary |
-| CI/CD secret injection | GitHub Secrets | Build and deployment only |
-| Runtime identity | Azure managed identities | Service-to-service auth without long-lived shared secrets |
-| Runtime secret authority | Azure Key Vault | API keys, connection strings, signing material, and rotation |
-| Human approvals | Product workflow controls | Tiered approvals, delegated authority, and audit evidence |
-| Audit retention and lineage | Durable relational data store | Not Redis and not a CI/CD secret store |
+| Source and review | GitHub Enterprise | repos, ADRs, pull requests, branch protection, code owners, release intent |
+| CI/CD and promotion | GitHub Enterprise workflows and environment gates | build, verify, publish, and approve promotion between environments |
+| Runtime platform | Azure | compute, networking, managed identities, Key Vault, public application surfaces |
+| Execution control | wrkflo-orchestrator | workflow policy, approval tokens, audit events, task contracts |
 
-## Relationship to the canonical seven layers
+## Secrets And Identity Boundary
 
-Governance remains part of the canonical layer 7 trust boundary. The cloud or
-deployment substrate that implements those controls is not a new public layer.
+GitHub Secrets is CI/CD-scoped only:
 
-## Azure-first implementation path
+- use it for pipeline bootstrap, short-lived deployment credentials, or
+  federated CI access
+- do not treat it as the runtime application secret store
+- do not make it the durable home for operator-only or tenant runtime secrets
 
-The current platform narrative is Azure-first:
+Runtime secrets belong in Azure Key Vault, with managed identities as the
+default runtime access path:
 
-- Azure VM for the operator workspace and development substrate
-- Azure AI Foundry for model access
-- Azure Key Vault plus managed identities for runtime secrets and identity
-- Azure App Service as the current planned public-surface step
-- Front Door or Application Gateway only if later public exposure requires WAF
-  or routing controls
+- App Service, workers, and other hosted components should read secrets through
+  managed identity rather than shipping long-lived credentials
+- local `.env` files are bootstrap conveniences for the dev workspace, not the
+  target production pattern
+- approval credentials, service credentials, and connection strings should move
+  behind Key Vault references as the runtime hardens
 
-Cloudflare is not part of the current implementation path.
+## Promotion Model
 
-## What this repo does and does not own
+1. GitHub Enterprise captures the intended change through PR review and branch policy.
+2. CI verifies the change and produces versioned artifacts.
+3. Environment approvals decide whether the artifact can move forward.
+4. Azure deploys the approved runtime with managed identity and Key Vault references.
+5. wrkflo-orchestrator records runtime approvals, lineage, and evidence in durable storage.
 
-`dev-workspace` owns the platform narrative, governance positioning, and
-operator substrate docs.
+## Governance Guardrails
 
-`wrkflo-orchestrator` and other sibling repos own runtime-specific
-implementation contracts, ADRs, and service behavior.
+- Sensitive runtime actions require human approval and durable evidence.
+- Runtime approval records belong in the durable data plane, not in CI metadata.
+- External agents integrate through APIs and contracts; they do not inherit repo
+  admin or cloud-admin privileges by default.
+- Platform documentation keeps canonical product architecture separate from
+  implementation-substrate and deployment docs.
