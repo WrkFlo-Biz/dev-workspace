@@ -72,6 +72,8 @@ exit 1
 '
 
 install -m 0644 "${ROOT}/config/tmux.conf" "${HOME}/.tmux.conf"
+printf '# stale boot verify copy\n' > "${HOME}/bin/dws-boot-verify.sh"
+chmod 0755 "${HOME}/bin/dws-boot-verify.sh"
 install -m 0755 "${ROOT}/scripts/dws-health.sh" "${HOME}/bin/dws-health.sh"
 install -m 0755 "${ROOT}/scripts/dws-health-check.sh" "${HOME}/bin/dws-health-check.sh"
 install -m 0755 "${ROOT}/scripts/dws-rotate-logs.sh" "${HOME}/bin/dws-rotate-logs.sh"
@@ -82,15 +84,20 @@ chmod 0755 "${HOME}/bin/dws-sessions-init.sh"
 dry_run_output=$("${SCRIPT}" --dry-run 2>&1)
 assert_contains "${dry_run_output}" "Skipping git pull: repo has local changes; using current checkout."
 assert_contains "${dry_run_output}" "Would update:"
+assert_contains "${dry_run_output}" "  - ~/bin/dws-boot-verify.sh"
 assert_contains "${dry_run_output}" "  - ~/bin/dws-sessions-init.sh"
 assert_not_contains "${dry_run_output}" "unexpected git pull"
 assert_not_contains "${dry_run_output}" "  - ~/.tmux.conf"
 
 apply_output=$("${SCRIPT}" --force 2>&1)
 assert_contains "${apply_output}" "Changed:"
+assert_contains "${apply_output}" "  - ~/bin/dws-boot-verify.sh"
 assert_contains "${apply_output}" "  - ~/bin/dws-sessions-init.sh"
 assert_not_contains "${apply_output}" "tmux reloaded"
 assert_not_contains "${apply_output}" "unexpected git pull"
+
+cmp -s "${ROOT}/bin/dws-boot-verify.sh" "${HOME}/bin/dws-boot-verify.sh" || \
+  fail "live boot verify copy did not match repo script"
 
 cmp -s "${ROOT}/scripts/dws-sessions-init.sh" "${HOME}/bin/dws-sessions-init.sh" || \
   fail "live bootstrap copy did not match repo script"

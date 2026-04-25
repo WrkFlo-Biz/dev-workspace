@@ -297,7 +297,8 @@ ln -sf ~/projects/dev-workspace/scripts/dws-termius-setup.sh ~/bin/dws-termius-s
 ```
 
 The tracked `scripts/dws-update.sh` also refreshes `~/.tmux.conf`,
-`~/bin/dws-health.sh`, `~/bin/dws-health-check.sh`,
+`~/bin/dws-boot-verify.sh`, `~/bin/dws-health.sh`,
+`~/bin/dws-health-check.sh`,
 `~/bin/dws-rotate-logs.sh`, and `~/bin/dws-notify.sh`. It does **not**
 currently refresh `~/bin/dws-launcher.sh`, so reinstall that file manually or
 rerun `vm-setup.sh` after launcher changes. For the symlinked helpers above,

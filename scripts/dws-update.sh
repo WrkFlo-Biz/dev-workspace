@@ -5,6 +5,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FORCE=0 DRY=0
 FILES=(
   "$REPO/config/tmux.conf:$HOME/.tmux.conf:0644:~/.tmux.conf"
+  "$REPO/bin/dws-boot-verify.sh:$HOME/bin/dws-boot-verify.sh:0755:~/bin/dws-boot-verify.sh"
   "$REPO/scripts/dws-sessions-init.sh:$HOME/bin/dws-sessions-init.sh:0755:~/bin/dws-sessions-init.sh"
   "$REPO/scripts/dws-health.sh:$HOME/bin/dws-health.sh:0755:~/bin/dws-health.sh"
   "$REPO/scripts/dws-health-check.sh:$HOME/bin/dws-health-check.sh:0755:~/bin/dws-health-check.sh"
