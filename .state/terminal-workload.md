@@ -1,6 +1,6 @@
 # Shared Terminal Workload
 
-Last updated: 2026-04-25 UTC
+Last updated: 2026-04-25 10:55 UTC
 Canonical path: `/home/moses/dev-workspace/.state/terminal-workload.md`
 
 This file is the live source of truth for terminal assignments. If a session
@@ -22,8 +22,15 @@ goes idle, loses context, or finishes a task, reopen this file first.
 - Do not revert someone else's edits.
 - One repo per worker at a time unless this file explicitly says otherwise.
 - Do not commit or push unless the assignment explicitly says so.
+- Do not answer worker edit/approval prompts from the orchestrator session;
+  approvals must happen in the worker terminal on the Mac side.
 - Keep verification commands visible in the pane before you mark a task done.
 - If this file and old pane text disagree, this file wins.
+- Ignore `/tmp/worker-queues/*` and queued prompt history unless this file
+  explicitly tells you to read one; this file is the only authoritative queue.
+- If another worker lands a commit in your repo first and your push is rejected,
+  run `git pull --rebase origin main`, restage only your owned files, rerun
+  your listed verification, then push.
 
 ## Current Assignments
 
@@ -32,130 +39,131 @@ goes idle, loses context, or finishes a task, reopen this file first.
 - Scope: cross-repo coordination only
 - Current tasks:
   - keep this file updated as the canonical live backlog
-  - keep worker assignments aligned with the remaining clean commit/push lanes
+  - keep worker assignments aligned with the actual remaining backlog
   - keep commit scopes isolated from generated files, telemetry/logs, and
-    unrelated untracked docs/state
+    unrelated `.state/` scratch files
   - reassign idle sessions by updating this file first, then dispatching with
     `~/bin/tmux-send`
+  - after any terminal relaunch or stale prompt, make sure the dispatched
+    message actually lands in the chat by relying on `~/bin/tmux-send` and
+    checking the pane moved off the idle prompt
+  - if a heartbeat says `idle` but the owned repo already shows in-lane edits
+    and no completion/blocker log exists yet, refresh the same lane instead of
+    reassigning it
+  - do not dispatch multiple `tmux-send` calls in parallel; it uses a shared
+    tmux buffer and can cross-send prompts between sessions
+  - if a worker is stuck in an interactive approval/prompt state, do not answer
+    it from this orchestrator pane; clear/restart the worker prompt and
+    re-dispatch so approvals happen in the worker terminal on the Mac side
+  - critical review flags block new assignments; clear the live review issue
+    first, then refresh the queue
 
 ### gs-5-4
-- Status: active
+- Status: standby
 - Repo: `/home/moses/projects/global-sentinel`
-- Context refresh: complete
-  - loaded `CLAUDE.md`, `AGENTS.md`, `SOUL.md`, `USER.md`, `MEMORY.md`,
-    `memory/2026-04-24.md`, and `memory/2026-04-25.md`
-  - active GS guidance: `pytest -q tests/ -p no:cacheprovider`
-  - active GS work themes: OpenClaw demotion, Foundry/orchestrator routing,
-    Tier-2 approval mediation
 - Last completed:
-  `env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m pytest -q tests/ -p no:cacheprovider`
-  -> `768 passed, 1 skipped, 3 warnings`
+  verification-only completion of the GS approval/control surface coverage sweep
+  - no code changes; targeted verification already green at `2026-04-25T10:50:14Z`
 - Current task:
   - read this file before acting, then stay in `/home/moses/projects/global-sentinel`
-  - current GS `HEAD` already contains the docs-only commit
-    `7fc9bfd docs: add GS migration status for orchestrator migration lane`
-  - push that existing local `main` commit to `origin/main`
-  - do not stage, commit, or modify any other GS files
+  - standby; the GS approval/control surface coverage sweep verified green with
+    no owned diff, and no newer `gs-5-4` follow-on GS lane is canonized yet
+  - ignore stale prompts, `/tmp/worker-queues/*`, and any wrkflo-orchestrator
+    work unless this file changes first
+  - do not self-assign from stale pane history
+  - wait for workload refresh before taking another GS lane
   - leave a timestamped result in `/tmp/agent-coordination.md`
 
 ### dws-codex
-- Status: active
-- Repo: `/home/moses/dev-workspace`
-- Last completed: `docs/runbook.md` live-state/runbook correction lane
-- Reserved file until committed: `docs/runbook.md`
-- Last commit:
-  - `7bae487` `docs: update runbook with live service state, boot policy, verification commands`
+- Status: standby
+- Repo: `/home/moses/projects/global-sentinel`
+- Role: GS docs/state standby after OpenClaw demotion/state verification
+- Last completed:
+  verification-only completion of the GS OpenClaw demotion/state coverage sweep
+  - no code changes; targeted verification already green at `2026-04-25T10:51:01Z`
 - Current task:
-  - read this file before acting, then stay in `/home/moses/dev-workspace`
-  - review, commit, and push the `dws-update` follow-up set only:
-    `docs/setup.md`, `scripts/dws-update.sh`, `tests/test_dws_update.sh`
-  - verify with:
-    `env PYTHONDONTWRITEBYTECODE=1 bash tests/test_dws_update.sh`
-  - do not include `docs/runbook.md`, workload-state files, or unrelated
-    untracked docs
+  - read this file before acting, then stay in `/home/moses/projects/global-sentinel`
+  - standby; the GS OpenClaw demotion/state coverage sweep verified green with
+    no owned diff, and no newer `dws-codex` follow-on GS lane is canonized yet
+  - ignore stale prompts, `/tmp/worker-queues/*`, and any wrkflo-orchestrator
+    work unless this file changes first
+  - do not self-assign from stale pane history
+  - wait for workload refresh before taking another GS docs/state lane
   - leave a timestamped result in `/tmp/agent-coordination.md`
 
 ### dws-5-4
-- Status: active
+- Status: standby
 - Repo: `/home/moses/dev-workspace`
 - Last completed:
-  `env PYTHONDONTWRITEBYTECODE=1 bash tests/test_dws_update.sh`
-  -> `PASS: test_dws_update.sh`
+  committed/pushed the DWS safe-mode live decision correction lane
+  - `cd546c5` `docs: refresh dws safe mode live decision`
 - Current task:
   - read this file before acting, then stay in `/home/moses/dev-workspace`
-  - review, commit, and push the workload-infrastructure lane only:
-    `scripts/dws-orchestrator-boot.sh`,
-    `.state/terminal-workload.md`
-  - verify with:
-    `bash -n scripts/dws-orchestrator-boot.sh`
-    and
-    `git diff --check -- scripts/dws-orchestrator-boot.sh .state/terminal-workload.md`
-  - do not include `docs/setup.md`, `scripts/dws-update.sh`,
-    `tests/test_dws_update.sh`, or any unrelated `.state/` files
-  - leave a timestamped result in `/tmp/agent-coordination.md`
+  - standby; the safe-mode live-decision lane landed as `cd546c5`
+  - ignore stale `wrkflo-orchestrator` prompts, `/tmp/worker-queues/*`, and
+    any off-lane completion text; no `dws-5-4` follow-on lane is canonized yet
+  - do not self-assign from stale pane history
+  - wait for workload refresh before taking another DWS lane
+  - when finished or blocked, leave a timestamped result in
+    `/tmp/agent-coordination.md`
+
+### gs-worker
+- Status: standby
+- Repo: `/home/moses/projects/global-sentinel`
+- Last completed:
+  verification-only completion of the GS execution-routing coverage sweep
+  - no code changes; targeted verification already green at `2026-04-25T10:52:10Z`
+- Current task:
+  - read this file before acting, then stay in `/home/moses/projects/global-sentinel`
+  - standby; the GS execution-routing coverage sweep verified green with no
+    owned diff, and no newer `gs-worker` follow-on GS lane is canonized yet
+  - ignore stale prompts, `/tmp/worker-queues/*`, and any wrkflo-orchestrator
+    work unless this file changes first
+  - do not self-assign from stale pane history
+  - wait for workload refresh before taking another GS lane
+  - when finished or blocked, leave a timestamped result in
+    `/tmp/agent-coordination.md`
 
 ## Ready Commit Boundaries
 
-1. `global-sentinel`
-   - push existing local commit `7fc9bfd`
-2. `global-sentinel`
-   - `src/monitoring/telegram_topic_notifier.py`
-   - `scripts/agent_factory.py`
-   - `tests/test_telegram_topic_notifier.py`
-   - `tests/dashboard/test_portfolio_api.py`
+1. `dev-workspace`
+   - landed on `docs/architecture-alignment` as `cd546c5`
+   - DWS safe-mode live decision verification
+   - include:
+     `docs/dws-safe-mode-live-decision.md`
+   - allowed no-op completion:
+     if the doc already matches the live installed-disabled state, do not
+     create a commit; log the verification result only
+   - use commit message:
+     `docs: refresh dws safe mode live decision`
    - verify with:
-     `env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m pytest -q tests/ -p no:cacheprovider`
-2. `dev-workspace`
-   - `docs/setup.md`
-   - `scripts/dws-update.sh`
-   - `tests/test_dws_update.sh`
-   - verify with:
-     `env PYTHONDONTWRITEBYTECODE=1 bash tests/test_dws_update.sh`
-3. `dev-workspace`
-   - `scripts/dws-orchestrator-boot.sh`
-   - `.state/terminal-workload.md`
-   - verify with:
-     `bash -n scripts/dws-orchestrator-boot.sh`
-     and
-     `git diff --check -- scripts/dws-orchestrator-boot.sh .state/terminal-workload.md`
-   - `docs/setup.md`
+     `~/projects/dev-workspace/bin/dws-systemd-user-setup.sh check`
+     `systemctl --user is-enabled dws-sessions-init.service dws-safe-mode.service`
+     `systemctl --user status dws-sessions-init.service dws-safe-mode.service --no-pager`
+     `cmp -s ~/projects/dev-workspace/config/systemd-user/dws-safe-mode.service ~/.config/systemd/user/dws-safe-mode.service`
+     `git diff --check -- docs/dws-safe-mode-live-decision.md`
 
 ## Quick References
 
-- Workload: `sed -n '1,260p' /home/moses/dev-workspace/.state/terminal-workload.md`
+- Workload: `sed -n '1,320p' /home/moses/dev-workspace/.state/terminal-workload.md`
 - Progress log: `tail -n 40 /tmp/agent-coordination.md`
+- Review queue: `tail -n 40 /tmp/review-requests.md`
 - Dev-workspace status: `git -C /home/moses/dev-workspace status --short`
 - GS status: `git -C /home/moses/projects/global-sentinel status --short`
-
-### gs-worker
-- Status: active
-- Repo: `/home/moses/projects/global-sentinel`
-- tmux session: `gs-worker`
-- Dispatch: `tmux send-keys -t gs-worker "YOUR TASK HERE" Enter`
-- Last completed: (new session)
-- Current task:
-  - read this file before acting, then stay in `/home/moses/projects/global-sentinel`
-  - review, commit, and push the GS code/test fix set only:
-    `scripts/agent_factory.py`,
-    `src/monitoring/telegram_topic_notifier.py`,
-    `tests/test_telegram_topic_notifier.py`,
-    `tests/dashboard/test_portfolio_api.py`
-  - verify with:
-    `env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m pytest -q tests/ -p no:cacheprovider`
-  - do not include `docs/migration-status.md`, `logs/`, `telemetry/`, `.codex/`,
-    or `data/`
-  - leave a timestamped result in `/tmp/agent-coordination.md`
+- Orchestrator status: `git -C /home/moses/projects/wrkflo-orchestrator status --short`
 
 ## Orchestrator Dispatch Guide
 
-All 4 workers are in tmux. Use `tmux send-keys` to dispatch:
+All 4 workers are in tmux. Use `~/bin/tmux-send` to dispatch, never raw
+`tmux send-keys`. `tmux-send` pastes the full message, presses Enter, retries if
+the pane still looks idle, and verifies the worker left the prompt.
 
 ```bash
 # Send task to any worker:
-tmux send-keys -t gs-5-4 "YOUR TASK" Enter
-tmux send-keys -t gs-worker "YOUR TASK" Enter
-tmux send-keys -t dws-5-4 "YOUR TASK" Enter
-tmux send-keys -t dws-codex "YOUR TASK" Enter
+~/bin/tmux-send gs-5-4 "YOUR TASK"
+~/bin/tmux-send gs-worker "YOUR TASK"
+~/bin/tmux-send dws-5-4 "YOUR TASK"
+~/bin/tmux-send dws-codex "YOUR TASK"
 
 # Check worker output:
 tmux capture-pane -t gs-5-4 -p -S -20
@@ -164,10 +172,13 @@ tmux capture-pane -t dws-5-4 -p -S -20
 tmux capture-pane -t dws-codex -p -S -20
 ```
 
+If a terminal was just relaunched or still shows an idle prompt after dispatch,
+run `~/bin/tmux-send` again rather than assuming the message entered the chat.
+
 Worker inventory:
 | Session     | Repo             | Profile        | Role                    |
 |-------------|------------------|----------------|-------------------------|
-| gs-5-4      | global-sentinel  | foundry-5_4    | GS migration/docs       |
-| gs-worker   | global-sentinel  | full-auto      | GS test sweep/fixes     |
-| dws-5-4     | dev-workspace    | foundry-5_4    | DWS drift/doc fixes     |
-| dws-codex   | dev-workspace    | foundry-codex  | DWS runbook/docs        |
+| gs-5-4      | global-sentinel | foundry-5_4 | standby after approval/control surface verification |
+| gs-worker   | global-sentinel | full-auto | standby after execution-routing verification |
+| dws-5-4     | dev-workspace | foundry-5_4 | standby after safe-mode live decision correction |
+| dws-codex   | global-sentinel | foundry-codex | standby after OpenClaw demotion/state verification |
