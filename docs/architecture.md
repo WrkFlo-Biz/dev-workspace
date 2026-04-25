@@ -217,6 +217,10 @@ named by repo short name plus profile label:
 | `orch` | `orch-5-4`, `orch-claude` |
 | `dws` | `dws-5-4`, `dws-codex`, `dws-claude` |
 
+An `oclaw-*` session, when one exists on the VM, is only a local shell for the
+checked-out `openclaw-prod` repo. It does not mean the deployed OpenClaw agent
+fleet is part of the dev-workspace worker pool.
+
 Session metadata is persisted in two places:
 
 - `tmux` session options: `@dws_project`, `@dws_model`, `@dws_profile`, `@dws_task`
@@ -242,6 +246,12 @@ The checked-in repo is now aligned to an on-demand `tmux` model:
 - `orchestrator` may still exist as a live session on hosts that run the
   sibling API/runtime, but it is no longer a repo-guaranteed boot-time session.
 - Additional ad hoc sessions can exist during live operation and are expected.
+
+OpenClaw's deployed agents stay outside the local `tmux` fleet. They run on
+their own Azure-side runtime and integrate with `wrkflo-orchestrator` through
+HTTP API contracts when they need approval routing, task submission, or health
+reporting, so they should be treated as external connectors rather than Layer 1
+worker sessions on this VM.
 
 One live VM snapshot previously showed `dws-a`, `dws-b`, `orchestrator`, and
 `worker-*` sessions, but that should be treated as historical operator state,

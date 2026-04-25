@@ -48,5 +48,8 @@ default runtime access path:
 - Runtime approval records belong in the durable data plane, not in CI metadata.
 - External agents integrate through APIs and contracts; they do not inherit repo
   admin or cloud-admin privileges by default.
+- OpenClaw is governed as an external connector: its deployed agents stay
+  outside the local dev-workspace `tmux` fleet and use `wrkflo-orchestrator`
+  API contracts instead of direct worker-session access.
 - Platform documentation keeps canonical product architecture separate from
   implementation-substrate and deployment docs.
