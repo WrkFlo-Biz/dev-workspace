@@ -131,6 +131,47 @@ Every 30s: Watchdog checks sessions → detects crash/compact/error
 - `/v1/workspace/health` — VM health (Tailscale, disk, memory, uptime)
 - `/v1/tasks/history` — run history
 
+### Authoring And Runtime Boundary
+
+- Langflow is the workflow-template and visual-authoring surface.
+- `wrkflo-orchestrator` is the runtime control plane and execution authority.
+- Langflow-authored flows may describe workflow shape or hand off compiled
+  runtime input, but the builder is not the system of record for approvals,
+  retries, policy, audit, or live state transitions.
+
+### Runtime State Boundary
+
+The live stack still coordinates work with the workload file, coordination log,
+review snapshot, and append-only state in the sibling orchestrator. The durable
+runtime contract remains a split between hot coordination state and durable
+truth:
+
+- hot coordination: queue state, leases, claims, timers, approval-token caches,
+  and similar ephemeral runtime control data
+- durable truth: approvals, immutable run history, lineage, audit evidence, and
+  terminal workflow state
+
+In the production direction, Redis or an equivalent ephemeral store owns the
+hot coordination path, while durable relational storage owns the system-of-
+record history.
+
+### Live Role Vocabulary
+
+The current stack already maps to the durable Wrk-Flo role vocabulary:
+
+- **Chief orchestrator**: `orchestrator-supervisor.sh` plus `orch-agent`
+- **Sub-orchestrators**: workload-scoped domain lanes coordinated through
+  `.state/terminal-workload.md`
+- **Workers / doers**: repo-focused Codex or Claude panes that execute assigned
+  slices
+- **Tool operators**: repo, browser, CLI, GitHub, and HTTP adapters behind
+  worker actions
+- **Critic / reviewer**: `code-review.sh` plus the supervisor review loop
+
+Planner, retriever, and presenter responsibilities still exist mostly as ad hoc
+behavior in the current operator stack. They remain part of the architecture
+vocabulary even when they are not yet split into dedicated long-running roles.
+
 ## Mapping To The Canonical 7 Layers
 
 The public seven-layer model lives in
