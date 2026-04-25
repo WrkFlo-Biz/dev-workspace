@@ -502,8 +502,67 @@ ufw_has_public_tcp_rule() {
   return 1
 }
 
+ufw_numbered_rule_target() {
+  local line="$1"
+  local -a fields=()
+
+  read -r -a fields <<<"$line"
+
+  case "${fields[0]:-}" in
+    '[') printf '%s' "${fields[2]:-}" ;;
+    \[*\]) printf '%s' "${fields[1]:-}" ;;
+    *) printf '%s' "${fields[0]:-}" ;;
+  esac
+}
+
+ufw_policy_allows_tailscale_tcp_target() {
+  local target="$1"
+  local port
+
+  [ "$target" = "${SSH_PORT}/tcp" ] && return 0
+
+  for port in "${DEV_PORTS[@]}"; do
+    [ "$target" = "${port}/tcp" ] && return 0
+  done
+
+  return 1
+}
+
+ufw_find_unexpected_tailscale_tcp_rule() {
+  local lines="$1"
+  local line target
+
+  while IFS= read -r line; do
+    case "$line" in
+      *'/tcp'*'ALLOW IN'*"$TAILSCALE_SUBNET"*)
+        target=$(ufw_numbered_rule_target "$line")
+        if ! ufw_policy_allows_tailscale_tcp_target "$target"; then
+          printf '%s' "$target"
+          return 0
+        fi
+        ;;
+    esac
+  done <<<"$lines"
+
+  return 1
+}
+
+ufw_count_tailscale_tcp_rules() {
+  local lines="$1"
+  local line count=0
+
+  while IFS= read -r line; do
+    case "$line" in
+      *'/tcp'*'ALLOW IN'*"$TAILSCALE_SUBNET"*) count=$((count + 1)) ;;
+    esac
+  done <<<"$lines"
+
+  printf '%s' "$count"
+}
+
 verify_ufw() {
-  local verbose numbered port
+  local verbose numbered port unexpected_tailscale_tcp_rule
+  local tailscale_tcp_rule_count expected_tailscale_tcp_rule_count
 
   verbose=$(capture_cmd ufw status verbose) || die "unable to read ufw status: ${verbose:-unknown error}"
   numbered=$(capture_cmd ufw status numbered) || die "unable to read ufw numbered status: ${numbered:-unknown error}"
@@ -550,6 +609,19 @@ verify_ufw() {
     fi
     verify_pass "tcp/${port} is restricted to ${TAILSCALE_SUBNET}"
   done
+
+  unexpected_tailscale_tcp_rule=$(ufw_find_unexpected_tailscale_tcp_rule "$numbered" || true)
+  if [ -n "$unexpected_tailscale_tcp_rule" ]; then
+    verify_fail "unexpected Tailscale-only tcp rule detected: ${unexpected_tailscale_tcp_rule}"
+    return 1
+  fi
+
+  tailscale_tcp_rule_count=$(ufw_count_tailscale_tcp_rules "$numbered")
+  expected_tailscale_tcp_rule_count=$(( ${#DEV_PORTS[@]} + 1 ))
+  if [ "$tailscale_tcp_rule_count" -ne "$expected_tailscale_tcp_rule_count" ]; then
+    verify_fail "unexpected Tailscale-only tcp rule count: expected ${expected_tailscale_tcp_rule_count}, found ${tailscale_tcp_rule_count}"
+    return 1
+  fi
 }
 
 iptables_line_matches() {

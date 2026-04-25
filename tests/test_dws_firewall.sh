@@ -187,6 +187,106 @@ EOF
   assert_contains "${output}" 'verification failed: unexpected public tcp/22 rule — SSH should be Tailscale-only'
 }
 
+test_ufw_verify_fails_when_stale_tailscale_tcp_rule_is_present() {
+  local output
+
+  reset_fake_bin
+  write_fake_command ufw <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "$*" in
+  'status')
+    cat <<'OUT'
+Status: active
+OUT
+    ;;
+  'status verbose')
+    cat <<'OUT'
+Status: active
+Logging: off
+Default: deny (incoming), allow (outgoing), disabled (routed)
+New profiles: skip
+OUT
+    ;;
+  'status numbered')
+    cat <<'OUT'
+Status: active
+
+     To                         Action      From
+     --                         ------      ----
+[ 1] 41641/udp                  ALLOW IN    Anywhere
+[ 2] 22/tcp                     ALLOW IN    100.64.0.0/10
+[ 3] 8080/tcp                   ALLOW IN    100.64.0.0/10
+[ 4] 8081/tcp                   ALLOW IN    100.64.0.0/10
+[ 5] 9222/tcp                   ALLOW IN    100.64.0.0/10
+[ 6] 3000/tcp                   ALLOW IN    100.64.0.0/10
+[ 7] 8100/tcp                   ALLOW IN    100.64.0.0/10
+OUT
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+EOF
+
+  if output=$(run_script --backend ufw --verify 2>&1); then
+    fail 'expected ufw verification to fail when a stale Tailscale-only TCP rule is present'
+  fi
+
+  assert_contains "${output}" 'verification failed: unexpected Tailscale-only tcp rule detected: 8100/tcp'
+}
+
+test_ufw_verify_fails_when_tailscale_tcp_rule_is_duplicated() {
+  local output
+
+  reset_fake_bin
+  write_fake_command ufw <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "$*" in
+  'status')
+    cat <<'OUT'
+Status: active
+OUT
+    ;;
+  'status verbose')
+    cat <<'OUT'
+Status: active
+Logging: off
+Default: deny (incoming), allow (outgoing), disabled (routed)
+New profiles: skip
+OUT
+    ;;
+  'status numbered')
+    cat <<'OUT'
+Status: active
+
+     To                         Action      From
+     --                         ------      ----
+[ 1] 41641/udp                  ALLOW IN    Anywhere
+[ 2] 22/tcp                     ALLOW IN    100.64.0.0/10
+[ 3] 8080/tcp                   ALLOW IN    100.64.0.0/10
+[ 4] 8081/tcp                   ALLOW IN    100.64.0.0/10
+[ 5] 9222/tcp                   ALLOW IN    100.64.0.0/10
+[ 6] 3000/tcp                   ALLOW IN    100.64.0.0/10
+[ 7] 8080/tcp                   ALLOW IN    100.64.0.0/10
+OUT
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+EOF
+
+  if output=$(run_script --backend ufw --verify 2>&1); then
+    fail 'expected ufw verification to fail when a Tailscale-only TCP rule is duplicated'
+  fi
+
+  assert_contains "${output}" 'verification failed: unexpected Tailscale-only tcp rule count: expected 5, found 6'
+}
+
 test_iptables_dry_run_logs_expected_rules() {
   local output
 
@@ -393,6 +493,8 @@ test_script_is_executable
 test_ufw_dry_run_logs_expected_rules
 test_ufw_verify_passes_when_rules_match_policy
 test_ufw_verify_fails_when_ssh_rule_is_public
+test_ufw_verify_fails_when_stale_tailscale_tcp_rule_is_present
+test_ufw_verify_fails_when_tailscale_tcp_rule_is_duplicated
 test_iptables_dry_run_logs_expected_rules
 test_iptables_verify_passes_when_chain_is_first
 test_iptables_verify_fails_when_chain_drifts_from_repo_policy
