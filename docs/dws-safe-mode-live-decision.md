@@ -22,25 +22,31 @@ the intended steady-state runtime for this VM.
 
 ## Live Result
 
+- `dws-sessions-init.service` is enabled and `active (exited)`
 - `dws-safe-mode.service` is installed at
   `~/.config/systemd/user/dws-safe-mode.service`
 - the installed unit matches
   `config/systemd-user/dws-safe-mode.service`
 - `systemctl --user is-enabled dws-safe-mode.service` returns `disabled`
+- `systemctl --user status dws-safe-mode.service` shows `inactive (dead)`
 - `~/projects/dev-workspace/bin/dws-systemd-user-setup.sh check` passes
 
-## Drift Re-Verification
+## Broader Drift Notes
 
-The DWS service/runtime drift tied to this mission is currently reconciled:
+The safe-mode decision remains correct, but a broader runtime spot check showed
+one separate drift item outside this lane:
 
-- `dws-sessions-init.service` is installed, enabled, and `active (exited)`
-- `dws-safe-mode.service` is installed and `disabled`
-- the installed user-unit files match the repo copies
 - the retired `dws-task-monitor.service` is absent
 - `~/bin/dws-sessions-init.sh` matches `scripts/dws-sessions-init.sh`
-- `~/bin/dws-boot-verify.sh` matches `bin/dws-boot-verify.sh`
+- `~/bin/dws-boot-verify.sh` does **not** match
+  `bin/dws-boot-verify.sh`
 - `curl` checks for `/healthz`, `/v1/projects`, and `/v1/workspace/projects`
   all return `200`
+
+That older installed `dws-boot-verify.sh` copy does not change the safe-mode
+decision: the repo-owned safe-mode unit is installed and should stay disabled on
+this VM. It does mean the earlier claim that the broader DWS runtime drift was
+fully reconciled is no longer accurate.
 
 ## Verification Commands
 
@@ -54,6 +60,7 @@ cmp -s ~/projects/dev-workspace/scripts/dws-sessions-init.sh \
   ~/bin/dws-sessions-init.sh
 cmp -s ~/projects/dev-workspace/bin/dws-boot-verify.sh \
   ~/bin/dws-boot-verify.sh
+systemctl --user status dws-task-monitor.service --no-pager
 curl -sS -o /tmp/dws-healthz.json -w "%{http_code}\n" http://127.0.0.1:8100/healthz
 curl -sS -o /tmp/dws-projects.json -w "%{http_code}\n" http://127.0.0.1:8100/v1/projects
 curl -sS -o /tmp/dws-workspace-projects.json -w "%{http_code}\n" \
