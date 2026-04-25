@@ -75,7 +75,6 @@ EOF
   assert_contains "${output}" 'DRY-RUN: ufw allow from 100.64.0.0/10 to any port 22 proto tcp'
   assert_contains "${output}" 'DRY-RUN: ufw allow from 100.64.0.0/10 to any port 8080 proto tcp'
   assert_contains "${output}" 'DRY-RUN: ufw allow from 100.64.0.0/10 to any port 8081 proto tcp'
-  assert_contains "${output}" 'DRY-RUN: ufw allow from 100.64.0.0/10 to any port 8100 proto tcp'
   assert_contains "${output}" 'DRY-RUN: ufw allow from 100.64.0.0/10 to any port 9222 proto tcp'
   assert_contains "${output}" 'DRY-RUN: ufw allow from 100.64.0.0/10 to any port 3000 proto tcp'
   assert_contains "${output}" 'DRY-RUN: ufw --force enable'
@@ -115,10 +114,9 @@ Status: active
 [ 2] 22/tcp                     ALLOW IN    100.64.0.0/10
 [ 3] 8080/tcp                   ALLOW IN    100.64.0.0/10
 [ 4] 8081/tcp                   ALLOW IN    100.64.0.0/10
-[ 5] 8100/tcp                   ALLOW IN    100.64.0.0/10
-[ 6] 9222/tcp                   ALLOW IN    100.64.0.0/10
-[ 7] 3000/tcp                   ALLOW IN    100.64.0.0/10
-[ 8] 41641/udp (v6)             ALLOW IN    Anywhere (v6)
+[ 5] 9222/tcp                   ALLOW IN    100.64.0.0/10
+[ 6] 3000/tcp                   ALLOW IN    100.64.0.0/10
+[ 7] 41641/udp (v6)             ALLOW IN    Anywhere (v6)
 OUT
     ;;
   *)
@@ -135,7 +133,6 @@ EOF
   assert_contains "${output}" 'verification passed: tcp/22 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/8080 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/8081 is restricted to 100.64.0.0/10'
-  assert_contains "${output}" 'verification passed: tcp/8100 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/9222 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/3000 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'firewall verification complete'
@@ -173,9 +170,8 @@ Status: active
 [ 2] 22/tcp                     ALLOW IN    Anywhere
 [ 3] 8080/tcp                   ALLOW IN    100.64.0.0/10
 [ 4] 8081/tcp                   ALLOW IN    100.64.0.0/10
-[ 5] 8100/tcp                   ALLOW IN    100.64.0.0/10
-[ 6] 9222/tcp                   ALLOW IN    100.64.0.0/10
-[ 7] 3000/tcp                   ALLOW IN    100.64.0.0/10
+[ 5] 9222/tcp                   ALLOW IN    100.64.0.0/10
+[ 6] 3000/tcp                   ALLOW IN    100.64.0.0/10
 OUT
     ;;
   *)
@@ -215,7 +211,6 @@ EOF
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp -s 100.64.0.0/10 --dport 22 -j ACCEPT'
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp -s 100.64.0.0/10 --dport 8080 -j ACCEPT'
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp -s 100.64.0.0/10 --dport 8081 -j ACCEPT'
-  assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp -s 100.64.0.0/10 --dport 8100 -j ACCEPT'
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp -s 100.64.0.0/10 --dport 9222 -j ACCEPT'
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -p tcp -s 100.64.0.0/10 --dport 3000 -j ACCEPT'
   assert_contains "${output}" 'DRY-RUN: iptables -w -A DWS_FIREWALL_INPUT -j DROP'
@@ -249,7 +244,6 @@ OUT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 22 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8080 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8081 -j ACCEPT
--A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8100 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 9222 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 3000 -j ACCEPT
 -A DWS_FIREWALL_INPUT -j DROP
@@ -269,7 +263,6 @@ EOF
   assert_contains "${output}" 'verification passed: tcp/22 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/8080 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/8081 is restricted to 100.64.0.0/10'
-  assert_contains "${output}" 'verification passed: tcp/8100 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/9222 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: tcp/3000 is restricted to 100.64.0.0/10'
   assert_contains "${output}" 'verification passed: all other inbound IPv4 traffic drops at the end of DWS_FIREWALL_INPUT'
@@ -301,7 +294,6 @@ OUT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 22 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8080 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8081 -j ACCEPT
--A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8100 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 9222 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 3000 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp --dport 8443 -j ACCEPT
@@ -345,7 +337,6 @@ OUT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp --dport 22 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8080 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8081 -j ACCEPT
--A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 8100 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 9222 -j ACCEPT
 -A DWS_FIREWALL_INPUT -p tcp -m tcp -s 100.64.0.0/10 --dport 3000 -j ACCEPT
 -A DWS_FIREWALL_INPUT -j DROP

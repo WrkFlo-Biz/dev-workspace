@@ -4,7 +4,7 @@ set -euo pipefail
 TAILSCALE_SUBNET="${DWS_TAILSCALE_SUBNET:-100.64.0.0/10}"
 SSH_PORT="${DWS_SSH_PORT:-22}"
 TAILSCALE_PORT="${DWS_TAILSCALE_PORT:-41641}"
-DEV_PORTS=(8080 8081 8100 9222 3000)
+DEV_PORTS=(8080 8081 9222 3000)
 BACKEND="${DWS_FIREWALL_BACKEND:-}"
 LOG_TAG="${DWS_FIREWALL_LOG_TAG:-dws-firewall}"
 STATE_DIR="${DWS_FIREWALL_STATE_DIR:-/var/lib/dws/firewall}"
@@ -22,8 +22,8 @@ usage: dws-firewall.sh [--dry-run] [--backend ufw|iptables] [--verify] [--rollba
 Default action snapshots the current backend state, applies the repo ingress
 policy, and verifies the result:
 - allow udp/41641 from anywhere for Tailscale peer traffic
-- allow tcp/22 from anywhere for SSH relay compatibility
-- allow tcp/8080, tcp/9222, and tcp/3000 from 100.64.0.0/10
+- allow tcp/22 from 100.64.0.0/10 for Tailscale-only SSH
+- allow tcp/8080, tcp/8081, tcp/9222, and tcp/3000 from 100.64.0.0/10
 - deny all other inbound traffic
 
 Modes:

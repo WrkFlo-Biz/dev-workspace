@@ -115,7 +115,7 @@ The intended repo-managed policy is:
 
 - default deny incoming, default allow outgoing
 - allow `udp/41641` from anywhere for Tailscale peer traffic
-- allow `tcp/22`, `tcp/8080`, `tcp/8081`, `tcp/8100`, `tcp/9222`, and `tcp/3000` only from `100.64.0.0/10`
+- allow `tcp/22`, `tcp/8080`, `tcp/8081`, `tcp/9222`, and `tcp/3000` only from `100.64.0.0/10`
 - deny all other inbound traffic
 
 Important nuances:
@@ -124,6 +124,8 @@ Important nuances:
   globally open so direct Tailscale peers and NAT traversal keep working
 - the script keeps `tcp/22` Tailscale-only by restricting it to
   `100.64.0.0/10`; it is not intended to leave a public internet SSH path
+- the local orchestrator API stays on `127.0.0.1:8100`; it is not part of the
+  repo-managed Tailscale dev-port allowlist
 - the SSH port and the repo-managed dev ports stay restricted to the Tailscale
   subnet at the host-firewall layer
 
