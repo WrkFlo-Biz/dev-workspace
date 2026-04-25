@@ -1,5 +1,24 @@
 # dev-workspace
-Remote dev environment on an Azure VM, reachable from Mac and phone over Tailscale.
+Remote dev environment on an Azure VM, reachable from Mac and phone over
+Tailscale. This repo also carries the canonical platform and architecture docs
+for Wrk-Flo.
+
+## Architecture Frames
+
+Wrk-Flo keeps three architecture views separate:
+
+- Canonical product architecture: the provider-agnostic seven-layer model in
+  [docs/wrkflo-7layer-vision.md](docs/wrkflo-7layer-vision.md)
+- Current implementation stack: the live operator environment in
+  [docs/architecture.md](docs/architecture.md) and the Azure-first substrate in
+  [docs/implementation-substrate.md](docs/implementation-substrate.md)
+- Target production topology: platform governance and memory/storage boundaries
+  in [docs/governance.md](docs/governance.md) and
+  [docs/memory-architecture.md](docs/memory-architecture.md)
+
+GitHub Enterprise is the governance and deployment spine. GitHub Secrets is
+CI/CD-scoped only. Runtime secrets belong in Azure Key Vault with managed
+identities rather than in repo or pipeline secret stores.
 
 ## Quick Start
 Mac:
@@ -16,6 +35,8 @@ Phone:
 ## Architecture
 `Mac / iPhone -> Tailscale -> dev-workspace-vm -> tmux -> Codex / Claude`
 
+- This path is the current implementation stack for the operator workspace, not
+  the canonical product architecture.
 - Interactive SSH logins land in `scripts/dws-launcher.sh`.
 - The launcher starts or reattaches a `tmux` session, then runs `codex --profile ...` or `claude`.
 - VM-to-Mac bridges are `http://100.78.207.22:9222` (Chrome CDP) and `http://100.78.207.22:9223` (GUI/Hammerspoon).

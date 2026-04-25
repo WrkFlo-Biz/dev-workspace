@@ -1,8 +1,52 @@
 # dev-workspace architecture
 
-This document describes the live `dev-workspace` system as of April 24, 2026:
-the Azure VM, the Tailscale mesh, the SSH and `tmux` session model, the active
-task monitor, and the Mac-side relay setup that lets the VM drive the Mac.
+This document describes the live `dev-workspace` implementation stack as of
+April 25, 2026: the Azure VM, the Tailscale mesh, the SSH and `tmux` session
+model, the active task monitor, and the Mac-side relay setup that lets the VM
+drive the Mac.
+
+It is not the canonical public product architecture. Wrk-Flo keeps three
+separate architecture views:
+
+| View | Purpose | Primary docs |
+| --- | --- | --- |
+| Canonical product architecture | Provider-agnostic product model and seven public layers | [wrkflo-7layer-vision.md](./wrkflo-7layer-vision.md) |
+| Current implementation stack | Live Azure-first operator environment and bootstrap | this document, [implementation-substrate.md](./implementation-substrate.md), [secrets-boundary.md](./secrets-boundary.md) |
+| Target production topology | Planned control-plane, governance, memory, and public-surface boundaries | [governance.md](./governance.md), [memory-architecture.md](./memory-architecture.md), [implementation-substrate.md](./implementation-substrate.md) |
+
+## Architecture framing
+
+### Canonical product architecture
+
+The canonical product model remains the public seven-layer Wrk-Flo architecture.
+It stays provider-agnostic and does not grow a public "Layer 0" for cloud,
+vendor, or deployment details.
+
+### Current implementation stack
+
+The current stack is Azure-first:
+
+- operator workspace on an Azure VM over Tailscale and `tmux`
+- model access through Azure AI Foundry
+- GitHub Enterprise as the governance and deployment spine
+- GitHub Secrets for CI/CD only
+- runtime secrets targeted at Azure Key Vault plus managed identities
+
+### Target production topology
+
+The target production topology keeps public application surfaces, control-plane
+services, coordination state, durable audit data, and retrieval memory
+separate:
+
+- Azure App Service is the current planned public-surface step
+- Front Door or Application Gateway may be added later if WAF, routing, or
+  broader public exposure requires it
+- Cloudflare is not part of the current Azure-first implementation path
+- Redis handles hot coordination and leases, not durable history
+- Durable relational storage owns approvals, lineage, audit, and immutable run
+  history
+- Vector or retrieval stores support semantic memory lookup, not primary system
+  truth
 
 ## System summary
 
@@ -30,6 +74,22 @@ dev-workspace-vm
 
 `tmux` is the persistence boundary. SSH can drop, the phone can sleep, and the
 Codex or Claude process keeps running inside the VM session.
+
+## Implementation substrate
+
+The infrastructure runtime sits beneath the canonical seven layers; it is not a
+new public layer in the product architecture.
+
+Current implementation facts:
+
+- `dev-workspace` is the operator and development substrate
+- `wrkflo-orchestrator` is the sibling runtime/control-plane implementation
+- GitHub Enterprise carries repo policy, review, and deployment governance
+- GitHub Secrets should stay CI/CD-scoped
+- Runtime identities and secrets should move through Azure managed identities
+  and Key Vault rather than host-local secret sprawl
+- The Azure VM remains the current operator entrypoint while public-surface
+  services are still being staged
 
 ## VM and infrastructure
 

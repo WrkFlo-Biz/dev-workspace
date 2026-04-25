@@ -3,13 +3,28 @@
 This document defines which session classes should carry which credentials on
 the dev-workspace VM.
 
+## Platform secret authority
+
+Wrk-Flo separates deployment-time secrets from runtime secrets:
+
+| Scope | System of record | Notes |
+| --- | --- | --- |
+| Governance and deployment policy | GitHub Enterprise | Canonical repo, review, and environment control surface |
+| CI/CD secrets | GitHub Secrets | Pipeline-scoped only; not the runtime secret authority |
+| Runtime secrets and service identity | Azure Key Vault + managed identities | Target runtime model for live services, jobs, and APIs |
+| Operator bootstrap on the dev VM | `~/.config/wrkflo/foundry.env` and local session env | Local bootstrap convenience for the workspace, not the long-term runtime authority |
+
+`foundry.env` is still the practical bootstrap file for the current
+`dev-workspace` operator environment. It should not be treated as the platform
+design for production secret delivery.
+
 ## Credential Sources
 
 | Secret / access | Source | Notes |
 | --- | --- | --- |
-| `AZURE_OPENAI_API_KEY` | `~/.config/wrkflo/foundry.env` | Used by Codex/Foundry profiles. |
-| GitHub auth | `gh auth login` plus normal git credential flow | Not loaded from `foundry.env`. |
-| Azure CLI auth | `az login` | Needed to fetch or rotate Foundry keys and for Azure admin work. |
+| `AZURE_OPENAI_API_KEY` | `~/.config/wrkflo/foundry.env` | Workspace bootstrap only; target runtime delivery should come from Key Vault, not a checked-in or manually distributed file. |
+| GitHub auth | `gh auth login` plus normal git credential flow | GitHub Enterprise is the governance and deployment spine; auth is not loaded from `foundry.env`. |
+| Azure CLI auth | `az login` | Needed to fetch or rotate Foundry keys, manage Key Vault, and handle Azure admin work. |
 | Mac bridge access | `MAC_SSH_HOST`, `MAC_CDP_URL`, `MAC_GUI_URL` | Tailscale-reachable paths to the Mac SSH, Chrome CDP, and Hammerspoon bridges. |
 
 ## Session Classes
@@ -25,6 +40,8 @@ host-local worker session that the installed runtime happens to create.
   most focused implementation tasks.
 - They should not be treated as the place to keep GitHub admin auth, Azure
   admin state, or Mac bridge access unless the task explicitly requires it.
+- They also should not be mistaken for the production runtime secret model;
+  production services should use Key Vault plus managed identities.
 
 ### GitHub + Azure sessions
 
@@ -39,6 +56,8 @@ Primary control-plane session:
   deployment, or Foundry admin work.
 - `foundry.env` still only provides `AZURE_OPENAI_API_KEY`; GitHub and Azure
   CLI auth are separate host-level login states.
+- GitHub Secrets belongs to GitHub Actions and deployment automation, not to
+  long-lived runtime processes on the VM.
 
 ### Privileged bridge sessions
 
