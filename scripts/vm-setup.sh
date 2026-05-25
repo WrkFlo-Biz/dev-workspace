@@ -690,6 +690,31 @@ ensure_user_linger() {
   done_item "enabled systemd linger for $USER"
 }
 
+ensure_openrouter_env() {
+  local env_file="$WRKFLO_CONFIG_DIR/openrouter.env"
+
+  if [ -f "$env_file" ]; then
+    skip_item "OpenRouter env already present: $env_file"
+  else
+    if [ -z "${OPENROUTER_API_KEY:-}" ]; then
+      warn "OPENROUTER_API_KEY not set — skipping $env_file. Re-run with OPENROUTER_API_KEY exported."
+      return 0
+    fi
+    mkdir -p "$WRKFLO_CONFIG_DIR"
+    printf 'export OPENROUTER_API_KEY="%s"\n' "$OPENROUTER_API_KEY" >"$env_file"
+    chmod 600 "$env_file"
+    done_item "created $env_file"
+  fi
+
+  for rc in "$HOME/.bashrc" "$HOME/.profile"; do
+    [ -f "$rc" ] || continue
+    if ! grep -q 'wrkflo/openrouter.env' "$rc"; then
+      printf '%s\n' "[ -f \"\$HOME/.config/wrkflo/openrouter.env\" ] && . \"\$HOME/.config/wrkflo/openrouter.env\"" >>"$rc"
+      done_item "added openrouter.env source to $rc"
+    fi
+  done
+}
+
 ensure_livekit_env() {
   local env_file="$WRKFLO_CONFIG_DIR/livekit.env"
 
@@ -717,6 +742,30 @@ ENV
       done_item "added livekit.env source to $rc"
     fi
   done
+}
+
+ensure_livekit_agent() {
+  local agent_dir="$REPO_ROOT/workers/eden-voice-agent"
+  local venv="$agent_dir/.venv"
+
+  if [ ! -d "$agent_dir" ]; then
+    warn "eden-voice-agent worker not found at $agent_dir — skipping"
+    return 0
+  fi
+
+  if [ -f "$venv/bin/python" ] && systemd_unit_exists "eden-voice-agent.service" 2>/dev/null; then
+    skip_item "eden-voice-agent already installed"
+    return 0
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    warn "python3 not found — skipping eden-voice-agent setup"
+    return 0
+  fi
+
+  log "setting up eden-voice-agent"
+  bash "$agent_dir/setup.sh"
+  done_item "installed eden-voice-agent (LiveKit voice runtime)"
 }
 
 ensure_orchestrator_systemd() {
@@ -846,7 +895,9 @@ main() {
   copy_if_changed "$REPO_ROOT/scripts/dws-health-check.sh" "$BIN_DIR/dws-health-check.sh" 0755 "$HOME/bin/dws-health-check.sh"
   copy_if_changed "$REPO_ROOT/scripts/dws-rotate-logs.sh" "$BIN_DIR/dws-rotate-logs.sh" 0755 "$HOME/bin/dws-rotate-logs.sh"
   copy_if_changed "$REPO_ROOT/scripts/dws-notify.sh" "$BIN_DIR/dws-notify.sh" 0755 "$HOME/bin/dws-notify.sh"
+  ensure_openrouter_env
   ensure_livekit_env
+  ensure_livekit_agent
   ensure_codex_profiles
   ensure_bash_profile_launcher
   ensure_health_check_cron
