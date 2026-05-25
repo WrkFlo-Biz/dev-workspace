@@ -690,6 +690,35 @@ ensure_user_linger() {
   done_item "enabled systemd linger for $USER"
 }
 
+ensure_livekit_env() {
+  local env_file="$WRKFLO_CONFIG_DIR/livekit.env"
+
+  if [ -f "$env_file" ]; then
+    skip_item "LiveKit env already present: $env_file"
+  else
+    if [ -z "${LIVEKIT_URL:-}" ] || [ -z "${LIVEKIT_API_KEY:-}" ] || [ -z "${LIVEKIT_API_SECRET:-}" ]; then
+      warn "LiveKit env vars not set — skipping $env_file. Re-run with LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET exported."
+      return 0
+    fi
+    mkdir -p "$WRKFLO_CONFIG_DIR"
+    cat >"$env_file" <<ENV
+export LIVEKIT_URL="${LIVEKIT_URL}"
+export LIVEKIT_API_KEY="${LIVEKIT_API_KEY}"
+export LIVEKIT_API_SECRET="${LIVEKIT_API_SECRET}"
+ENV
+    chmod 600 "$env_file"
+    done_item "created $env_file"
+  fi
+
+  for rc in "$HOME/.bashrc" "$HOME/.profile"; do
+    [ -f "$rc" ] || continue
+    if ! grep -q 'wrkflo/livekit.env' "$rc"; then
+      printf '%s\n' "[ -f \"\$HOME/.config/wrkflo/livekit.env\" ] && . \"\$HOME/.config/wrkflo/livekit.env\"" >>"$rc"
+      done_item "added livekit.env source to $rc"
+    fi
+  done
+}
+
 ensure_orchestrator_systemd() {
   local source_dir="$ORCHESTRATOR_DIR/ops/systemd"
   local units=()
@@ -817,6 +846,7 @@ main() {
   copy_if_changed "$REPO_ROOT/scripts/dws-health-check.sh" "$BIN_DIR/dws-health-check.sh" 0755 "$HOME/bin/dws-health-check.sh"
   copy_if_changed "$REPO_ROOT/scripts/dws-rotate-logs.sh" "$BIN_DIR/dws-rotate-logs.sh" 0755 "$HOME/bin/dws-rotate-logs.sh"
   copy_if_changed "$REPO_ROOT/scripts/dws-notify.sh" "$BIN_DIR/dws-notify.sh" 0755 "$HOME/bin/dws-notify.sh"
+  ensure_livekit_env
   ensure_codex_profiles
   ensure_bash_profile_launcher
   ensure_health_check_cron
