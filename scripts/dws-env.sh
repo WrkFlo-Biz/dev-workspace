@@ -51,6 +51,7 @@ profile_for() {
   case "$1" in
     1) echo "foundry-5_4" ;; 2) echo "foundry-5_2" ;; 3) echo "foundry-codex" ;;
     4) echo "foundry-mini" ;; 5) echo "foundry-5-mini" ;; 6) echo "foundry-4o" ;;
+    v|V) echo "foundry-sora-2" ;;
     7) echo "foundry-opus" ;; 8) echo "foundry-sonnet" ;; 9) echo "foundry-haiku" ;;
     *) echo "" ;;
   esac
@@ -59,7 +60,7 @@ profile_for() {
 model_label() {
   case "$1" in
     1) echo "5-4" ;; 2) echo "5-2" ;; 3) echo "codex" ;; 4) echo "mini" ;;
-    5) echo "5mini" ;; 6) echo "4o" ;; 7) echo "opus" ;; 8) echo "sonnet" ;;
+    5) echo "5mini" ;; 6) echo "4o" ;; v|V) echo "sora2" ;; 7) echo "opus" ;; 8) echo "sonnet" ;;
     9) echo "haiku" ;; c|C) echo "claude" ;; *) echo "?" ;;
   esac
 }

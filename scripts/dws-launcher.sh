@@ -66,6 +66,7 @@ init_launcher_env_defaults() {
       4) echo "foundry-mini" ;;
       5) echo "foundry-5-mini" ;;
       6) echo "foundry-4o" ;;
+      v|V) echo "foundry-sora-2" ;;
       7) echo "foundry-opus" ;;
       8) echo "foundry-sonnet" ;;
       9) echo "foundry-haiku" ;;
@@ -81,6 +82,7 @@ init_launcher_env_defaults() {
       4) echo "mini" ;;
       5) echo "5mini" ;;
       6) echo "4o" ;;
+      v|V) echo "sora2" ;;
       7) echo "opus" ;;
       8) echo "sonnet" ;;
       9) echo "haiku" ;;
@@ -229,7 +231,7 @@ foundry_key_hint() {
 show_openai_profile_warning() {
   yellow "  OpenAI profiles unavailable"; echo
   dim "  $(foundry_key_hint)"; echo
-  dim "  OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored"; echo
+  dim "  OpenAI choices 1-6 and v stay disabled until AZURE_OPENAI_API_KEY is restored"; echo
   dim "  choose Claude models 7-9, Claude Code CLI, or plain shell until then"; echo
   sleep 1
 }
@@ -372,7 +374,7 @@ show_foundry_note() {
 
   foundry_key_ready && return 0
   printf '%s%s\n' "$indent" "$(dim "OpenAI profiles unavailable: $(foundry_key_hint)")"
-  printf '%s%s\n' "$indent" "$(dim "OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored")"
+  printf '%s%s\n' "$indent" "$(dim "OpenAI choices 1-6 and v stay disabled until AZURE_OPENAI_API_KEY is restored")"
   printf '%s%s\n' "$indent" "$(dim "fallback: Claude models 7-9, Claude Code CLI, or plain shell")"
 }
 
@@ -693,6 +695,7 @@ model_arg() {
     4) echo "mini" ;;
     5) echo "5mini" ;;
     6) echo "4o" ;;
+    v|V) echo "sora2" ;;
     7) echo "opus" ;;
     8) echo "sonnet" ;;
     9) echo "haiku" ;;
@@ -1371,6 +1374,7 @@ MENU
   $(cyan 4)  gpt-5.1-codex-mini $(dim "med   — quick edits")
   $(cyan 5)  gpt-5-mini         $(dim "med   — fast, cheap")
   $(cyan 6)  gpt-4o             $(dim "med   — multimodal")
+  $(cyan v)  sora-2             $(dim "med   — video generation API")
 
   $(bold "── Claude ──")
   $(cyan 7)  claude-opus-4-6    $(dim "high  — complex reasoning")
@@ -1387,8 +1391,8 @@ MENU
     read -rp "  > " model_choice
 
     case "$model_choice" in
-      [1-9])
-        if [ "$model_choice" -le 6 ] && ! foundry_key_ready; then
+      [1-9]|v|V)
+        if [[ "$model_choice" =~ ^[1-6]$|^[vV]$ ]] && ! foundry_key_ready; then
           show_openai_profile_warning
           continue
         fi

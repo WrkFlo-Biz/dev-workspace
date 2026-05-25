@@ -1,6 +1,6 @@
 # Foundry Codex Profiles
 
-These are the 9 Azure Foundry-backed Codex profiles used by the launcher.
+These are the Azure Foundry-backed Codex profiles used by the launcher.
 In this repo, each Azure deployment name matches the model name.
 
 Source of truth:
@@ -15,6 +15,7 @@ Source of truth:
 | `foundry-mini` | `gpt-5.1-codex-mini` | `med` | Quick edits and cheap iterations | `gpt-5.1-codex-mini` |
 | `foundry-5-mini` | `gpt-5-mini` | `med` | Fast, cheap lightweight work | `gpt-5-mini` |
 | `foundry-4o` | `gpt-4o` | `med` | Multimodal work, images, long docs | `gpt-4o` |
+| `foundry-sora-2` | `sora-2` | `med` | Video generation deployment option; not a coding/chat model | `sora-2` |
 | `foundry-opus` | `claude-opus-4-6` | `high` | Complex reasoning and second-opinion reviews | `claude-opus-4-6` |
 | `foundry-sonnet` | `claude-sonnet-4-6` | `med` | Balanced Claude use for general work | `claude-sonnet-4-6` |
 | `foundry-haiku` | `claude-haiku-4-5` | `med` | Fast Q&A and lightweight tasks | `claude-haiku-4-5` |

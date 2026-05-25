@@ -22,13 +22,14 @@ All Codex profiles in this repo route to deployments on one AI Services resource
 | `gpt-4o`              | —            | `foundry-4o`          | Multimodal (images, long docs)                |
 | `gpt-realtime`        | —            | *(WS protocol only)*  | Voice agents (see below)                      |
 | `gpt-realtime-mini`   | —            | *(WS protocol only)*  | Cheaper voice agents                          |
+| `sora-2`              | 2025-10-06   | `foundry-sora-2`      | Video generation via Sora API                 |
 | `claude-opus-4-6`     | —            | `foundry-opus`        | Second-opinion reviewer, strategic reasoning  |
 | `claude-sonnet-4-6`   | —            | `foundry-sonnet`      | Balanced Claude use                           |
 | `claude-haiku-4-5`    | —            | *(via SDKs)*          | Cheap, fast Claude tasks                      |
 | `text-embedding-3-small` | —         | *(embeddings only)*   | Memory/vector search in apps                  |
 
-All GlobalStandard SKUs. Regional ceiling in eastus2 is 10,000 TPM per model;
-each deployment currently sits at 2,000 TPM. Scale with:
+Most interactive model deployments use GlobalStandard capacity. Check current
+quota and deployment capacity before scaling:
 
 ```bash
 az cognitiveservices account deployment create \
@@ -38,6 +39,20 @@ az cognitiveservices account deployment create \
 ```
 
 (Note: `az` has no `deployment update` verb — the above upserts.)
+
+## Video / Sora
+
+The `sora-2` deployment is an OpenAI video-generation deployment, not a
+chat/Responses coding model. It is deployed on `moses-8586-resource` with
+GlobalStandard capacity `40`, model version `2025-10-06`, and
+`videoGenerations = true`. The initial default capacity `60` exceeded remaining
+quota; Azure reported 40 available RPM, so the deployment was created at 40.
+
+Use the Azure OpenAI Sora API endpoint:
+
+```bash
+https://moses-8586-resource.openai.azure.com/openai/v1/video/generations/jobs
+```
 
 ## API key
 

@@ -239,7 +239,7 @@ assert_contains "$queue_line" "total=4"
 assert_contains "$plain_output" "active sessions"
 assert_contains "$plain_output" "wrkflo-orchestrator"
 assert_contains "$plain_output" "OpenAI profiles unavailable: missing"
-assert_contains "$plain_output" "OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored"
+assert_contains "$plain_output" "OpenAI choices 1-6 and v stay disabled until AZURE_OPENAI_API_KEY is restored"
 assert_contains "$plain_output" "fallback: Claude models 7-9, Claude Code CLI, or plain shell"
 
 missing_env_output=$(
@@ -260,7 +260,7 @@ assert_contains "$missing_env_plain_output" "sessions: 2 active"
 assert_contains "$missing_env_plain_output" "tailnet:  100.64.0.10"
 assert_contains "$missing_env_plain_output" "wrkflo-orchestrator"
 assert_contains "$missing_env_plain_output" "OpenAI profiles unavailable: missing"
-assert_contains "$missing_env_plain_output" "OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored"
+assert_contains "$missing_env_plain_output" "OpenAI choices 1-6 and v stay disabled until AZURE_OPENAI_API_KEY is restored"
 assert_contains "$missing_env_plain_output" "fallback: Claude models 7-9, Claude Code CLI, or plain shell"
 
 write_fake_command tailscale 'exit 1'
@@ -355,7 +355,7 @@ assert_contains "$shell_fallback_plain_output" "disk:   unavailable"
 assert_contains "$shell_fallback_plain_output" "(none)"
 assert_contains "$shell_fallback_plain_output" "no tmux sessions yet; start one from the project list below or use Plain shell (7)"
 assert_contains "$shell_fallback_plain_output" "OpenAI profiles unavailable: missing"
-assert_contains "$shell_fallback_plain_output" "OpenAI choices 1-6 stay disabled until AZURE_OPENAI_API_KEY is restored"
+assert_contains "$shell_fallback_plain_output" "OpenAI choices 1-6 and v stay disabled until AZURE_OPENAI_API_KEY is restored"
 assert_contains "$shell_fallback_plain_output" "fallback: Claude models 7-9, Claude Code CLI, or plain shell"
 assert_contains "$shell_fallback_plain_output" "local-only mode: tmux sessions still work, but Mac and phone bridge features are unavailable"
 

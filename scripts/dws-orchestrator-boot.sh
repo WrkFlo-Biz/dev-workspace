@@ -48,7 +48,7 @@ for i in $(seq 1 "$WORKER_COUNT"); do
         yellow "$WORKER: already running"
     else
         tmux new-session -d -s "$WORKER" \
-            "source $FOUNDRY_ENV 2>/dev/null; cd $PROJECTS_DIR/dev-workspace; exec codex --full-auto"
+            "source $FOUNDRY_ENV 2>/dev/null; cd $PROJECTS_DIR/dev-workspace; exec codex-safe --full-auto"
         green "$WORKER: started"
         sleep 2
     fi
@@ -135,7 +135,7 @@ green "Prompt ready ($(wc -c < "$PROMPT_FILE" | tr -d ' ') bytes)"
 
 # Start orchestrator
 tmux new-session -d -s "$SESSION_NAME" \
-    "source $FOUNDRY_ENV 2>/dev/null; cd $PROJECTS_DIR/dev-workspace; exec codex --full-auto"
+    "source $FOUNDRY_ENV 2>/dev/null; cd $PROJECTS_DIR/dev-workspace; exec codex-safe --full-auto"
 green "Orchestrator session created"
 sleep 6
 

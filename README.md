@@ -31,6 +31,7 @@ Azure Foundry launcher targets plus native Claude Code:
 | `4` | `gpt-5.1-codex-mini` | `foundry-mini` |
 | `5` | `gpt-5-mini` | `foundry-5-mini` |
 | `6` | `gpt-4o` | `foundry-4o` |
+| `v` | `sora-2` | `foundry-sora-2` |
 | `7` | `claude-opus-4-6` | `foundry-opus` |
 | `8` | `claude-sonnet-4-6` | `foundry-sonnet` |
 | `9` | `claude-haiku-4-5` | `foundry-haiku` |

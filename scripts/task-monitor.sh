@@ -382,7 +382,7 @@ relaunch_session() {
   tmux kill-session -t "$session" 2>/dev/null || true
   sleep 1
   tmux new-session -d -s "$session" \
-    "bash --norc -c \"source ~/.config/wrkflo/foundry.env 2>/dev/null; cd ~/projects/$repo; exec codex --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox\""
+    "bash --norc -c \"source ~/.config/wrkflo/foundry.env 2>/dev/null; cd ~/projects/$repo; exec codex-safe --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox\""
   sleep 8
   local check
   check=$(tmux capture-pane -t "$session" -p 2>/dev/null | tail -5 || true)
@@ -563,13 +563,13 @@ while true; do
         log "orchestrator: $orch_status — relaunching immediately"
         tmux kill-session -t orchestrator 2>/dev/null || true
         sleep 1
-        tmux new-session -d -s orchestrator "bash --norc -c \"source ~/.config/wrkflo/foundry.env 2>/dev/null; cd ~/projects/wrkflo-orchestrator; exec codex --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox\""
+        tmux new-session -d -s orchestrator "bash --norc -c \"source ~/.config/wrkflo/foundry.env 2>/dev/null; cd ~/projects/wrkflo-orchestrator; exec codex-safe --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox\""
         sleep 8
         log "orchestrator: relaunched"
         ;;
       DEAD)
         log "orchestrator: dead — relaunching immediately"
-        tmux new-session -d -s orchestrator "bash --norc -c \"source ~/.config/wrkflo/foundry.env 2>/dev/null; cd ~/projects/wrkflo-orchestrator; exec codex --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox\""
+        tmux new-session -d -s orchestrator "bash --norc -c \"source ~/.config/wrkflo/foundry.env 2>/dev/null; cd ~/projects/wrkflo-orchestrator; exec codex-safe --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox\""
         sleep 8
         log "orchestrator: relaunched"
         ;;
@@ -579,7 +579,7 @@ while true; do
     esac
   else
     log "orchestrator: session missing — creating"
-    tmux new-session -d -s orchestrator "bash --norc -c \"source ~/.config/wrkflo/foundry.env 2>/dev/null; cd ~/projects/wrkflo-orchestrator; exec codex --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox\""
+    tmux new-session -d -s orchestrator "bash --norc -c \"source ~/.config/wrkflo/foundry.env 2>/dev/null; cd ~/projects/wrkflo-orchestrator; exec codex-safe --profile foundry-5_4 --search --dangerously-bypass-approvals-and-sandbox\""
     sleep 8
     log "orchestrator: created"
   fi

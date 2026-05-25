@@ -11,7 +11,7 @@ die(){ printf 'error: %s\n' "$*" >&2; exit 1; }
 usage(){ cat <<EOF
 usage: $(basename "$0") <project-short> <model-short>
 projects: gs voice oclaw gsaq orch dws
-models: 5-4 5-2 codex mini 5mini 4o opus sonnet haiku claude
+models: 5-4 5-2 codex mini 5mini 4o sora2 opus sonnet haiku claude
 EOF
 }
 tmux_q() {
@@ -45,6 +45,7 @@ model(){ case "$1" in
   mini|foundry-mini) echo "mini|foundry-mini" ;;
   5mini|5-mini|foundry-5-mini) echo "5mini|foundry-5-mini" ;;
   4o|foundry-4o) echo "4o|foundry-4o" ;;
+  sora2|sora-2|video|foundry-sora-2) echo "sora2|foundry-sora-2" ;;
   opus|foundry-opus) echo "opus|foundry-opus" ;;
   sonnet|foundry-sonnet) echo "sonnet|foundry-sonnet" ;;
   haiku|foundry-haiku) echo "haiku|foundry-haiku" ;;

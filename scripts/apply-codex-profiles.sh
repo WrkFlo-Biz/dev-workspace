@@ -16,7 +16,10 @@ fi
 mkdir -p "$HOME/.codex"
 touch "$DEST"
 
-mapfile -t SOURCES < <(find "$SRC_DIR" -maxdepth 1 -type f -name '*.toml' | sort)
+SOURCES=()
+while IFS= read -r src; do
+  SOURCES+=("$src")
+done < <(find "$SRC_DIR" -maxdepth 1 -type f -name '*.toml' | sort)
 [ "${#SOURCES[@]}" -gt 0 ] || { echo "no profile fragments in $SRC_DIR" >&2; exit 1; }
 
 # Back up before mutating
